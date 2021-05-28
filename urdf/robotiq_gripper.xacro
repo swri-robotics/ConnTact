@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- TCP calibration in meters -->
+  <xacro:property name="tcp_x" value="0.00" />
+  <xacro:property name="tcp_y" value="0.00" />
+  <xacro:property name="tcp_z" value="0.284" />
+
+  <xacro:macro name="robotiq_gripper" params="parent">
+
+    <link name="${parent}_eoat_link">
+      <inertial>
+        <origin xyz="8.625E-08 -4.6583E-06 0.03145" rpy="0 0 0" />
+        <mass value="0.22652" />
+        <inertia ixx="0.00020005" ixy="-4.2442E-10" ixz="-2.9069E-10" iyy="0.00017832" iyz="-3.4402E-08" izz="0.00013478" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://peg_in_hole_demo/meshes/robotiq_arg2f_base_link.stl" />
+        </geometry>
+        <material name="">
+          <color rgba="0.1 0.1 0.1 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://peg_in_hole_demo/meshes/robotiq_arg2f_base_link.stl" />
+        </geometry>
+      </collision>
+      <visual>
+        <geometry>
+          <cylinder radius="0.015" length="0.175"/>
+        </geometry>
+        <origin rpy="0 0 0" xyz="0 0 0.0875" />
+        <material name="">
+          <color rgba="0.1 0.1 0.1 1" />
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="0.015" length="0.175"/>
+        </geometry>
+        <origin rpy="0 0 0" xyz="0 0 0.0875" />
+        <material name="">
+          <color rgba="0.1 0.1 0.1 1" />
+        </material>
+      </collision>
+
+    </link>
+
+    <joint name="${parent}tool0_to_eoat_link" type="fixed">
+        <parent link="${parent}" />
+        <child link="${parent}_eoat_link" />
+        <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.00" />
+    </joint>
+
+  </xacro:macro>
+
+</robot>

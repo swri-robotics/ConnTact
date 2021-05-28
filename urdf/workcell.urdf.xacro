@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<robot name="workcell" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="ur_prefix" value="" />
+
+  <!-- Xacro for the table -->
+  <xacro:include filename="$(find peg_in_hole_demo)/urdf/assembly_table.xacro"/>
+
+  <!-- Xacros from the Siemens Gear Assembly Challenge -->
+<!--  <xacro:include filename="$(find assembly_ros)/support/urdf/siemens_base_plate.xacro"/>
+  <xacro:include filename="$(find assembly_ros)/support/urdf/siemens_small_shaft.xacro"/>
+  <xacro:include filename="$(find assembly_ros)/support/urdf/siemens_big_shaft.xacro"/>-->
+
+<!-- Xacros from the NIST Task Board #1-->
+  <xacro:include filename="$(find peg_in_hole_demo)/urdf/laser_cut_base_plate.xacro"/>
+
+  <!-- OLD FROM AUTOASSEMBLY Xacro for UR10e -->
+<!--  <xacro:include filename="$(find ur_e_description)/urdf/ur10e.urdf.xacro"/>-->
+  <!-- Xacro for UR10e -->
+  <xacro:include filename="$(find ur_description)/urdf/ur10e.xacro"/>
+
+  <!-- Xacro for gripper -->
+  <xacro:include filename="$(find peg_in_hole_demo)/urdf/robotiq_gripper.xacro"/>
+
+<!--  TODo: My Addition-->
+  <xacro:robotiq_gripper parent="tool0"/>
+
+  <!-- Static environment -->
+<!--  <link name="world"/>-->
+
+<!--  <xacro:assembly_table parent="world"/>-->
+  <xacro:assembly_table parent="base_link"/>
+
+<!--  <xacro:laser_cut_base_plate parent="table">
+    <origin xyz="0.4 -0.7 0.0" rpy="-0.0091 -0.013 0.0197"/>
+  </xacro:laser_cut_base_plate>-->
+
+<!--  <xacro:siemens_big_shaft parent="table">
+    <origin xyz="0.2 -0.7 0.0" rpy="-0.0091 -0.013 0.0197"/>
+  </xacro:siemens_big_shaft>
+
+  <xacro:siemens_small_shaft parent="table">
+    <origin xyz="-0.1 -0.7 0.0" rpy="-0.0091 -0.013 0.0197"/>
+  </xacro:siemens_small_shaft>-->
+
+  <!-- ROBOTS -->
+  <!-- UR -->
+<!--  <xacro:ur10e_robot prefix="${ur_prefix}" joint_limited="false" />-->
+
+<!--  <joint name="table_to_ur" type="fixed">
+    <origin xyz="0.6545 0.0144 0.0797" rpy="0.0 0.0 3.1415"/>
+    <parent link="table"/>
+    <child link="${ur_prefix}base_link"/>
+  </joint>
+
+  <xacro:robotiq_gripper parent="${ur_prefix}tool0"/>-->
+
+</robot>
