@@ -1,86 +1,44 @@
 objects: #List objects and their required description
-
     peg:
-
-        stl_file:
-
-        local_part_frame: #Starting transformation from Newtonian inertial frame
-
+        stl_file: "file_location.stl"
+        local_part_pose: [1, 2, 3] #Starting transformation from Newtonian inertial frame
         dimensions:
-
             diameter: 16 #mm
-
             length: 50 #mm
-
         tolerance:
-
             upper_tolerance:  0.00 #e.g., h7 (ISO 286)
-
             lower_tolerance:  -0.01 #e.g., h7 (ISO 286)
-
         material: "stainless steel"
-
         grasping:
-
-            pinch_grasping: #For pinch gripper being used on the demo. True for shafts, false for fixed pegs                # Reference with array. Ex., pinch_grasping.properties[0].frame
-
+            pinch_grasping: #For pinch gripper being used on the demo. True for shafts, false for fixed pegs
                 default_ properties:
-
-                    grasp_pressure: #Percent maximum force
-
-                    #friction: video 1, video 2 #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-
+                    grasp_pressure: 50 #Percent maximum force
+                    #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
                 locations:
-
-                    - frame: [1, 2, 3] #Coordinate transformation relative to peg/hole local_part_frame being grasped
-
-                    grasp_name: "tip"
-
-                    part_grasp_frame: #transformation relative to local_part_frame
-
-                    gripper_grasp_frame: #transformation relative to local_part_frame. Robot solves path planning to reach this cartesian position
-
-                    grasp_pressure: #Percent maximum force
-
-                    #friction: video 1, video 2 #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-
-                    - frame: [1, 2, 3] #Coordinate transformation relative to peg/hole local_part_frame being grasped
-
-                    grasp_name: "tip"
-
-                    part_grasp_frame: #transformation relative to local_part_frame
-
-                    gripper_grasp_frame: #transformation relative to local_part_frame. Robot solves path planning to reach this cartesian position
-
-                    grasp_pressure: #Percent maximum force
-
-                    #friction: video 1, video 2 #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-
-
+                    - pose: [1, 2, 3] #Coordinate transformation relative to peg/hole local_part_pose being grasped
+                      grasp_name: "tip"
+                      part_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose
+                      gripper_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose. Robot solves path planning to reach this cartesian position
+                      grasp_pressure: 50 #Percent maximum force
+                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    - pose: [1, 2, 3] #Coordinate transformation relative to peg/hole local_part_pose being grasped
+                      grasp_name: "middle"
+                      part_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose
+                      gripper_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose. Robot solves path planning to reach this cartesian position
+                      grasp_pressure: 50 #Percent maximum force
+                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
     hole:
-
-        stl_file:
-
-        local_part_frame: [1, 2, 3] #Starting transformation from Newtonian inertial frame
-
+        stl_file: "file_location.stl"
+        local_part_pose: [1, 2, 3] #Starting transformation from Newtonian inertial frame
         dimensions:
-
             diameter: 16.4 #mm
-
             depth: 20 #mm
-
         tolerance:
-
             upper_tolerance:  0.01 #e.g., H7 (ISO 286)
-
             lower_tolerance:  0.00 #e.g., H7 (ISO 286)
-
         material: "stainless steel"
-
-        #pinch_grasping: false #For pinch gripper being used on the demo. True for gears, false for normal holes
-
-assembled_state #List the desired assembled state
-
-    assembled_peg_location: [1, 2, 3] #Trasformation from peg.local_part_frame relative to chosen Newtonian inertial frame
-
-    assembled_hole_location: [1, 2, 3] #Transformation from hole.local_part_frame relative to chosen Newtonian inertial frame
+assembled_state: #List the desired assembled state
+    peg:
+        location: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
+    hole: 
+        location: [1, 2, 3] #Transformation from hole.local_part_pose relative to chosen Newtonian inertial frame
