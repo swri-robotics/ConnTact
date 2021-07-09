@@ -11,15 +11,20 @@ from sensor_msgs.msg import JointState
 # from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
 from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
 
+import tf2_ros
+import tf2_geometry_msgs
+
 from threading import Lock
 
 class PegInHoleNodeCompliance():
 
     def __init__(self):
-        self._force_controller_pub = rospy.Publisher('/cartesian_force_controller/target_wrench', WrenchStamped, queue_size=10)
-        # self._ft_sensor_sub = rospy.Subscriber('/cartesian_force_controller/ft_sensor_wrench', WrenchStamped, self._ft_sensor_callback)
-
+        self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=1)
+
+        #Needed to get current pose of the robot
+        self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         self._seq = 0
         self._start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
@@ -39,8 +44,8 @@ class PegInHoleNodeCompliance():
 
         # x_pos_offset = 0.88 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
         # y_pos_offset = 0.550 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        x_pos_offset = 0.56 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        y_pos_offset = -0.5 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        x_pos_offset = 0.539 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        y_pos_offset = -0.238 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
 
         x_pos = self._amp_c * np.cos(2.0 * np.pi * self._freq_c *curr_time_numpy)
         x_pos = x_pos + x_pos_offset
@@ -49,7 +54,8 @@ class PegInHoleNodeCompliance():
         y_pos = y_pos + y_pos_offset
 
 
-        z_pos = 0.5 #TODO:Assume the part needs to be inserted here. Update once I know the real value 
+        # z_pos = 0.2 #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value 
+        z_pos = self._get_current_z_pos() #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value 
 
         pose_position = [x_pos, y_pos, z_pos]
 
@@ -57,25 +63,38 @@ class PegInHoleNodeCompliance():
 
         return [pose_position, pose_orientation]
 
-    def _spiral_search_basic_force_control(self):
+    def _get_current_z_pos(self):
+        transform = self.tf_buffer.lookup_transform(tool0_controller,
+        pose_stamped_to_transform.header.base_link, #source frame
+        rospy.get_rostime(), #get the tf at the current time
+        # rospy.Time(0), #get the tf at first available time
+        rospy.Duration(1.0)) #wait for 1 second
+        pose_transform = tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
+        
+        #return the z position only of the pose
+        return pose_transform.pose.position.point.z
+
+    def _get_command_wrench(self):
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
 
-        x_f = self._amp * np.cos(2.0 * np.pi * self._freq *curr_time_numpy)
-        y_f = self._amp * np.sin(2.0 * np.pi * self._freq *curr_time_numpy)
-        z_f = 10.0 #apply constant downward force
+        # x_f = self._amp * np.cos(2.0 * np.pi * self._freq *curr_time_numpy)
+        # y_f = self._amp * np.sin(2.0 * np.pi * self._freq *curr_time_numpy)
+        x_f = 0
+        y_f = 0
+        z_f = 7.0 #apply constant downward force
 
         return [x_f, y_f, z_f, 0, 0, 0]
 
 
-    def _publish(self, input_vec):
+    def _publish_wrench(self, input_vec):
         # self.check_controller(self.force_controller)
         # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
         # result_wrench = self._create_wrench(result[:3], result[3:])
         # result_wrench = self._create_wrench([7,0,0], [0,0,0])
         result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
         
-        self._force_controller_pub.publish(result_wrench)
+        self._wrench_pub.publish(result_wrench)
         
 
     # def _publish_pose(self, position, orientation):
@@ -173,8 +192,11 @@ class PegInHoleNodeCompliance():
         rate = rospy.Rate(500) #setup for sleeping in hz
         while not rospy.is_shutdown():       
 
-            command_vec = self._spiral_search_basic_compliance_control()
-            self._publish_pose(command_vec)
+            pose_vec = self._spiral_search_basic_compliance_control()
+            wrench_vec  = self._get_command_wrench()
+            self._publish_pose(pose_vec)
+            self._publish_wrench(wrench_vec)
+
 
             rate.sleep()
 
