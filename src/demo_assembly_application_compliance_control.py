@@ -30,19 +30,35 @@ class PegInHoleNodeCompliance():
         
         self._seq = 0
         self._start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
-        self._freq = np.double(0.1) #Hz frequency in _spiral_search_basic_force_control
+        self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
         self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
         self._first_wrench = self._create_wrench([0,0,0], [0,0,0])
+        self._bias_wrench = self._first_wrench.wrench
 
 
-        self._freq_c = np.double(0.1) #Hz frequency in _spiral_search_basic_compliance_control
+        self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
         self._amp_c  = np.double(.005)  #meters amplitude in _spiral_search_basic_compliance_control
+        self._amp_limit_c = 30; #search number of radii distance outward
 
+        #job parameters, should be moved to a yaml file by a wizard
+        peg_diameter = 16/1000 #mm
+        peg_tol_plus = 0.0/1000
+        peg_tol_minus = -.01/1000
 
+        hole_diameter = 16.4/1000 #mm
+        hole_tol_plus = .01/1000
+        hole_tol_minus = 0.0/1000
+
+        #setup:
+        self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
+        self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
+        self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
+        self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
 
     def _spiral_search_basic_compliance_control(self):
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
+        curr_amp = self._amp_c + self.safe_clearance * np.mod(2.0 * np.pi * self._freq_c *curr_time_numpy, self._amp_limit_c);
 
         # x_pos_offset = 0.88 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
         # y_pos_offset = 0.550 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
@@ -51,23 +67,29 @@ class PegInHoleNodeCompliance():
 
         # self._amp_c = self._amp_c * (curr_time_numpy * 0.001 * curr_time_numpy+ 1)
 
-        x_pos = self._amp_c * np.cos(2.0 * np.pi * self._freq_c *curr_time_numpy)
+        x_pos = curr_amp * np.cos(2.0 * np.pi * self._freq_c *curr_time_numpy)
         x_pos = x_pos + x_pos_offset
 
-        y_pos = self._amp_c * np.sin(2.0 * np.pi * self._freq_c *curr_time_numpy)
+        y_pos = curr_amp * np.sin(2.0 * np.pi * self._freq_c *curr_time_numpy)
         y_pos = y_pos + y_pos_offset
 
 
         # z_pos = 0.2 #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value 
-        z_pos = self._get_current_z_pos() #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value 
+        z_pos = self._get_current_pos().z #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value
 
         pose_position = [x_pos, y_pos, z_pos]
 
         pose_orientation = [0, 1, 0, 0] # w, x, y, z, TODO: Fix such that Jerit's code is not assumed correct. Is this right?
 
         return [pose_position, pose_orientation]
+    def _linear_search_position(self, direction_vector, desired_orientation):
+        #makes a command to simply stay still in a certain orientation
+        pose_position = self._get_current_pos()
+        pose_orientation = desired_orientation
 
-    def _get_current_z_pos(self):
+        return [pose_position, pose_orientation]
+
+    def _get_current_pos(self):
         # transform = self.tf_buffer.lookup_transform("tool0",
         # "base_link", #source frame
         # # pose_stamped_to_transform.header.base_link, #source frame
@@ -81,7 +103,7 @@ class PegInHoleNodeCompliance():
 
 
         #return the z position only of the pose
-        return transform.transform.translation.z
+        return transform.transform.translation
 
     def _get_command_wrench(self):
         curr_time = rospy.get_rostime() - self._start_time
@@ -91,9 +113,13 @@ class PegInHoleNodeCompliance():
         # y_f = self._amp * np.sin(2.0 * np.pi * self._freq *curr_time_numpy)
         x_f = 0
         y_f = 0
-        z_f = 10.0 #apply constant downward force
+        z_f = 0.0 #apply constant downward force
 
         return [x_f, y_f, z_f, 0, 0, 0]
+    def _calibrate_force_zero(self):
+        curr_time = rospy.get_rostime() - self._start_time
+        curr_time_numpy = np.double(curr_time.to_sec())
+
 
 
     def _publish_wrench(self, input_vec):
@@ -183,8 +209,15 @@ class PegInHoleNodeCompliance():
         self._first_wrench = self._create_wrench([forces.x, forces.y, forces.z,
                         torques.x, torques.y, torques.z])
 
-
-
+    def _average_wrenches(self, wrench1, scale1, wrench2, scale2):
+        newWrench = self._bias_wrench
+        newWrench.force = [wrench1.force.x, wrench1.force.y, wrench1.force.z] * scale1 + [wrench2.force.x, wrench2.force.y, wrench2.force.z] * scale2
+        newWrench.torque = [wrench1.torque.x, wrench1.torque.y, wrench1.torque.z] * scale1 + [wrench2.torque.x, wrench2.torque.y, wrench2.torque.z] * scale2
+        #newWrench.force = wrench1.force @ scale1 + wrench2.force @ scale2
+        #newWrench.force = newWrench.force @ 1.0/(scale1 + scale2)
+        #newWrench.torque = wrench1.torque @ scale1 + wrench2.torque @ scale2
+        #newWrench.torque = newWrench.torque @ 1.0/(scale1 + scale2)
+        return newWrench
 
     def _algorithm_force_control(self):
 
@@ -199,13 +232,26 @@ class PegInHoleNodeCompliance():
     def _algorithm_compliance_control(self):
 
         rate = rospy.Rate(500) #setup for sleeping in hz
-        while not rospy.is_shutdown():       
+        state = 0
+        self._bias_wrench = self._first_wrench.wrench
 
-            pose_vec = self._spiral_search_basic_compliance_control()
-            wrench_vec  = self._get_command_wrench()
-            self._publish_pose(pose_vec)
-            self._publish_wrench(wrench_vec)
+        while (state < 100) and (not rospy.is_shutdown()):
+            curr_time = rospy.get_rostime() - self._start_time
+            curr_time_numpy = np.double(curr_time.to_sec())
 
+            if (state == 0): #always take an average of reading to subtract from sensor inputs
+                self._bias_wrench = self._average_wrenches(self._bias_wrench, 9, self._first_wrench.wrench, 1) #get a very simple average of wrench reading
+                if (curr_time_numpy > 0.75):
+                    print ("Measured avg wrench: " + self._bias_wrench)
+                    state = 2
+            elif (state == 1): #seek in Z direction until we stop moving for 1 second
+                pose_vec = self._linear_search_position #doesn't orbit, just drops straight downward
+                wrench_vec  = self._get_command_wrench()
+            elif (state == 2):
+                pose_vec = self._spiral_search_basic_compliance_control()
+                wrench_vec  = self._get_command_wrench()
+                self._publish_pose(pose_vec)
+                self._publish_wrench(wrench_vec)
 
             rate.sleep()
 
