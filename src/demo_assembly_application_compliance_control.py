@@ -4,6 +4,7 @@
 import rospy
 # import tf
 import numpy as np
+import matplotlib.pyplot as plt
 from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3
 
@@ -22,7 +23,8 @@ class PegInHoleNodeCompliance():
     def __init__(self):
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=1)
-
+        
+        plt.show()
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
         # self.tf_buffer = tf2.BufferCore(rospy.Duration(10.0))
@@ -50,6 +52,13 @@ class PegInHoleNodeCompliance():
         hole_tol_minus = 0.0/1000
 
         #setup:
+        self.average_speed = np.array([0.0,0.0,0.0])
+        self.speedHistory = [self.average_speed]
+        self.plotTimes = [0]
+        self.plotInterval = 500;
+        self.lastPlotted = rospy.Time(0).to_sec();
+
+
         self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
@@ -98,12 +107,12 @@ class PegInHoleNodeCompliance():
         # rospy.Duration(1.0)) #wait for 1 second
         # # pose_transform = tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
         
-        transform = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(100.0))
-        # print(transform)
-
+        _transform = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(100.0))
+        # rospy.logerr("The type is ")
+        # rospy.logerr(type(_transform))
 
         #return the z position only of the pose
-        return transform.transform.translation
+        return _transform.transform.translation
 
     def _get_command_wrench(self):
         curr_time = rospy.get_rostime() - self._start_time
@@ -113,12 +122,22 @@ class PegInHoleNodeCompliance():
         # y_f = self._amp * np.sin(2.0 * np.pi * self._freq *curr_time_numpy)
         x_f = 0
         y_f = 0
-        z_f = 0.0 #apply constant downward force
+        z_f = 1.0 #apply constant downward force
 
         return [x_f, y_f, z_f, 0, 0, 0]
     def _calibrate_force_zero(self):
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
+    def _update_plots(self):
+        if(rospy.Time.now.to_secs() > self.lastPlotted + self.plotInterval ):
+            self.speedHistory.append(self.average_speed)
+            self.plotTimes.append(rospy.get_rostime() - self._start_time)
+            plt.cla()
+            plt.xlabel('Time (s)')
+            plt.ylabel('Velocity, m/s')
+            plt.title('Sped')
+            plt.plot(self.speedHistory[0,:], )
+
 
 
 
@@ -203,6 +222,7 @@ class PegInHoleNodeCompliance():
 
     def _ft_sensor_callback():
         # Update current data from force sensor
+        rospy.logwarn("Sensor Callback triggered!")
         forces = sensor_wrench.wrench.force
         torques = sensor_wrench.wrench.torque
         # forces, torques = self.tcp_to_com(forces, torques)
@@ -211,13 +231,44 @@ class PegInHoleNodeCompliance():
 
     def _average_wrenches(self, wrench1, scale1, wrench2, scale2):
         newWrench = self._bias_wrench
-        newWrench.force = [wrench1.force.x, wrench1.force.y, wrench1.force.z] * scale1 + [wrench2.force.x, wrench2.force.y, wrench2.force.z] * scale2
-        newWrench.torque = [wrench1.torque.x, wrench1.torque.y, wrench1.torque.z] * scale1 + [wrench2.torque.x, wrench2.torque.y, wrench2.torque.z] * scale2
+        #newWrench.force = [wrench1.force.x, wrench1.force.y, wrench1.force.z] * scale1 + [wrench2.force.x, wrench2.force.y, wrench2.force.z] * scale2
+        #newWrench.torque = [wrench1.torque.x, wrench1.torque.y, wrench1.torque.z] * scale1 + [wrench2.torque.x, wrench2.torque.y, wrench2.torque.z] * scale2
+        newArray = self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2
+        newWrench.force.x, newWrench.force.y, newWrench.force.z  = newArray[0], newArray[1], newArray[2]
         #newWrench.force = wrench1.force @ scale1 + wrench2.force @ scale2
         #newWrench.force = newWrench.force @ 1.0/(scale1 + scale2)
         #newWrench.torque = wrench1.torque @ scale1 + wrench2.torque @ scale2
         #newWrench.torque = newWrench.torque @ 1.0/(scale1 + scale2)
         return newWrench
+    def _update_avg_speed(self):
+        curr_time = rospy.get_rostime() - self._start_time
+        if(curr_time.to_sec() > rospy.Duration(.5).to_sec()):
+            #rospy.logwarn("Averageing speed! Time:" + str(curr_time.to_sec()))
+            currentPosition = self._get_current_pos();
+            #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(100.0))
+            try:
+                #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(2.0))
+                earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(2.0))
+                # earlierPosition = self.tf_buffer.lookup_transform_full(
+                #     "tool0",
+                #     (rospy.Time.now() - rospy.Duration(.1)),
+                #     "base_link",
+                #     (rospy.Time.now() - rospy.Duration(.1)),
+                #     "base_link",
+                #     rospy.Duration(1)
+                # )
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                raise
+                rate.sleep()
+            speedDiff = self._as_array(currentPosition) - self._as_array(earlierPosition.transform.translation)
+            rospy.logwarn("Position diff: " + str(speedDiff))
+            self.average_speed = self.average_speed * .8 + speedDiff * .2
+            rospy.logwarn("Speed average: " + str(self.average_speed) )
+        else:
+            rospy.logwarn("Too early to report past time!" + str(curr_time.to_sec()))
+    @staticmethod
+    def _as_array(vec):
+        return np.array([vec.x, vec.y, vec.z])
 
     def _algorithm_force_control(self):
 
@@ -240,16 +291,27 @@ class PegInHoleNodeCompliance():
             curr_time_numpy = np.double(curr_time.to_sec())
 
             if (state == 0): #always take an average of reading to subtract from sensor inputs
-                self._bias_wrench = self._average_wrenches(self._bias_wrench, 9, self._first_wrench.wrench, 1) #get a very simple average of wrench reading
-                if (curr_time_numpy > 0.75):
-                    print ("Measured avg wrench: " + self._bias_wrench)
+                #self._bias_wrench = self._average_wrenches(self._bias_wrench, 9, self._first_wrench.wrench, 1) #get a very simple average of wrench reading
+                self._bias_wrench = self._first_wrench.wrench
+                if (curr_time_numpy > 3.5):
+                    str_output = ("Measured avg wrench: " + str(self._bias_wrench.force.x) + str(self._bias_wrench.force.y) + str(self._bias_wrench.force.z))
+                    rospy.logwarn(str_output)
                     state = 2
             elif (state == 1): #seek in Z direction until we stop moving for 1 second
                 pose_vec = self._linear_search_position #doesn't orbit, just drops straight downward
                 wrench_vec  = self._get_command_wrench()
+
+                self._publish_pose(pose_vec)
+                self._publish_wrench(wrench_vec)
+                #if (
             elif (state == 2):
                 pose_vec = self._spiral_search_basic_compliance_control()
                 wrench_vec  = self._get_command_wrench()
+                self._update_avg_speed()
+                rospy.logwarn(str_output)
+                #str_output = ("Measured current wrench: " + str(self._first_wrench.wrench.force.x)
+                #    + str(self._first_wrench.wrench.force.y) + str(self._first_wrench.wrench.force.z))
+                #rospy.logwarn(str_output)
                 self._publish_pose(pose_vec)
                 self._publish_wrench(wrench_vec)
 
@@ -262,6 +324,7 @@ if __name__ == '__main__':
     
     # assembly_application = PegInHoleNodeCompliance()
     # assembly_application._algorithm_force_control()
+
     #---------------------------------------------COMPLIANCE CONTROL BELOW, FORCE CONTROL ABOVE
 
     assembly_application = PegInHoleNodeCompliance()
