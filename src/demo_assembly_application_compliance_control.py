@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3
+from rospy.core import configure_logging
 
 from sensor_msgs.msg import JointState
 # from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
@@ -22,7 +23,7 @@ class PegInHoleNodeCompliance():
 
     def __init__(self):
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
-        self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=1)
+        self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._update_wrench, queue_size=2)
         
         plt.show()
@@ -101,7 +102,7 @@ class PegInHoleNodeCompliance():
         pose_orientation = [0, 1, 0, 0] # w, x, y, z, TODO: Fix such that Jerit's code is not assumed correct. Is this right?
 
         return [pose_position, pose_orientation]
-    def _linear_search_position(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
+    def _linear_search_position(self, direction_vector = [0,0,-.01], desired_orientation = [0, 1, 0, 0]):
         #makes a command to simply stay still in a certain orientation
         pose_position = self._get_current_pos().transform.translation
         pose_position.x = self.x_pos_offset + direction_vector[0]
@@ -243,7 +244,7 @@ class PegInHoleNodeCompliance():
 
     def _update_average_wrench(self):
         self._bias_wrench = self._weighted_average_wrenches(self._bias_wrench, 9, self.current_wrench.wrench, 1) #get a very simple average of wrench reading
-        rospy.logwarn_throttle(.5, "Updating wrench toward " + str(self.current_wrench.wrench.force))
+        #rospy.logwarn_throttle(.5, "Updating wrench toward " + str(self.current_wrench.wrench.force))
 
     def _weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
         newForce = (self._as_array(wrench1.force) * scale1 + self._as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
@@ -282,12 +283,22 @@ class PegInHoleNodeCompliance():
     @staticmethod
     def _as_array(vec):
         return np.array([vec.x, vec.y, vec.z])
-    @staticmethod
-    def _vectorRegionCompare(input, bounds):
+    
+    def _vectorRegionCompare_symmetrical(self, input, bounds_max):
+        bounds_min = [1,1,1] 
+        bounds_min[0] = bounds_max[0] * -1.0
+        bounds_min[1] = bounds_max[1] * -1.0
+        bounds_min[2] = bounds_max[2] * -1.0
+        return self._vectorRegionCompare(input, bounds_max, bounds_min)
+    
+    def _vectorRegionCompare(self, input, bounds_max, bounds_min):
         #Simply compares abs. val.s of input's elements to a vector of maximums and returns whether it exceeds
-        if( np.abs(input[0]) < bounds[0]):
-            if( np.abs(input[1]) < bounds[1]):
-                if( np.abs(input[2]) < bounds[2]):
+        #if(symmetrical):
+        #    bounds_min[0], bounds_min[1], bounds_min[2] = bounds_max[0] * -1, bounds_max[1] * -1, bounds_max[2] * -1
+        if( bounds_max[0] >= input[0] >= bounds_min[0]):
+            if( bounds_max[1] >= input[1] >= bounds_min[1]):
+                if( bounds_max[2] >= input[2] >= bounds_min[2]):
+                    #rospy.logwarn(.5, "_______________ping!________________")
                     return True
         return False
 
@@ -306,13 +317,15 @@ class PegInHoleNodeCompliance():
         state = 0
         cycle = 0
         self._bias_wrench = self._first_wrench.wrench
+        collision_confidence = 0
+        surface_height = .25
 
         while (state < 100) and (not rospy.is_shutdown()):
             self.current_pose = self._get_current_pos()
             curr_time = rospy.get_rostime() - self._start_time
             curr_time_numpy = np.double(curr_time.to_sec())
-            cycle = cycle + 1
-            if(cycle>1000): cycle= 0
+            marked_time = rospy.Time.now()
+            
 
             if (state == 0): #always take an average of reading to subtract from sensor inputs
                 #self._bias_wrench = self._average_wrenches(self._bias_wrench, 9, self._first_wrench.wrench, 1) #get a very simple average of wrench reading
@@ -322,20 +335,35 @@ class PegInHoleNodeCompliance():
                     rospy.logwarn(str_output)
                     state = 1
             elif (state == 1): #seek in Z direction until we stop moving for 1 second
-                pose_vec = self._linear_search_position() #doesn't orbit, just drops straight downward
-                wrench_vec  = self._get_command_wrench()
+                seeking_force = 7
+                wrench_vec  = self._get_command_wrench([0,0,seeking_force])
+                pose_vec = self._linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
+                
                 self._update_avg_speed()
                 self._update_average_wrench()
                 self._publish_pose(pose_vec)
                 self._publish_wrench(wrench_vec)
-                rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
+                rospy.logwarn_throttle(.5, "Average speed in mm/second is " + 1000*str(self.average_speed))
                 rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._bias_wrench.force)))
-                if(numpy.abs(self.average_speed[2]) < 1e-6) and ():
-                    #Stopped moving vertically and in contact with something that counters push force
-                
+                if( self._vectorRegionCompare_symmetrical(self.average_speed, [5/1000,5/1000,.5/1000]) 
+                    and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])):
+                    collision_confidence = collision_confidence + 1/self.rateSelected
+                    rospy.logerr_throttle(.5, "Monitoring for flat surface, confidence = " + str(collision_confidence))
+                    #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
+                    if(collision_confidence > .90):
+                            #Stopped moving vertically and in contact with something that counters push force
+                            rospy.logerr("Flat surface detected! Moving to spiral search!")
+                            surface_height = self.current_pose.transform.translation.z
+                            state = 2
+                            collision_confidence = 0.01
+                else:
+                    #rospy.logwarn_throttle(.5, "NOT a flat surface. Time: " + str((rospy.Time.now()-marked_time).to_sec()))
+                    collision_confidence = np.max( np.array([collision_confidence * 95/self.rateSelected, .01]))
+                    #marked_time = rospy.Time.now()
             elif (state == 2):
+                seeking_force = 5.0
+                wrench_vec  = self._get_command_wrench([0,0,seeking_force])
                 pose_vec = self._spiral_search_basic_compliance_control()
-                wrench_vec  = self._get_command_wrench()
                 self._update_avg_speed()
                 self._update_average_wrench()
                 rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
@@ -346,8 +374,46 @@ class PegInHoleNodeCompliance():
                 self._publish_pose(pose_vec)
                 self._publish_wrench(wrench_vec)
 
+                if( self._vectorRegionCompare_symmetrical(self.average_speed, [2.5/1000,2.5/1000,.5/1000]) 
+                    and not self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [9,9,80], [-9,-9,-80])
+                    and self.current_pose.transform.translation.z <= surface_height - .005):
+                    collision_confidence = collision_confidence + 1/self.rateSelected
+                    rospy.logerr_throttle(.5, "Monitoring for peg insertion, confidence = " + str(collision_confidence))
+                    #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
+                    if(collision_confidence > .90):
+                            #Stopped moving vertically and in contact with something that counters push force
+                            rospy.logerr_throttle(1.0, "Hole found, peg inserted! Done!")
+                            state = 3
+                else:
+                    #rospy.logwarn_throttle(.5, "NOT a flat surface. Time: " + str((rospy.Time.now()-marked_time).to_sec()))
+                    collision_confidence = np.max( np.array([collision_confidence * 95/self.rateSelected, .01]))
+                    rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
+                        + " whereas we should drop down to " + str(surface_height - .005) )
+            elif (state == 3):
+                self.rate.sleep();
+                wrench_vec  = self._get_command_wrench([0,0,0])
+                pose_vec = self._linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
+                self._update_avg_speed()
+                self._update_average_wrench()
+                self._publish_pose(pose_vec)
+                self._publish_wrench(wrench_vec)
             self.rate.sleep()
 
+#Stuck in hole:
+# wrench [-1.50958516  1.74732935 -0.22236535]#      speed  [-1.45376413  1.48960552 -4.43557056]
+# wrench [ 2.43184626  5.00212574 -2.4536103 ]#      speed  [-2.04941965  0.83368837  0.0782959 ]
+# wrench [ 6.59614     6.07010813 -4.77999039]#      speed  [-1.65830209 -0.22519013 -0.5259787 ]
+# wrench [11.7798602   5.16348097 -5.10239619]#      speed  [-1.45911821 -0.93610951  0.00294496]
+# wrench [16.46678906  1.59219539 -4.69272811]#      speed  [-0.85717886 -1.4603617   0.2064414 ]
+# wrench [17.90438252 -2.29216179 -5.00163983]#      speed  [-0.0339175  -1.86771153  0.03727609]
+# wrench [17.90873177 -8.12120226 -4.66858722]#      speed  [ 1.03601238 -1.90853476  0.17106011]
+# wrench [ 14.64670739 -12.45791743  -4.80226696]#   speed  [ 1.48294452 -1.45552691 -0.03383374]
+# wrench [ 10.32158067 -15.00926006  -4.87042746]#   speed  [ 2.09561829 -0.52449749  0.10261508]
+# wrench [  5.15586338 -15.11241063  -4.779649  ]#   speed  [ 1.90206149  0.48653684 -0.06437652]
+# wrench [ -0.31361284 -13.19418616  -4.73827783]#   speed  [1.35331007 1.11014077 0.0984785 ]
+# wrench [-3.51015968 -8.49405472 -4.90193306]#      speed  [ 0.88421147  1.98615908 -0.04157601]
+# wrench [-4.72975108 -3.6191265  -4.56946905]       speed  [0.16434818 2.18659324 0.27017341]
+# wrench [-2.77971526  1.80464577 -4.78332949]       speed  [-1.123056    1.66784535  0.0663183 ]
 
 
 if __name__ == '__main__':

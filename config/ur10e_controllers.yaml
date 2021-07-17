@@ -101,8 +101,8 @@ cartesian_compliance_controller:
       rot_y: 150
       rot_z: 150
    pd_gains:
-      trans_x: {p: 0.002}
-      trans_y: {p: 0.002}
+      trans_x: {p: 0.001}
+      trans_y: {p: 0.001}
       trans_z: {p: 0.002}
       rot_x: {p: 0.06}
       rot_y: {p: 0.06}
