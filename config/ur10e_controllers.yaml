@@ -97,16 +97,16 @@ cartesian_compliance_controller:
       #trans_x: 1500
       #trans_y: 1500
       #trans_z: 1200
-      trans_x: 1200
-      trans_y: 1200
-      trans_z: 1000
+      trans_x: 1500
+      trans_y: 1500
+      trans_z: 1200
       rot_x: 150
       rot_y: 150
       rot_z: 150
    pd_gains:
-      trans_x: {p: 0.001}
-      trans_y: {p: 0.001}
-      trans_z: {p: 0.001}
+      trans_x: {p: 0.000950}
+      trans_y: {p: 0.000950}
+      trans_z: {p: 0.000950}
       rot_x: {p: 0.06}
       rot_y: {p: 0.06}
       rot_z: {p: 0.06}

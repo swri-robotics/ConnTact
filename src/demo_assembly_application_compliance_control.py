@@ -45,7 +45,7 @@ class PegInHoleNodeCompliance():
 
         self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
         self._amp_c  = np.double(.002)  #meters amplitude in _spiral_search_basic_compliance_control
-        self._amp_limit_c = 2*np.pi * 7; #search number of radii distance outward
+        self._amp_limit_c = 2 * np.pi * 10; #search number of radii distance outward
 
         #job parameters, should be moved to a yaml file by a wizard
         self.x_pos_offset = 0.539 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
@@ -325,8 +325,9 @@ class PegInHoleNodeCompliance():
                     return True
         return False
     def _force_cap_check(self):
-        if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [30, 30, 30])):
-            if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [2.2, 2.2, 2.2])):
+        #Checks if any forces or torques are dangerously high.
+        if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [35, 35, 35])):
+            if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [3, 3, 3])):
                 return True
         rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
         #return True
@@ -420,7 +421,7 @@ class PegInHoleNodeCompliance():
                             #Descended from surface detection point. Updating hole location estimate.
                             self.x_pos_offset = self.current_pose.transform.translation.x
                             self.y_pos_offset = self.current_pose.transform.translation.y
-                            self._amp_limit_cp = 2 * np.pi * 3 #limits to 3 spirals outward before returning to center.
+                            self._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
                             #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
                             rospy.logerr_throttle(1.0, "Hole found, peg inserting...")
                             state = 3
@@ -434,13 +435,14 @@ class PegInHoleNodeCompliance():
                 #horizontally. We keep going until vertical speed is very near to zero.
                 seeking_force = 5.0
                 wrench_vec  = self._get_command_wrench([0,0,seeking_force])
-                pose_vec = self._spiral_search_basic_compliance_control()
+                pose_vec = self._full_compliance_position()
                 
                 if(not self._force_cap_check()):
                     state = 99
                     rospy.logerr("Very high force/torque detected; going limp and ending test.")
                 elif( self._vectorRegionCompare_symmetrical(self.average_speed, [2.5/1000,2.5/1000,.5/1000]) 
-                    and not self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [7,7,80], [-7,-7,-80])
+                    #and not self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [6,6,80], [-6,-6,-80])
+                    and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])
                     and self.current_pose.transform.translation.z <= surface_height - self.hole_depth):
                     collision_confidence = collision_confidence + 1/self.rateSelected
                     rospy.logerr_throttle(.5, "Monitoring for peg insertion, confidence = " + str(collision_confidence))
@@ -463,24 +465,23 @@ class PegInHoleNodeCompliance():
                 
             elif (state == 99):
                 #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
-                restart_height = .17
-                if(self.current_pose.transform.translation.z > restart_height+.025):
+                restart_height = .1
+                if(self.current_pose.transform.translation.z > restart_height+.05):
                     #High enough, won't pull itself upward.
-                    seeking_force = -2.5
+                    seeking_force = -3.5
                 else:
                     #pull upward gently to move out of trouble hopefully.
                     seeking_force = -7
                 wrench_vec  = self._get_command_wrench([0,0,seeking_force])
                 pose_vec = self._full_compliance_position()
-                restart_height = .17
-                                
+                                                
                 rospy.logerr_throttle(.5, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
 
                 if( self._vectorRegionCompare_symmetrical(self.average_speed, [.5/1000,.5/1000,5/1000]) 
                     and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1,1,5.5])
                     and self.current_pose.transform.translation.z > restart_height):
-                    collision_confidence = collision_confidence + .25/self.rateSelected
-                    rospy.logerr_throttle(.5, "Static. Restarting in " + str( np.round(4*(1-collision_confidence), 1) ) + " seconds...")
+                    collision_confidence = collision_confidence + .5/self.rateSelected
+                    rospy.logerr_throttle(.5, "Static. Restarting confidence: " + str( np.round(collision_confidence, 2) ) + " out of 1.")
                     #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
                     if(collision_confidence > 1):
                             #Stopped moving vertically and in contact with something that counters push force
