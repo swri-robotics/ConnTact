@@ -94,8 +94,11 @@ cartesian_compliance_controller:
    target_frame_topic: "target_frame"
    joints: *robot_joints
    stiffness:
-      trans_x: 1500
-      trans_y: 1500
+      #trans_x: 1500
+      #trans_y: 1500
+      #trans_z: 1200
+      trans_x: 1200
+      trans_y: 1200
       trans_z: 1000
       rot_x: 150
       rot_y: 150
@@ -103,7 +106,7 @@ cartesian_compliance_controller:
    pd_gains:
       trans_x: {p: 0.001}
       trans_y: {p: 0.001}
-      trans_z: {p: 0.002}
+      trans_z: {p: 0.001}
       rot_x: {p: 0.06}
       rot_y: {p: 0.06}
       rot_z: {p: 0.06}
