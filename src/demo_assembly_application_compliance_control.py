@@ -29,24 +29,22 @@ class PegInHoleNodeCompliance():
         
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
-        # self.tf_buffer = tf2.BufferCore(rospy.Duration(10.0))
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         self.rateSelected = 100
         self.rate = rospy.Rate(self.rateSelected) #setup for sleeping in hz
         self._seq = 0
         self._start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
+        
+        #Spiral parameters
         self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
         self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
         self._first_wrench = self._create_wrench([0,0,0], [0,0,0])
-        
-
-
         self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
         self._amp_c  = np.double(.002)  #meters amplitude in _spiral_search_basic_compliance_control
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
 
-        #job parameters, should be moved to a yaml file by a wizard
+        #job parameters, should be moved in from the peg_in_hole_params.yaml file
         self.x_pos_offset = 0.539 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
         self.y_pos_offset = -0.238 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
 
@@ -57,9 +55,10 @@ class PegInHoleNodeCompliance():
         hole_diameter = 16.4/1000 #mm
         hole_tol_plus = .01/1000
         hole_tol_minus = 0.0/1000
+        #self.hole_depth = rospy.get_param('/peg/dimensions/length', )
         self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
 
-        
+        #loop parameters
         self.current_pose = self._get_current_pos()
         self.current_wrench = self._first_wrench
         self._average_wrench = self._first_wrench.wrench 
@@ -67,7 +66,7 @@ class PegInHoleNodeCompliance():
         #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
         self.average_speed = np.array([0.0,0.0,0.0])
 
-
+        #plotting parameters
         self.speedHistory = np.array(self.average_speed)
         self.forceHistory = self._as_array(self._average_wrench.force)
         self.posHistory = np.array([self.x_pos_offset*1000, self.y_pos_offset*1000, self.current_pose.transform.translation.z*1000])
@@ -81,11 +80,14 @@ class PegInHoleNodeCompliance():
         self.restart_height = .1
         self.highForceWarning = False
 
-        #setup:
+        #setup, run to calculate useful values based on params:
         self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
         self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
+
+        
+        
 
     def _spiral_search_basic_compliance_control(self):
         #Generate position, orientation vectors which describe a plane spiral about z; conform to the current z position. 
@@ -140,19 +142,8 @@ class PegInHoleNodeCompliance():
         return newVector3
 
     def _get_current_pos(self):
-        # transform = self.tf_buffer.lookup_transform("tool0",
-        # "base_link", #source frame
-        # # pose_stamped_to_transform.header.base_link, #source frame
-        # rospy.get_rostime(), #get the tf at the current time
-        # # rospy.Time(0), #get the tf at first available time
-        # rospy.Duration(1.0)) #wait for 1 second
-        # # pose_transform = tf2_geometry_msgs.do_transform_pose(pose_stamped, transform)
-        
-        transform = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(100.0))
-        # rospy.logerr("The type is ")
-        # rospy.logerr(type(_transform))
 
-        #return the z position only of the pose
+        transform = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(100.0))
         return transform
 
     def _get_command_wrench(self, vec = [0,0,5]):
@@ -166,6 +157,7 @@ class PegInHoleNodeCompliance():
         z_f = vec[2] #apply constant downward force
 
         return [x_f, y_f, z_f, 0, 0, 0]
+
     def _calibrate_force_zero(self):
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
@@ -178,11 +170,12 @@ class PegInHoleNodeCompliance():
 
         self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
         self.fig.suptitle('Horizontally stacked subplots')
-        plt.subplots_adjust(left=.25, bottom=.2, right=.95, top=.8, wspace=.25, hspace=.1)
+        plt.subplots_adjust(left=.1, bottom=.2, right=.95, top=.8, wspace=.15, hspace=.1)
 
         self.min_plot_window_offset = 2
         self.min_plot_window_size = 10
         self.pointOffset = 1
+        self.barb_interval = 5
         
     def _update_plots(self):
         if(rospy.Time.now() > self.lastRecorded + self.recordInterval):
@@ -218,9 +211,11 @@ class PegInHoleNodeCompliance():
             #self.planView.quiver(self.posHistory[0:-1:10,0], self.posHistory[0:-1:10,1], self.forceHistory[0:-1:10,0], self.forceHistory[0:-1:10,1], angles='xy', scale_units='xy', scale=.1, color='b')
             barb_increments = {"flag" :5, "full" : 1, "half" : 0.5}
 
-            offset = 11-(self.pointOffset % 10)
-            self.planView.barbs(self.posHistory[offset:-1:10,0], self.posHistory[offset:-1:10,1], self.forceHistory[offset:-1:10,0], self.forceHistory[offset:-1:10,1],
-                barb_increments=barb_increments, length = 6, color=(0.0, 0.9, 0.9))
+            offset = self.barb_interval+1-(self.pointOffset % self.barb_interval)
+            self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory[offset:-1:self.barb_interval,1], 
+                self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1],
+                barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
+            #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
             self.sideView.plot(self.plotTimes, self.forceHistory[:,2], 'k', self.plotTimes, self.posHistory[:,2], 'b')
 
@@ -306,7 +301,6 @@ class PegInHoleNodeCompliance():
         #         rot_matrix = tf.transformations.quaternion_matrix(rot)
         #         r.sleep()
 
-
     def _create_wrench(self, force, torque):
         wrench_stamped = WrenchStamped()
         wrench = Wrench()
@@ -325,15 +319,6 @@ class PegInHoleNodeCompliance():
         wrench_stamped.wrench = wrench
 
         return wrench_stamped
-
-    def _ft_sensor_callback():
-        # Update current data from force sensor
-        rospy.logwarn("Sensor Callback triggered!")
-        forces = sensor_wrench.wrench.force
-        torques = sensor_wrench.wrench.torque
-        # forces, torques = self.tcp_to_com(forces, torques)
-        self._first_wrench = self._create_wrench([forces.x, forces.y, forces.z,
-                        torques.x, torques.y, torques.z])
 
     def _update_average_wrench(self):
         #get a very simple average of wrench reading
@@ -399,12 +384,18 @@ class PegInHoleNodeCompliance():
                     #rospy.logwarn(.5, "_______________ping!________________")
                     return True
         return False
+
     def _force_cap_check(self):
         #Checks if any forces or torques are dangerously high.
 
-       
+        if(not (self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [45, 45, 45])
+            and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [3.5, 3.5, 3.5]))):
+                rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
+                rospy.logerr("Killing program.")
+                quit()
+                return False
         if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [25, 25, 25])):
-            if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [3, 3, 3])):
+            if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [2, 2, 2])):
                 return True
         rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
         if(self.highForceWarning):
@@ -416,17 +407,6 @@ class PegInHoleNodeCompliance():
             rospy.sleep(1)
         return True
         
-
-    def _algorithm_force_control(self):
-
-        self.rate = rospy.Rate(50) #setup for sleeping at 10hz
-        while not rospy.is_shutdown():           
-
-            command_vec = self._spiral_search_basic_force_control()
-            self._publish(command_vec)
-
-            self.rate.sleep()
-
     def _algorithm_compliance_control(self):
         
         state = 0
@@ -457,7 +437,7 @@ class PegInHoleNodeCompliance():
                     rospy.logerr("Measured bias wrench: " + str(self._bias_wrench))
                     
                     if( self._vectorRegionCompare_symmetrical(self._as_array(self._bias_wrench.torque), [1,1,1]) 
-                    and self._vectorRegionCompare_symmetrical(self._as_array(self._bias_wrench.force), [1,1,5])):
+                    and self._vectorRegionCompare_symmetrical(self._as_array(self._bias_wrench.force), [1.5,1.5,5])):
                         rospy.logerr("Starting linear search.")
                         state = 1
                     else:
@@ -472,9 +452,9 @@ class PegInHoleNodeCompliance():
                 
                 if(not self._force_cap_check()):
                     state = 99
-                    rospy.logerr("Very high force/torque detected; going limp and ending test.")
-                elif( self._vectorRegionCompare_symmetrical(self.average_speed, [5/1000,5/1000,.5/1000]) 
-                    and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [2,2,seeking_force*-.75], [-2,-2,seeking_force*-1.25])):
+                    rospy.logerr("Force/torque unsafe; pausing application.")
+                elif( self._vectorRegionCompare_symmetrical(self.average_speed, [5/1000,5/1000, 1/1000]) 
+                    and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [2.5,2.5,seeking_force*-.75], [-2.5,-2.5,seeking_force*-1.25])):
                     collision_confidence = collision_confidence + 1/self.rateSelected
                     rospy.logerr_throttle(.5, "Monitoring for flat surface, confidence = " + str(collision_confidence))
                     #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -499,8 +479,9 @@ class PegInHoleNodeCompliance():
                 
                 if(not self._force_cap_check()):
                     state = 99
-                    rospy.logerr("Very high force/torque detected; going limp and ending test.")
-                elif( self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth/4):
+                    rospy.logerr("Force/torque unsafe; pausing application.")
+                elif( self.current_pose.transform.translation.z <= self.surface_height - .0005):
+                    #If we've descended at least 5mm below the flat surface detected, consider it a hole.
                     collision_confidence = collision_confidence + 1/self.rateSelected
                     rospy.logerr_throttle(.5, "Monitoring for hole location, confidence = " + str(collision_confidence))
                     if(collision_confidence > .90):
@@ -525,7 +506,7 @@ class PegInHoleNodeCompliance():
                 
                 if(not self._force_cap_check()):
                     state = 99
-                    rospy.logerr("Very high force/torque detected; going limp and ending test.")
+                    rospy.logerr("Force/torque unsafe; pausing application.")
                 elif( self._vectorRegionCompare_symmetrical(self.average_speed, [2.5/1000,2.5/1000,.5/1000]) 
                     #and not self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [6,6,80], [-6,-6,-80])
                     and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])
@@ -545,13 +526,14 @@ class PegInHoleNodeCompliance():
                             + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
             elif (state == 4):
                 #Inserted properly.
-                rospy.logwarn_throttle(1.0, "Hole found, peg inserted! Done!")
+                rospy.logwarn_throttle(.50, "Hole found, peg inserted! Done!")
                 if(self.current_pose.transform.translation.z > self.restart_height+.07):
                     #High enough, won't pull itself upward.
-                    seeking_force = -3.5
+                    seeking_force = -2.5
                 else:
                     #pull upward gently to move out of trouble hopefully.
-                    seeking_force = -7.5
+                    seeking_force = -10
+                self._force_cap_check()
                 pose_vec = self._full_compliance_position()
                 
             elif (state == 99):
@@ -567,8 +549,8 @@ class PegInHoleNodeCompliance():
                                                 
                 rospy.logerr_throttle(.5, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
 
-                if( self._vectorRegionCompare_symmetrical(self.average_speed, [.5/1000,.5/1000,5/1000]) 
-                    and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1,1,5.5])
+                if( self._vectorRegionCompare_symmetrical(self.average_speed, [2/1000,2/1000,3/1000]) 
+                    and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,5.5])
                     and self.current_pose.transform.translation.z > self.restart_height):
                     collision_confidence = collision_confidence + .5/self.rateSelected
                     rospy.logerr_throttle(.5, "Static. Restarting confidence: " + str( np.round(collision_confidence, 2) ) + " out of 1.")
