@@ -70,13 +70,16 @@ class PegInHoleNodeCompliance():
 
         self.speedHistory = np.array(self.average_speed)
         self.forceHistory = self._as_array(self._average_wrench.force)
-        self.posHistory = self._as_array(self.current_pose.transform.translation)
+        self.posHistory = np.array([self.x_pos_offset*1000, self.y_pos_offset*1000, self.current_pose.transform.translation.z*1000])
         self.plotTimes = [0]
         self.recordInterval = rospy.Duration(.1)
         self.plotInterval = rospy.Duration(.5)
         self.lastPlotted = rospy.Time(0)
         self.lastRecorded = rospy.Time(0)
         self.recordLength = 100
+        self.surface_height = None
+        self.restart_height = .1
+        self.highForceWarning = False
 
         #setup:
         self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
@@ -175,11 +178,11 @@ class PegInHoleNodeCompliance():
 
         self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
         self.fig.suptitle('Horizontally stacked subplots')
+        plt.subplots_adjust(left=.25, bottom=.2, right=.95, top=.8, wspace=.25, hspace=.1)
 
-        self.planView.set(xlabel='X Position',ylabel='Y Position')
-        self.planView.set_title('Sped and Position and Force')
-        self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
-        self.sideView.set_title('Vertical position and force')
+        self.min_plot_window_offset = 2
+        self.min_plot_window_size = 10
+        self.pointOffset = 1
         
     def _update_plots(self):
         if(rospy.Time.now() > self.lastRecorded + self.recordInterval):
@@ -190,18 +193,14 @@ class PegInHoleNodeCompliance():
             self.forceHistory = np.vstack((self.forceHistory, self._as_array(self._average_wrench.force)))
             self.posHistory = np.vstack((self.posHistory, self._as_array(self.current_pose.transform.translation)*1000))
             self.plotTimes.append((rospy.get_rostime() - self._start_time).to_sec())
-
+            
             #limit list lengths
             if(len(self.speedHistory)>self.recordLength):
                 self.speedHistory = self.speedHistory[1:-1]
-            # if(len(self.forceHistory)>self.recordLength):
                 self.forceHistory = self.forceHistory[1:-1]
-            # if(len(self.posHistory)>self.recordLength):
                 self.posHistory = self.posHistory[1:-1]
-            # if(len(self.plotTimes)>self.recordLength):
                 self.plotTimes = self.plotTimes[1:-1]
-
-            assert self.speedHistory.shape[0] <= self.recordLength
+                self.pointOffset += 1
 
         if(rospy.Time.now() > self.lastPlotted + self.plotInterval):
             
@@ -210,10 +209,37 @@ class PegInHoleNodeCompliance():
             self.planView.clear()
             self.sideView.clear()
 
+            self.planView.set(xlabel='X Position',ylabel='Y Position')
+            self.planView.set_title('Sped and Poseation and Forke')
+            self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
+            self.sideView.set_title('Vertical position and force')
+
             self.planView.plot(self.posHistory[:,0], self.posHistory[:,1], 'r')
-            
+            #self.planView.quiver(self.posHistory[0:-1:10,0], self.posHistory[0:-1:10,1], self.forceHistory[0:-1:10,0], self.forceHistory[0:-1:10,1], angles='xy', scale_units='xy', scale=.1, color='b')
+            barb_increments = {"flag" :5, "full" : 1, "half" : 0.5}
+
+            offset = 11-(self.pointOffset % 10)
+            self.planView.barbs(self.posHistory[offset:-1:10,0], self.posHistory[offset:-1:10,1], self.forceHistory[offset:-1:10,0], self.forceHistory[offset:-1:10,1],
+                barb_increments=barb_increments, length = 6, color=(0.0, 0.9, 0.9))
+
             self.sideView.plot(self.plotTimes, self.forceHistory[:,2], 'k', self.plotTimes, self.posHistory[:,2], 'b')
+
+            xlims = [np.min(self.posHistory[:,0]) - self.min_plot_window_offset, np.max(self.posHistory[:,0]) + self.min_plot_window_offset]
+            if xlims[1] - xlims[0] < self.min_plot_window_size:
+                xlims[0] -= self.min_plot_window_size / 2
+                xlims[1] += self.min_plot_window_size / 2
+
+            ylims = [np.min(self.posHistory[:,1]) - self.min_plot_window_offset, np.max(self.posHistory[:,1]) + self.min_plot_window_offset]
+            if ylims[1] - ylims[0] < self.min_plot_window_size:
+                ylims[0] -= self.min_plot_window_size / 2
+                ylims[1] += self.min_plot_window_size / 2
             
+            self.planView.set_xlim(xlims)
+            self.planView.set_ylim(ylims)
+                        
+            if not self.surface_height is None:
+                self.sideView.axhline(y=self.surface_height*1000, color='r', linestyle='-')
+
             self.fig.canvas.draw()
             # plt.pause(0.001)
             #plt.show()
@@ -375,12 +401,21 @@ class PegInHoleNodeCompliance():
         return False
     def _force_cap_check(self):
         #Checks if any forces or torques are dangerously high.
-        if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [35, 35, 35])):
+
+       
+        if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [25, 25, 25])):
             if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [3, 3, 3])):
                 return True
         rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
-        #return True
-        return False
+        if(self.highForceWarning):
+            self.highForceWarning = False
+            return False
+        else:   
+            rospy.logerr("Sleeping for 1s to damp oscillations...")
+            self.highForceWarning = True
+            rospy.sleep(1)
+        return True
+        
 
     def _algorithm_force_control(self):
 
@@ -398,7 +433,6 @@ class PegInHoleNodeCompliance():
         cycle = 0
         self._average_wrench = self._first_wrench.wrench
         collision_confidence = 0
-        surface_height = .25
 
         while (state < 100) and (not rospy.is_shutdown()):
             #All once-per-loop functions
@@ -411,7 +445,8 @@ class PegInHoleNodeCompliance():
             self._update_avg_speed()
             self._update_average_wrench()
             self._update_plots()
-            rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ str(self._as_array(self._average_wrench.torque)))
+            rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+                str(self._as_array(self._average_wrench.torque)))
             rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
             
 
@@ -439,7 +474,7 @@ class PegInHoleNodeCompliance():
                     state = 99
                     rospy.logerr("Very high force/torque detected; going limp and ending test.")
                 elif( self._vectorRegionCompare_symmetrical(self.average_speed, [5/1000,5/1000,.5/1000]) 
-                    and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])):
+                    and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [2,2,seeking_force*-.75], [-2,-2,seeking_force*-1.25])):
                     collision_confidence = collision_confidence + 1/self.rateSelected
                     rospy.logerr_throttle(.5, "Monitoring for flat surface, confidence = " + str(collision_confidence))
                     #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -447,7 +482,7 @@ class PegInHoleNodeCompliance():
                             #Stopped moving vertically and in contact with something that counters push force
                             rospy.logerr("Flat surface detected! Moving to spiral search!")
                             #Measure flat surface height:
-                            surface_height = self.current_pose.transform.translation.z
+                            self.surface_height = self.current_pose.transform.translation.z
                             state = 2
                             collision_confidence = 0.01
                 else:
@@ -465,7 +500,7 @@ class PegInHoleNodeCompliance():
                 if(not self._force_cap_check()):
                     state = 99
                     rospy.logerr("Very high force/torque detected; going limp and ending test.")
-                elif( self.current_pose.transform.translation.z <= surface_height - self.hole_depth/4):
+                elif( self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth/4):
                     collision_confidence = collision_confidence + 1/self.rateSelected
                     rospy.logerr_throttle(.5, "Monitoring for hole location, confidence = " + str(collision_confidence))
                     if(collision_confidence > .90):
@@ -478,9 +513,9 @@ class PegInHoleNodeCompliance():
                             state = 3
                 else:
                     collision_confidence = np.max( np.array([collision_confidence * 95/self.rateSelected, .01]))
-                    if(self.current_pose.transform.translation.z >= surface_height - self.hole_depth):
+                    if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
                         rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
-                            + " whereas we should drop down to " + str(surface_height - self.hole_depth) )
+                            + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
             elif (state == 3):
                 #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
                 #horizontally. We keep going until vertical speed is very near to zero.
@@ -494,7 +529,7 @@ class PegInHoleNodeCompliance():
                 elif( self._vectorRegionCompare_symmetrical(self.average_speed, [2.5/1000,2.5/1000,.5/1000]) 
                     #and not self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [6,6,80], [-6,-6,-80])
                     and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])
-                    and self.current_pose.transform.translation.z <= surface_height - self.hole_depth):
+                    and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
                     collision_confidence = collision_confidence + 1/self.rateSelected
                     rospy.logerr_throttle(.5, "Monitoring for peg insertion, confidence = " + str(collision_confidence))
                     #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -505,19 +540,23 @@ class PegInHoleNodeCompliance():
                 else:
                     #rospy.logwarn_throttle(.5, "NOT a flat surface. Time: " + str((rospy.Time.now()-marked_time).to_sec()))
                     collision_confidence = np.max( np.array([collision_confidence * 95/self.rateSelected, .01]))
-                    if(self.current_pose.transform.translation.z >= surface_height - self.hole_depth):
+                    if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
                         rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
-                            + " whereas we should drop down to " + str(surface_height - self.hole_depth) )
+                            + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
             elif (state == 4):
                 #Inserted properly.
                 rospy.logwarn_throttle(1.0, "Hole found, peg inserted! Done!")
-                wrench_vec  = self._get_command_wrench([0,0,0])
+                if(self.current_pose.transform.translation.z > self.restart_height+.07):
+                    #High enough, won't pull itself upward.
+                    seeking_force = -3.5
+                else:
+                    #pull upward gently to move out of trouble hopefully.
+                    seeking_force = -7.5
                 pose_vec = self._full_compliance_position()
                 
             elif (state == 99):
                 #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
-                restart_height = .1
-                if(self.current_pose.transform.translation.z > restart_height+.05):
+                if(self.current_pose.transform.translation.z > self.restart_height+.05):
                     #High enough, won't pull itself upward.
                     seeking_force = -3.5
                 else:
@@ -530,7 +569,7 @@ class PegInHoleNodeCompliance():
 
                 if( self._vectorRegionCompare_symmetrical(self.average_speed, [.5/1000,.5/1000,5/1000]) 
                     and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1,1,5.5])
-                    and self.current_pose.transform.translation.z > restart_height):
+                    and self.current_pose.transform.translation.z > self.restart_height):
                     collision_confidence = collision_confidence + .5/self.rateSelected
                     rospy.logerr_throttle(.5, "Static. Restarting confidence: " + str( np.round(collision_confidence, 2) ) + " out of 1.")
                     #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -540,7 +579,7 @@ class PegInHoleNodeCompliance():
                             state = marked_state
                 else:
                     collision_confidence = np.max( np.array([collision_confidence * 90/self.rateSelected, .01]))
-                    if(self.current_pose.transform.translation.z > restart_height):
+                    if(self.current_pose.transform.translation.z > self.restart_height):
                         rospy.logwarn_throttle(.5, "That's high enough! Let robot stop and come to zero force.")
 
             self._publish_pose(pose_vec)
