@@ -2,6 +2,7 @@
 
 <launch>
   <!--  todo:Change this to happen in source code instead-->
+  <rosparam file="$(find peg_in_hole_demo)/config/peg_in_hole_params.yaml" />
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
 
   <include file="$(find ur_robot_driver)/launch/ur10e_bringup.launch" >
