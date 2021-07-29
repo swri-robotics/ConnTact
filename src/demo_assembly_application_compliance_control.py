@@ -45,8 +45,8 @@ class PegInHoleNodeCompliance():
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
 
         #job parameters, should be moved in from the peg_in_hole_params.yaml file
-        self.x_pos_offset = 0.539 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        self.y_pos_offset = -0.238 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        self.x_pos_offset = 0.532 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        self.y_pos_offset = -0.171 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
 
         peg_diameter = 16/1000 #mm
         peg_tol_plus = 0.0/1000
