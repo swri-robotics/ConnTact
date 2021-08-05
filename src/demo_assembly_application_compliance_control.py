@@ -45,6 +45,9 @@ class PegInHoleNodeCompliance():
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
 
         #job parameters, should be moved in from the peg_in_hole_params.yaml file
+        # self.hole_depth = rospy.get_param('/peg/dimensions/length')
+        # rospy.logerr("Hole depth is: " + str(self.hole_depth))
+
         self.x_pos_offset = 0.532 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
         self.y_pos_offset = -0.171 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
 
@@ -71,11 +74,11 @@ class PegInHoleNodeCompliance():
         self.forceHistory = self._as_array(self._average_wrench.force)
         self.posHistory = np.array([self.x_pos_offset*1000, self.y_pos_offset*1000, self.current_pose.transform.translation.z*1000])
         self.plotTimes = [0]
-        self.recordInterval = rospy.Duration(.1)
+        self.recordInterval = rospy.Duration(.2)
         self.plotInterval = rospy.Duration(.5)
         self.lastPlotted = rospy.Time(0)
         self.lastRecorded = rospy.Time(0)
-        self.recordLength = 100
+        self.recordLength = 50
         self.surface_height = None
         self.restart_height = .1
         self.highForceWarning = False
@@ -170,7 +173,7 @@ class PegInHoleNodeCompliance():
 
         self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
         self.fig.suptitle('Horizontally stacked subplots')
-        plt.subplots_adjust(left=.1, bottom=.2, right=.95, top=.8, wspace=.15, hspace=.1)
+        plt.subplots_adjust(left=.1, bottom=.2, right=.975, top=.8, wspace=.15, hspace=.1)
 
         self.min_plot_window_offset = 2
         self.min_plot_window_size = 10
@@ -203,7 +206,7 @@ class PegInHoleNodeCompliance():
             self.sideView.clear()
 
             self.planView.set(xlabel='X Position',ylabel='Y Position')
-            self.planView.set_title('Sped and Poseation and Forke')
+            self.planView.set_title('Position and Force')
             self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
             self.sideView.set_title('Vertical position and force')
 
@@ -213,7 +216,7 @@ class PegInHoleNodeCompliance():
 
             offset = self.barb_interval+1-(self.pointOffset % self.barb_interval)
             self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory[offset:-1:self.barb_interval,1], 
-                self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1],
+                self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1]*-1,
                 barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
             #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
@@ -532,7 +535,7 @@ class PegInHoleNodeCompliance():
                     seeking_force = -2.5
                 else:
                     #pull upward gently to move out of trouble hopefully.
-                    seeking_force = -10
+                    seeking_force = -15
                 self._force_cap_check()
                 pose_vec = self._full_compliance_position()
                 
@@ -543,13 +546,13 @@ class PegInHoleNodeCompliance():
                     seeking_force = -3.5
                 else:
                     #pull upward gently to move out of trouble hopefully.
-                    seeking_force = -7
+                    seeking_force = -10
                 wrench_vec  = self._get_command_wrench([0,0,seeking_force])
                 pose_vec = self._full_compliance_position()
                                                 
                 rospy.logerr_throttle(.5, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
 
-                if( self._vectorRegionCompare_symmetrical(self.average_speed, [2/1000,2/1000,3/1000]) 
+                if( self._vectorRegionCompare_symmetrical(self.average_speed, [3/1000,3/1000,3/1000]) 
                     and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,5.5])
                     and self.current_pose.transform.translation.z > self.restart_height):
                     collision_confidence = collision_confidence + .5/self.rateSelected

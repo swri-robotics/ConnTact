@@ -37,6 +37,13 @@ objects: #List objects and their required description
             upper_tolerance:  0.01 #e.g., H7 (ISO 286)
             lower_tolerance:  0.00 #e.g., H7 (ISO 286)
         material: "stainless steel"
+environment_state:
+    task_frame:
+        location: [266, -137, -475]
+        orientation: [0, 0, -90]
+    kitting_frame:
+        location: [640, 544, -502]
+        orientation: [0, 0, 0]
 assembled_state: #List the desired assembled state
     peg:
         location: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
