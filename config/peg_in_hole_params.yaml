@@ -1,10 +1,12 @@
 objects: #List objects and their required description
     peg:
         stl_file: "file_location.stl"
-        local_part_pose: [1, 2, 3] #Starting transformation from Newtonian inertial frame
+        local_position: [36.5, -202, 7.5] #Starting position from kitting_frame
+        local_orientation: [90, 0, 0]     #rotations about new relative axes
         dimensions:
             diameter: 16 #mm
             length: 50 #mm
+            min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
         tolerance:
             upper_tolerance:  0.00 #e.g., h7 (ISO 286)
             lower_tolerance:  -0.01 #e.g., h7 (ISO 286)
@@ -29,7 +31,8 @@ objects: #List objects and their required description
                       #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
     hole:
         stl_file: "file_location.stl"
-        local_part_pose: [1, 2, 3] #Starting transformation from Newtonian inertial frame
+        local_position: [264, -41.3, 0] #Starting position from task_frame
+        local_orientation: [0,0,0]
         dimensions:
             diameter: 16.4 #mm
             depth: 20 #mm
@@ -39,13 +42,13 @@ objects: #List objects and their required description
         material: "stainless steel"
 environment_state:
     task_frame:
-        location: [266, -137, -475]
-        orientation: [0, 0, -90]
+        position: [266, -137, -455]
+        orientation: [0, 0, 0]
     kitting_frame:
-        location: [640, 544, -502]
+        position: [640, 544, -502]
         orientation: [0, 0, 0]
 assembled_state: #List the desired assembled state
     peg:
-        location: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
+        position: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
     hole: 
-        location: [1, 2, 3] #Transformation from hole.local_part_pose relative to chosen Newtonian inertial frame
+        position: [1, 2, 3] #Transformation from hole.local_part_pose relative to chosen Newtonian inertial frame
