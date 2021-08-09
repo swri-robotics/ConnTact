@@ -200,12 +200,12 @@ class PegInHoleNodeCompliance():
         # plt.show()
         # plt.draw()
 
-        self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
+        self.fig, (self.planView, self.sideView, self.forceDisplay) = plt.subplots(1, 3)
         self.fig.suptitle('Horizontally stacked subplots')
         plt.subplots_adjust(left=.1, bottom=.2, right=.975, top=.8, wspace=.15, hspace=.1)
 
-        self.min_plot_window_offset = 2
-        self.min_plot_window_size = 10
+        self.min_plot_window_offset = 3
+        self.min_plot_window_size = 15
         self.pointOffset = 1
         self.barb_interval = 5
         
@@ -233,20 +233,24 @@ class PegInHoleNodeCompliance():
 
             self.planView.clear()
             self.sideView.clear()
+            self.forceDisplay.clear()
 
             self.planView.set(xlabel='X Position',ylabel='Y Position')
             self.planView.set_title('Position and Force')
             self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
             self.sideView.set_title('Vertical position and force')
+            self.forceDisplay.set(xlabel=' ',ylabel=' ')
+            self.forceDisplay.set_title('Forces and Velocities')
 
             self.planView.plot(self.posHistory[:,0], self.posHistory[:,1], 'r')
             #self.planView.quiver(self.posHistory[0:-1:10,0], self.posHistory[0:-1:10,1], self.forceHistory[0:-1:10,0], self.forceHistory[0:-1:10,1], angles='xy', scale_units='xy', scale=.1, color='b')
             barb_increments = {"flag" :5, "full" : 1, "half" : 0.5}
+            barb_increments_2 = {"flag" :.005, "full" : .001, "half" : 0.0005}
 
             offset = self.barb_interval+1-(self.pointOffset % self.barb_interval)
             self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory[offset:-1:self.barb_interval,1], 
                 self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1]*-1,
-                barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
+                barb_increments=barb_increments, length = 6, color=(0.3, 0.7, 0.7))
             #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
             self.sideView.plot(self.plotTimes, self.forceHistory[:,2], 'k', self.plotTimes, self.posHistory[:,2], 'b')
@@ -263,6 +267,21 @@ class PegInHoleNodeCompliance():
             
             self.planView.set_xlim(xlims)
             self.planView.set_ylim(ylims)
+
+                
+            self.forceDisplay.set_xlim(-2, 2)
+            self.forceDisplay.set_ylim(-2, 6)
+
+            #display current forces in 2 barbs
+            self.forceDisplay.barbs(0,0,self.current_wrench.wrench.force.x,-1*self.current_wrench.wrench.force.y,
+                barb_increments=barb_increments, length = 8, color=(0.3, 0.7, 0.7))
+            self.forceDisplay.barbs(-.1,4,0,-1*self.current_wrench.wrench.force.z,
+                barb_increments=barb_increments, length = 8, color=(0.3, 0.7, 0.7))
+            #display current speed in 2 barbs
+            self.forceDisplay.barbs(0,0,self.average_speed[0],self.average_speed[1],
+                barb_increments=barb_increments_2, length = 8, color=(0.7, 0.0, 0.0))
+            self.forceDisplay.barbs(0.1,4,0,self.average_speed[2],
+                barb_increments=barb_increments_2, length = 8, color=(0.7, 0.0, 0.0))
                         
             if not self.surface_height is None:
                 self.sideView.axhline(y=self.surface_height*1000, color='r', linestyle='-')
@@ -456,8 +475,8 @@ class PegInHoleNodeCompliance():
             self._update_avg_speed()
             self._update_average_wrench()
             self._update_plots()
-            rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
-                str(self._as_array(self._average_wrench.torque)))
+            #rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+            #    str(self._as_array(self._average_wrench.torque)))
             rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
             
 
