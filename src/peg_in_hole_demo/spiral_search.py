@@ -8,7 +8,7 @@ import rospy
 import numpy as np
 import matplotlib.pyplot as plt
 from rospkg import RosPack
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3
+from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from rospy.core import configure_logging
 
 from sensor_msgs.msg import JointState
@@ -18,6 +18,8 @@ from controller_manager_msgs.srv import SwitchController, LoadController, ListCo
 import tf2_ros
 # import tf2
 import tf2_geometry_msgs
+
+from tf.transformations import quaternion_from_euler
 
 from threading import Lock
 
@@ -92,7 +94,7 @@ class PegInHoleNodeCompliance(Machine):
 
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
-        rospy.logwarn_once('HERE IS THE SUBSCRIBER::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
+        self._target_pub = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
         rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
         
         #Needed to get current pose of the robot
@@ -116,20 +118,46 @@ class PegInHoleNodeCompliance(Machine):
         self._amp_c  = np.double(.002)  #meters amplitude in _spiral_search_basic_compliance_control
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
 
-        #job parameters, should be moved in from the peg_in_hole_params.yaml file
-        self.x_pos_offset = 0.532 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        self.y_pos_offset = -0.171 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        #job parameters moved in from the peg_in_hole_params.yaml file
+        temp_z_position_offset = 207/1000 #Our robot is reading Z positions wrong on the pendant for some reason.
+        taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position'))/1000)
+        taskPos[2] = taskPos[2] + temp_z_position_offset
+        taskOri = rospy.get_param('/environment_state/task_frame/orientation')
+        holePos = list(np.array(rospy.get_param('/objects/hole/local_position'))/1000)
+        holePos[2] = holePos[2] + temp_z_position_offset
+        holeOri = rospy.get_param('/objects/hole/local_orientation')
+        
+        self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
+        self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
+        self.tf_robot_to_task_board.header.frame_id = "base_link"
+        self.tf_robot_to_task_board.child_frame_id = "task_board"
+        tempQ = list(quaternion_from_euler(taskOri[0]*np.pi/180, taskOri[1]*np.pi/180, taskOri[2]*np.pi/180))
+        self.tf_robot_to_task_board.transform = Transform(Point(taskPos[0],taskPos[1],taskPos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        self.pose_task_board_to_hole = PoseStamped() #tf_task_board_to_hole
+        self.pose_task_board_to_hole.header.stamp = rospy.get_rostime()
+        self.pose_task_board_to_hole.header.frame_id = "task_board"
+        tempQ = list(quaternion_from_euler(holeOri[0]*np.pi/180, holeOri[1]*np.pi/180, holeOri[2]*np.pi/180))
+        self.pose_task_board_to_hole.pose = Pose(Point(holePos[0],holePos[1],holePos[2]), Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
 
-        peg_diameter = 16/1000 #mm
-        peg_tol_plus = 0.0/1000
-        peg_tol_minus = -.01/1000
+        rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
+        self._target_pub.publish(self.target_hole_pose)
+        self.x_pos_offset = self.target_hole_pose.pose.position.x
+        self.y_pos_offset = self.target_hole_pose.pose.position.y
 
-        hole_diameter = 16.4/1000 #mm
-        hole_tol_plus = .01/1000
-        hole_tol_minus = 0.0/1000
-        #self.hole_depth = rospy.get_param('/peg/dimensions/length', )
-        self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
+        peg_diameter = rospy.get_param('/objects/peg/dimensions/diameter')/1000 #mm
+        peg_tol_plus = rospy.get_param('/objects/peg/tolerance/upper_tolerance')/1000
+        peg_tol_minus = rospy.get_param('/objects/peg/tolerance/lower_tolerance')/1000
 
+        hole_diameter = rospy.get_param('/objects/hole/dimensions/diameter')/1000 #mm
+        hole_tol_plus = rospy.get_param('/objects/hole/tolerance/upper_tolerance')/1000
+        hole_tol_minus = rospy.get_param('/objects/hole/tolerance/lower_tolerance')/1000    
+        self.hole_depth = rospy.get_param('/objects/peg/dimensions/min_insertion_depth')/1000
+        #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
+        #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
+        
         #loop parameters
         self.curr_time = rospy.get_rostime() - self._start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
