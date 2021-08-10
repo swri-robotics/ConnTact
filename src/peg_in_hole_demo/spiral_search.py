@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+#UR IP Address is now 175.31.1.137
+#Computer has to be 175.31.1.150
+
 # Imports for ros
 # from _typeshed import StrPath
 from operator import truediv
@@ -119,13 +122,15 @@ class PegInHoleNodeCompliance(Machine):
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
 
         #job parameters moved in from the peg_in_hole_params.yaml file
+        target_peg = 'peg_10mm'
+        target_hole = 'hole_10mm'
         temp_z_position_offset = 207/1000 #Our robot is reading Z positions wrong on the pendant for some reason.
         taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position'))/1000)
         taskPos[2] = taskPos[2] + temp_z_position_offset
         taskOri = rospy.get_param('/environment_state/task_frame/orientation')
-        holePos = list(np.array(rospy.get_param('/objects/hole/local_position'))/1000)
+        holePos = list(np.array(rospy.get_param('/objects/'+target_hole+'/local_position'))/1000)
         holePos[2] = holePos[2] + temp_z_position_offset
-        holeOri = rospy.get_param('/objects/hole/local_orientation')
+        holeOri = rospy.get_param('/objects/'+target_hole+'/local_orientation')
         
         self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
         self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
@@ -142,19 +147,19 @@ class PegInHoleNodeCompliance(Machine):
         
         self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
 
-        rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
+        #rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
         self._target_pub.publish(self.target_hole_pose)
         self.x_pos_offset = self.target_hole_pose.pose.position.x
         self.y_pos_offset = self.target_hole_pose.pose.position.y
+        
+        peg_diameter     = rospy.get_param('/objects/'+target_peg+'/dimensions/diameter')/1000 #mm
+        peg_tol_plus     = rospy.get_param('/objects/'+target_peg+'/tolerance/upper_tolerance')/1000
+        peg_tol_minus    = rospy.get_param('/objects/'+target_peg+'/tolerance/lower_tolerance')/1000
 
-        peg_diameter = rospy.get_param('/objects/peg/dimensions/diameter')/1000 #mm
-        peg_tol_plus = rospy.get_param('/objects/peg/tolerance/upper_tolerance')/1000
-        peg_tol_minus = rospy.get_param('/objects/peg/tolerance/lower_tolerance')/1000
-
-        hole_diameter = rospy.get_param('/objects/hole/dimensions/diameter')/1000 #mm
-        hole_tol_plus = rospy.get_param('/objects/hole/tolerance/upper_tolerance')/1000
-        hole_tol_minus = rospy.get_param('/objects/hole/tolerance/lower_tolerance')/1000    
-        self.hole_depth = rospy.get_param('/objects/peg/dimensions/min_insertion_depth')/1000
+        hole_diameter    = rospy.get_param('/objects/'+target_hole+'/dimensions/diameter')/1000 #mm
+        hole_tol_plus    = rospy.get_param('/objects/'+target_hole+'/tolerance/upper_tolerance')/1000
+        hole_tol_minus   = rospy.get_param('/objects/'+target_hole+'/tolerance/lower_tolerance')/1000    
+        self.hole_depth  = rospy.get_param('/objects/'+target_peg+'/dimensions/min_insertion_depth')/1000
         #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
         #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
         
@@ -179,7 +184,9 @@ class PegInHoleNodeCompliance(Machine):
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
         self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
-        
+        rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
+        rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
+
         self.highForceWarning = False
         self.surface_height = None
         self.restart_height = .1
