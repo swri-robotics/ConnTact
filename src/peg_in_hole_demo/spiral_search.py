@@ -95,6 +95,7 @@ class PegInHoleNodeCompliance(Machine):
         ]
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
 
+        #ROS pubs and subs
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         self._target_pub = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
@@ -132,19 +133,21 @@ class PegInHoleNodeCompliance(Machine):
         holePos[2] = holePos[2] + temp_z_position_offset
         holeOri = rospy.get_param('/objects/'+target_hole+'/local_orientation')
         
-        self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
-        self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
-        self.tf_robot_to_task_board.header.frame_id = "base_link"
-        self.tf_robot_to_task_board.child_frame_id = "task_board"
-        tempQ = list(quaternion_from_euler(taskOri[0]*np.pi/180, taskOri[1]*np.pi/180, taskOri[2]*np.pi/180))
-        self.tf_robot_to_task_board.transform = Transform(Point(taskPos[0],taskPos[1],taskPos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
-        
-        self.pose_task_board_to_hole = PoseStamped() #tf_task_board_to_hole
-        self.pose_task_board_to_hole.header.stamp = rospy.get_rostime()
-        self.pose_task_board_to_hole.header.frame_id = "task_board"
-        tempQ = list(quaternion_from_euler(holeOri[0]*np.pi/180, holeOri[1]*np.pi/180, holeOri[2]*np.pi/180))
-        self.pose_task_board_to_hole.pose = Pose(Point(holePos[0],holePos[1],holePos[2]), Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
-        
+        # self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
+        # self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
+        # self.tf_robot_to_task_board.header.frame_id = "base_link"
+        # self.tf_robot_to_task_board.child_frame_id = "task_board"
+        # tempQ = list(quaternion_from_euler(taskOri[0]*np.pi/180, taskOri[1]*np.pi/180, taskOri[2]*np.pi/180))
+        # self.tf_robot_to_task_board.transform = Transform(Point(taskPos[0],taskPos[1],taskPos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        self.tf_robot_to_task_board = PegInHoleNodeCompliance.get_tf_from_YAML(taskPos, taskOri, "base_link", "task_board")
+
+        # self.pose_task_board_to_hole = PoseStamped() #tf_task_board_to_hole
+        # self.pose_task_board_to_hole.header.stamp = rospy.get_rostime()
+        # self.pose_task_board_to_hole.header.frame_id = "task_board"
+        # tempQ = list(quaternion_from_euler(holeOri[0]*np.pi/180, holeOri[1]*np.pi/180, holeOri[2]*np.pi/180))
+        # self.pose_task_board_to_hole.pose = Pose(Point(holePos[0],holePos[1],holePos[2]), Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        self.pose_task_board_to_hole = PegInHoleNodeCompliance.get_pose_from_YAML(holePos, holeOri, "base_link")
+
         self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
 
         #rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
@@ -160,6 +163,11 @@ class PegInHoleNodeCompliance(Machine):
         hole_tol_plus    = rospy.get_param('/objects/'+target_hole+'/tolerance/upper_tolerance')/1000
         hole_tol_minus   = rospy.get_param('/objects/'+target_hole+'/tolerance/lower_tolerance')/1000    
         self.hole_depth  = rospy.get_param('/objects/'+target_peg+'/dimensions/min_insertion_depth')/1000
+        self.locations   = rospy.get_param('/objects/'+target_peg+'/grasping/pinch_grasping/locations')
+                    #/objects/peg_16mm/grasping/pinch_grasping/locations: [{'pose': [50, 0,...
+        rospy.logerr("Locations dictionary: " + str(self.locations))
+        rospy.logerr("corner pose info: " + str(self.locations['corner']['pose']))
+
         #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
         #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
         
@@ -184,15 +192,36 @@ class PegInHoleNodeCompliance(Machine):
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
         self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
-        rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
-        rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
+        #rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
+        #rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
 
         self.highForceWarning = False
         self.surface_height = None
         self.restart_height = .1
         self.collision_confidence = 0;
 
+    @staticmethod
+    def get_tf_from_YAML(pos, ori, base_frame, child_frame): #Returns the transform from base_frame to child_frame based on vector inputs
+        #move to utils
+        output_pose = PegInHoleNodeCompliance.get_pose_from_YAML(pos, ori, base_frame) #tf_task_board_to_hole
+        output_tf = TransformStamped()
+        output_tf.header = output_pose.header
+        output_tf.transform.translation = output_pose.pose.position
+        output_tf.transform.rotation   = output_pose.pose.orientation
+        output_tf.child_frame_id = child_frame
         
+        return output_tf
+
+    @staticmethod
+    def get_pose_from_YAML(pos, ori, base_frame): #Returns the pose wrt base_frame based on vector inputs
+        #move to utils
+        output_pose = PoseStamped() #tf_task_board_to_hole
+        output_pose.header.stamp = rospy.get_rostime()
+        output_pose.header.frame_id = base_frame
+        tempQ = list(quaternion_from_euler(ori[0]*np.pi/180, ori[1]*np.pi/180, ori[2]*np.pi/180))
+        output_pose.pose = Pose(Point(pos[0],pos[1],pos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        return output_pose
         
 
     def _spiral_search_basic_compliance_control(self):
