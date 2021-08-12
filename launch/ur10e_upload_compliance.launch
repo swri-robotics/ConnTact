@@ -6,7 +6,7 @@
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
 
   <include file="$(find ur_robot_driver)/launch/ur10e_bringup.launch" >
-    <arg name="robot_ip" default="172.31.1.137" doc="SwRI Collaborative Lab's UR10e IP Address" />
+    <arg name="robot_ip" default="175.31.1.137" doc="SwRI Collaborative Lab's UR10e IP Address" />
     <arg name="headless_mode" default="true" doc="At SwRI Collaborative Lab, we do not use URCap, so headless_mode is required" />
 
     <arg name="controllers" default="joint_state_controller force_torque_sensor_controller cartesian_compliance_controller" doc="Controllers that are activated by default."/>
@@ -19,7 +19,7 @@
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find peg_in_hole_demo)/config/basic_config_example.rviz" required="true" />
 
-  <node type="demo_assembly_application_compliance_control.py" name="demo_assembly_application_compliance_control" pkg="peg_in_hole_demo" output="screen" required="true" />
+  <node type="demo_assembly_application_compliance_control" name="demo_assembly_application_compliance_control" pkg="peg_in_hole_demo" output="screen" required="true" />
 
 </launch>
 

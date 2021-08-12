@@ -7,14 +7,15 @@ import rospy
 import numpy as np
 import matplotlib.pyplot as plt
 from rospkg import RosPack
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3
+from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from rospy.core import configure_logging
 
 from sensor_msgs.msg import JointState
 # from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
 from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
-
+import tf2_py
 import tf2_ros
+from tf.transformations import quaternion_from_euler
 # import tf2
 import tf2_geometry_msgs
 
@@ -25,6 +26,7 @@ class PegInHoleNodeCompliance():
     def __init__(self):
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
+        self._target_pub = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
         rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
         
         #Needed to get current pose of the robot
@@ -45,19 +47,49 @@ class PegInHoleNodeCompliance():
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
 
         #job parameters, should be moved in from the peg_in_hole_params.yaml file
-        self.x_pos_offset = 0.532 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        self.y_pos_offset = -0.171 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        
+        # rospy.logerr("Hole depth is: " + str(self.hole_depth))
+        temp_z_position_offset = 207/1000 #Our robot is reading Z positions wrong on the pendant for some reason.
+        taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position'))/1000)
+        taskPos[2] = taskPos[2] + temp_z_position_offset
+        taskOri = rospy.get_param('/environment_state/task_frame/orientation')
+        holePos = list(np.array(rospy.get_param('/objects/hole/local_position'))/1000)
+        holePos[2] = holePos[2] + temp_z_position_offset
+        holeOri = rospy.get_param('/objects/hole/local_orientation')
+        
+        self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
+        self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
+        self.tf_robot_to_task_board.header.frame_id = "base_link"
+        self.tf_robot_to_task_board.child_frame_id = "task_board"
+        tempQ = list(quaternion_from_euler(taskOri[0]*np.pi/180, taskOri[1]*np.pi/180, taskOri[2]*np.pi/180))
+        self.tf_robot_to_task_board.transform = Transform(Point(taskPos[0],taskPos[1],taskPos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        self.pose_task_board_to_hole = PoseStamped() #tf_task_board_to_hole
+        self.pose_task_board_to_hole.header.stamp = rospy.get_rostime()
+        self.pose_task_board_to_hole.header.frame_id = "task_board"
+        tempQ = list(quaternion_from_euler(holeOri[0]*np.pi/180, holeOri[1]*np.pi/180, holeOri[2]*np.pi/180))
+        self.pose_task_board_to_hole.pose = Pose(Point(holePos[0],holePos[1],holePos[2]), Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
 
-        peg_diameter = 16/1000 #mm
-        peg_tol_plus = 0.0/1000
-        peg_tol_minus = -.01/1000
+        rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
+        self._target_pub.publish(self.target_hole_pose)
+        #self.x_pos_offset = 0.532
+        #self.y_pos_offset = -0.171 
+        self.x_pos_offset = self.target_hole_pose.pose.position.x
+        self.y_pos_offset = self.target_hole_pose.pose.position.y
 
-        hole_diameter = 16.4/1000 #mm
-        hole_tol_plus = .01/1000
-        hole_tol_minus = 0.0/1000
-        #self.hole_depth = rospy.get_param('/peg/dimensions/length', )
-        self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
+        peg_diameter = rospy.get_param('/objects/peg/dimensions/diameter')/1000 #mm
+        peg_tol_plus = rospy.get_param('/objects/peg/tolerance/upper_tolerance')/1000
+        peg_tol_minus = rospy.get_param('/objects/peg/tolerance/lower_tolerance')/1000
 
+        hole_diameter = rospy.get_param('/objects/hole/dimensions/diameter')/1000 #mm
+        hole_tol_plus = rospy.get_param('/objects/hole/tolerance/upper_tolerance')/1000
+        hole_tol_minus = rospy.get_param('/objects/hole/tolerance/lower_tolerance')/1000    
+        self.hole_depth = rospy.get_param('/objects/peg/dimensions/min_insertion_depth')/1000
+        #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
+        #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
+        
         #loop parameters
         self.current_pose = self._get_current_pos()
         self.current_wrench = self._first_wrench
@@ -71,11 +103,11 @@ class PegInHoleNodeCompliance():
         self.forceHistory = self._as_array(self._average_wrench.force)
         self.posHistory = np.array([self.x_pos_offset*1000, self.y_pos_offset*1000, self.current_pose.transform.translation.z*1000])
         self.plotTimes = [0]
-        self.recordInterval = rospy.Duration(.1)
+        self.recordInterval = rospy.Duration(.2)
         self.plotInterval = rospy.Duration(.5)
         self.lastPlotted = rospy.Time(0)
         self.lastRecorded = rospy.Time(0)
-        self.recordLength = 100
+        self.recordLength = 50
         self.surface_height = None
         self.restart_height = .1
         self.highForceWarning = False
@@ -168,12 +200,12 @@ class PegInHoleNodeCompliance():
         # plt.show()
         # plt.draw()
 
-        self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
+        self.fig, (self.planView, self.sideView, self.forceDisplay) = plt.subplots(1, 3)
         self.fig.suptitle('Horizontally stacked subplots')
-        plt.subplots_adjust(left=.1, bottom=.2, right=.95, top=.8, wspace=.15, hspace=.1)
+        plt.subplots_adjust(left=.1, bottom=.2, right=.975, top=.8, wspace=.15, hspace=.1)
 
-        self.min_plot_window_offset = 2
-        self.min_plot_window_size = 10
+        self.min_plot_window_offset = 3
+        self.min_plot_window_size = 15
         self.pointOffset = 1
         self.barb_interval = 5
         
@@ -201,20 +233,24 @@ class PegInHoleNodeCompliance():
 
             self.planView.clear()
             self.sideView.clear()
+            self.forceDisplay.clear()
 
             self.planView.set(xlabel='X Position',ylabel='Y Position')
-            self.planView.set_title('Sped and Poseation and Forke')
+            self.planView.set_title('Position and Force')
             self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
             self.sideView.set_title('Vertical position and force')
+            self.forceDisplay.set(xlabel=' ',ylabel=' ')
+            self.forceDisplay.set_title('Forces and Velocities')
 
             self.planView.plot(self.posHistory[:,0], self.posHistory[:,1], 'r')
             #self.planView.quiver(self.posHistory[0:-1:10,0], self.posHistory[0:-1:10,1], self.forceHistory[0:-1:10,0], self.forceHistory[0:-1:10,1], angles='xy', scale_units='xy', scale=.1, color='b')
             barb_increments = {"flag" :5, "full" : 1, "half" : 0.5}
+            barb_increments_2 = {"flag" :.005, "full" : .001, "half" : 0.0005}
 
             offset = self.barb_interval+1-(self.pointOffset % self.barb_interval)
             self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory[offset:-1:self.barb_interval,1], 
-                self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1],
-                barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
+                self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1]*-1,
+                barb_increments=barb_increments, length = 6, color=(0.3, 0.7, 0.7))
             #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
             self.sideView.plot(self.plotTimes, self.forceHistory[:,2], 'k', self.plotTimes, self.posHistory[:,2], 'b')
@@ -231,6 +267,21 @@ class PegInHoleNodeCompliance():
             
             self.planView.set_xlim(xlims)
             self.planView.set_ylim(ylims)
+
+                
+            self.forceDisplay.set_xlim(-2, 2)
+            self.forceDisplay.set_ylim(-2, 6)
+
+            #display current forces in 2 barbs
+            self.forceDisplay.barbs(0,0,self.current_wrench.wrench.force.x,-1*self.current_wrench.wrench.force.y,
+                barb_increments=barb_increments, length = 8, color=(0.3, 0.7, 0.7))
+            self.forceDisplay.barbs(-.1,4,0,-1*self.current_wrench.wrench.force.z,
+                barb_increments=barb_increments, length = 8, color=(0.3, 0.7, 0.7))
+            #display current speed in 2 barbs
+            self.forceDisplay.barbs(0,0,self.average_speed[0],self.average_speed[1],
+                barb_increments=barb_increments_2, length = 8, color=(0.7, 0.0, 0.0))
+            self.forceDisplay.barbs(0.1,4,0,self.average_speed[2],
+                barb_increments=barb_increments_2, length = 8, color=(0.7, 0.0, 0.0))
                         
             if not self.surface_height is None:
                 self.sideView.axhline(y=self.surface_height*1000, color='r', linestyle='-')
@@ -274,7 +325,6 @@ class PegInHoleNodeCompliance():
         # Set header values
         pose_stamped.header.stamp = rospy.get_rostime()
         pose_stamped.header.frame_id = "base_link"
-
         self._pose_pub.publish(pose_stamped)
 
 
@@ -425,8 +475,8 @@ class PegInHoleNodeCompliance():
             self._update_avg_speed()
             self._update_average_wrench()
             self._update_plots()
-            rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
-                str(self._as_array(self._average_wrench.torque)))
+            #rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+            #    str(self._as_array(self._average_wrench.torque)))
             rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
             
 
@@ -532,7 +582,7 @@ class PegInHoleNodeCompliance():
                     seeking_force = -2.5
                 else:
                     #pull upward gently to move out of trouble hopefully.
-                    seeking_force = -10
+                    seeking_force = -15
                 self._force_cap_check()
                 pose_vec = self._full_compliance_position()
                 
@@ -543,13 +593,13 @@ class PegInHoleNodeCompliance():
                     seeking_force = -3.5
                 else:
                     #pull upward gently to move out of trouble hopefully.
-                    seeking_force = -7
+                    seeking_force = -10
                 wrench_vec  = self._get_command_wrench([0,0,seeking_force])
                 pose_vec = self._full_compliance_position()
                                                 
                 rospy.logerr_throttle(.5, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
 
-                if( self._vectorRegionCompare_symmetrical(self.average_speed, [2/1000,2/1000,3/1000]) 
+                if( self._vectorRegionCompare_symmetrical(self.average_speed, [3/1000,3/1000,3/1000]) 
                     and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,5.5])
                     and self.current_pose.transform.translation.z > self.restart_height):
                     collision_confidence = collision_confidence + .5/self.rateSelected
@@ -567,22 +617,6 @@ class PegInHoleNodeCompliance():
             self._publish_pose(pose_vec)
             self._publish_wrench(wrench_vec)
             self.rate.sleep()
-
-#Stuck in hole:
-# wrench [-1.50958516  1.74732935 -0.22236535]#      speed  [-1.45376413  1.48960552 -4.43557056]
-# wrench [ 2.43184626  5.00212574 -2.4536103 ]#      speed  [-2.04941965  0.83368837  0.0782959 ]
-# wrench [ 6.59614     6.07010813 -4.77999039]#      speed  [-1.65830209 -0.22519013 -0.5259787 ]
-# wrench [11.7798602   5.16348097 -5.10239619]#      speed  [-1.45911821 -0.93610951  0.00294496]
-# wrench [16.46678906  1.59219539 -4.69272811]#      speed  [-0.85717886 -1.4603617   0.2064414 ]
-# wrench [17.90438252 -2.29216179 -5.00163983]#      speed  [-0.0339175  -1.86771153  0.03727609]
-# wrench [17.90873177 -8.12120226 -4.66858722]#      speed  [ 1.03601238 -1.90853476  0.17106011]
-# wrench [ 14.64670739 -12.45791743  -4.80226696]#   speed  [ 1.48294452 -1.45552691 -0.03383374]
-# wrench [ 10.32158067 -15.00926006  -4.87042746]#   speed  [ 2.09561829 -0.52449749  0.10261508]
-# wrench [  5.15586338 -15.11241063  -4.779649  ]#   speed  [ 1.90206149  0.48653684 -0.06437652]
-# wrench [ -0.31361284 -13.19418616  -4.73827783]#   speed  [1.35331007 1.11014077 0.0984785 ]
-# wrench [-3.51015968 -8.49405472 -4.90193306]#      speed  [ 0.88421147  1.98615908 -0.04157601]
-# wrench [-4.72975108 -3.6191265  -4.56946905]       speed  [0.16434818 2.18659324 0.27017341]
-# wrench [-2.77971526  1.80464577 -4.78332949]       speed  [-1.123056    1.66784535  0.0663183 ]
 
 
 if __name__ == '__main__':
@@ -681,5 +715,6 @@ if __name__ == '__main__':
 
 #     def __str__(self):
 #         return "Pause"
+
 
 
