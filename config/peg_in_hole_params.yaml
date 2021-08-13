@@ -23,9 +23,9 @@ objects: #List objects and their required description
                         #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
                         grasp_pressure: 50 #Percent maximum force
                     corner:
-                        pose: [50, 3.5, 3.5] #location relative to peg/hole local_part_pose being grasped
+                        pose: [-3.5, -3.5, 50] #location relative to peg/hole local_part_pose being grasped
                         #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
-                        orientation: [-35.26, 30, 9.74] #orientation relative to tcp
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
                         #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
                         grasp_pressure: 50 #Percent maximum force
                         #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?

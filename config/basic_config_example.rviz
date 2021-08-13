@@ -8,8 +8,8 @@ Panels:
         - /Status1
         - /Grid1
         - /Pose1
-        - /TF1
         - /TF1/Frames1
+        - /Pose2
       Splitter Ratio: 0.5
     Tree Height: 719
   - Class: rviz/Selection
@@ -155,7 +155,7 @@ Visualization Manager:
       Value: true
     - Alpha: 1
       Axes Length: 0.20000000298023224
-      Axes Radius: 0.05000000074505806
+      Axes Radius: 0.029999999329447746
       Class: rviz/Pose
       Color: 255; 25; 0
       Enabled: true
@@ -231,6 +231,22 @@ Visualization Manager:
               {}
       Update Interval: 0
       Value: true
+    - Alpha: 1
+      Axes Length: 0.05000000074505806
+      Axes Radius: 0.019999999552965164
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Queue Size: 10
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic: /peg_corner_position
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -259,7 +275,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 4.486763000488281
+      Distance: 1.6490638256072998
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -267,17 +283,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.531288206577301
-        Y: -0.11909503489732742
-        Z: 0.720343291759491
+        X: 0.5377578735351562
+        Y: 0.21255606412887573
+        Z: 0.24886906147003174
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5647963285446167
+      Pitch: 0.12479741126298904
       Target Frame: <Fixed Frame>
-      Yaw: 4.768505573272705
+      Yaw: 0.28031983971595764
     Saved: ~
 Window Geometry:
   Displays:

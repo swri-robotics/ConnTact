@@ -17,6 +17,7 @@ from rospy.core import configure_logging
 from sensor_msgs.msg import JointState
 # from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
 from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
+from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
 
 import tf2_ros
 # import tf2
@@ -99,6 +100,9 @@ class PegInHoleNodeCompliance(Machine):
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         self._target_pub = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
+        self._tool_offset_pub = rospy.Publisher('peg_corner_position', PoseStamped, queue_size=2, latch=True)
+        #self._tf_broadcaster = tf2_ros.StaticTransformBroadcaster.
+
         rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
         
         #Needed to get current pose of the robot
@@ -125,49 +129,50 @@ class PegInHoleNodeCompliance(Machine):
         #job parameters moved in from the peg_in_hole_params.yaml file
         target_peg = 'peg_10mm'
         target_hole = 'hole_10mm'
-        temp_z_position_offset = 207/1000 #Our robot is reading Z positions wrong on the pendant for some reason.
-        taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position'))/1000)
+        temp_z_position_offset = 207 #Our robot is reading Z positions wrong on the pendant for some reason.
+        taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position')))
         taskPos[2] = taskPos[2] + temp_z_position_offset
         taskOri = rospy.get_param('/environment_state/task_frame/orientation')
-        holePos = list(np.array(rospy.get_param('/objects/'+target_hole+'/local_position'))/1000)
+        holePos = list(np.array(rospy.get_param('/objects/'+target_hole+'/local_position')))
         holePos[2] = holePos[2] + temp_z_position_offset
         holeOri = rospy.get_param('/objects/'+target_hole+'/local_orientation')
         
-        # self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
-        # self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
-        # self.tf_robot_to_task_board.header.frame_id = "base_link"
-        # self.tf_robot_to_task_board.child_frame_id = "task_board"
-        # tempQ = list(quaternion_from_euler(taskOri[0]*np.pi/180, taskOri[1]*np.pi/180, taskOri[2]*np.pi/180))
-        # self.tf_robot_to_task_board.transform = Transform(Point(taskPos[0],taskPos[1],taskPos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        #Set up target hole pose
         self.tf_robot_to_task_board = PegInHoleNodeCompliance.get_tf_from_YAML(taskPos, taskOri, "base_link", "task_board")
-
-        # self.pose_task_board_to_hole = PoseStamped() #tf_task_board_to_hole
-        # self.pose_task_board_to_hole.header.stamp = rospy.get_rostime()
-        # self.pose_task_board_to_hole.header.frame_id = "task_board"
-        # tempQ = list(quaternion_from_euler(holeOri[0]*np.pi/180, holeOri[1]*np.pi/180, holeOri[2]*np.pi/180))
-        # self.pose_task_board_to_hole.pose = Pose(Point(holePos[0],holePos[1],holePos[2]), Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
         self.pose_task_board_to_hole = PegInHoleNodeCompliance.get_pose_from_YAML(holePos, holeOri, "base_link")
-
         self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
-
-        #rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
         self._target_pub.publish(self.target_hole_pose)
         self.x_pos_offset = self.target_hole_pose.pose.position.x
         self.y_pos_offset = self.target_hole_pose.pose.position.y
         
-        peg_diameter     = rospy.get_param('/objects/'+target_peg+'/dimensions/diameter')/1000 #mm
-        peg_tol_plus     = rospy.get_param('/objects/'+target_peg+'/tolerance/upper_tolerance')/1000
-        peg_tol_minus    = rospy.get_param('/objects/'+target_peg+'/tolerance/lower_tolerance')/1000
-
-        hole_diameter    = rospy.get_param('/objects/'+target_hole+'/dimensions/diameter')/1000 #mm
-        hole_tol_plus    = rospy.get_param('/objects/'+target_hole+'/tolerance/upper_tolerance')/1000
-        hole_tol_minus   = rospy.get_param('/objects/'+target_hole+'/tolerance/lower_tolerance')/1000    
-        self.hole_depth  = rospy.get_param('/objects/'+target_peg+'/dimensions/min_insertion_depth')/1000
-        self.locations   = rospy.get_param('/objects/'+target_peg+'/grasping/pinch_grasping/locations')
-                    #/objects/peg_16mm/grasping/pinch_grasping/locations: [{'pose': [50, 0,...
-        rospy.logerr("Locations dictionary: " + str(self.locations))
-        rospy.logerr("corner pose info: " + str(self.locations['corner']['pose']))
-
+        #read peg and hole data
+        peg_diameter         = rospy.get_param('/objects/'+target_peg+'/dimensions/diameter')/1000 #mm
+        peg_tol_plus         = rospy.get_param('/objects/'+target_peg+'/tolerance/upper_tolerance')/1000
+        peg_tol_minus        = rospy.get_param('/objects/'+target_peg+'/tolerance/lower_tolerance')/1000
+        hole_diameter        = rospy.get_param('/objects/'+target_hole+'/dimensions/diameter')/1000 #mm
+        hole_tol_plus        = rospy.get_param('/objects/'+target_hole+'/tolerance/upper_tolerance')/1000
+        hole_tol_minus       = rospy.get_param('/objects/'+target_hole+'/tolerance/lower_tolerance')/1000    
+        self.hole_depth      = rospy.get_param('/objects/'+target_peg+'/dimensions/min_insertion_depth')/1000
+        
+        #Calculate transform from TCP to peg corner
+        self.peg_locations   = rospy.get_param('/objects/'+target_peg+'/grasping/pinch_grasping/locations')
+        tempTF1 = PegInHoleNodeCompliance.get_pose_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
+        "tool0_controller")
+        #.sendTransform(self.tf_buffer)
+        tempTF2 = self.tf_buffer.lookup_transform("base_link", "tool0_controller", rospy.Time(0), rospy.Duration(100.0))
+        # #Use that to calculate TCP goal rel. to hole position.
+        self.peg_corner_pose = tf2_geometry_msgs.do_transform_pose(tempTF1, tempTF2)
+        # self.peg_corner_pose =  PegInHoleNodeCompliance.get_tf_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
+        # "tool0_controller", "peg_corner_position")
+        rospy.logerr("Peg Corner Position: " + str(self.peg_corner_pose))
+        self._tool_offset_pub.publish(self.peg_corner_pose)
+        rospy.sleep(.025)
+        self._tool_offset_pub.publish(self.peg_corner_pose)
+        
+                # {'tip': {'pose': [0, 0, 50], 'orientation': [0, 0, 0], 'grasp_pressure': 50}, 
+                # 'corner': {'pose': [50, 3.5, 3.5], 'orientation': [-35.26, 30, 9.74], 'grasp_pressure': 50},
+                # 'middle': {'pose': [0, 0, 25], 'orientation': [0, 0, 0], 'grasp_pressure': 50}}
+        #rospy.logerr("From peg corner to robot wrist: " + str(self.tf_buffer.lookup_transform(tempTF1)))
         #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
         #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
         
@@ -179,15 +184,15 @@ class PegInHoleNodeCompliance(Machine):
 
         self.current_pose = self._get_current_pos()
         self.pose_vec = self._full_compliance_position()
-        rospy.logwarn_once('HERE IS THE POSE BELOW::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
-        print(self.current_pose)
+        # rospy.logwarn_once('HERE IS THE POSE BELOW::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
+        # print(self.current_pose)
         self.current_wrench = self._first_wrench
         self._average_wrench = self._first_wrench.wrench 
         self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
         #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
         self.average_speed = np.array([0.0,0.0,0.0])
 
-        #setup, run to calculate useful values based on params:
+        #setup, run to calculate useful values based on params:azsxwaqzx
         self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
@@ -206,23 +211,30 @@ class PegInHoleNodeCompliance(Machine):
         output_pose = PegInHoleNodeCompliance.get_pose_from_YAML(pos, ori, base_frame) #tf_task_board_to_hole
         output_tf = TransformStamped()
         output_tf.header = output_pose.header
-        output_tf.transform.translation = output_pose.pose.position
+        #output_tf.transform.translation = output_pose.pose.position
+        [output_tf.transform.translation.x, output_tf.transform.translation.y, output_tf.transform.translation.z] = [output_pose.pose.position.x, output_pose.pose.position.y, output_pose.pose.position.z]
         output_tf.transform.rotation   = output_pose.pose.orientation
         output_tf.child_frame_id = child_frame
         
         return output_tf
-
     @staticmethod
-    def get_pose_from_YAML(pos, ori, base_frame): #Returns the pose wrt base_frame based on vector inputs
+    def get_pose_from_YAML(pos, ori, base_frame): #Returns the pose wrt base_frame based on vector inputs.
+        #Inputs are in mm XYZ and degrees RPY
         #move to utils
         output_pose = PoseStamped() #tf_task_board_to_hole
         output_pose.header.stamp = rospy.get_rostime()
         output_pose.header.frame_id = base_frame
         tempQ = list(quaternion_from_euler(ori[0]*np.pi/180, ori[1]*np.pi/180, ori[2]*np.pi/180))
-        output_pose.pose = Pose(Point(pos[0],pos[1],pos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        output_pose.pose = Pose(Point(pos[0]/1000,pos[1]/1000,pos[2]/1000) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
         
         return output_pose
+    
+    # def invert_tf(self, input):
+    #     input.translation = list(self._as_array(input.position)*-1.0)
+    #     input.rotation = tf2_ros.
         
+
+
 
     def _spiral_search_basic_compliance_control(self):
         #Generate position, orientation vectors which describe a plane spiral about z; conform to the current z position. 
@@ -271,7 +283,7 @@ class PegInHoleNodeCompliance(Machine):
         #self.current_wrench.wrench.force = self._subtract_vector3s(self.current_wrench.wrench.force, self._bias_wrench.force)
         #self.current_wrench.wrench.torque = self._subtract_vector3s(self.current_wrench.wrench.force, self._bias_wrench.force)
         #self.current_wrench.force = self._create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
-        rospy.logwarn_once("Callback working! " + str(data))
+        #rospy.logwarn_once("Callback working! " + str(data))
     
     def _subtract_vector3s(self, vec1, vec2):
         newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
@@ -307,7 +319,7 @@ class PegInHoleNodeCompliance(Machine):
         self._wrench_pub.publish(result_wrench)
 
     # def _publish_pose(self, position, orientation):
-    def _publish_pose(self, pose_stamped_vec):
+    def _publish_pose(self, pose_stamped_vec, offset = None):
         #Takes in vector representations of position vector (x,y,z) and orientation quaternion
         # Ensure controller is loaded
         # self.check_controller(self.controller_name)
@@ -329,6 +341,9 @@ class PegInHoleNodeCompliance(Machine):
         # Set header values
         pose_stamped.header.stamp = rospy.get_rostime()
         pose_stamped.header.frame_id = "base_link"
+        
+        if(type(offset) == PoseStamped):
+            pose_stamped = tf2_geometry_msgs.do_transform_pose(pose_stamped, offset)
 
         self._pose_pub.publish(pose_stamped)
 
@@ -470,7 +485,7 @@ class PegInHoleNodeCompliance(Machine):
 
             self.all_states_calc()
 
-            rospy.logwarn_throttle(0.5, 'In the check_load_cell_feedback. switch_state is:' + str(switch_state) )
+            rospy.logwarn_once('In the check_load_cell_feedback. switch_state is:' + str(switch_state) )
 
             if (self.curr_time_numpy > 2):
                 self._bias_wrench = self._average_wrench
@@ -503,7 +518,7 @@ class PegInHoleNodeCompliance(Machine):
             self.wrench_vec  = self._get_command_wrench([0,0,seeking_force])
             self.pose_vec = self._linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
 
-            rospy.logwarn_throttle(2, 'In the finding_surface. switch_state is:' + str(switch_state))
+            rospy.logwarn_once('In the finding_surface. switch_state is:' + str(switch_state))
  
             if(not self._force_cap_check()):
                 switch_state = True
@@ -678,9 +693,9 @@ class PegInHoleNodeCompliance(Machine):
         self._update_avg_speed()
         self._update_average_wrench()
         # self._update_plots()
-        rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
-            str(self._as_array(self._average_wrench.torque)))
-        rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
+        # rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+        #     str(self._as_array(self._average_wrench.torque)))
+        # rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
 
        
 
