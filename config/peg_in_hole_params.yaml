@@ -65,18 +65,24 @@ objects: #List objects and their required description
                     grasp_pressure: 50 #Percent maximum force
                     #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
                 locations:
-                    - pose: [50, 0, 0] #Position relative to peg root frame
-                      grasp_name: "tip"
-                      orientation: [1, 2, 3] #Orientation relative to peg root frame
-                      gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-                    - pose: [25, 0, 0] #Position relative to peg root frame
-                      grasp_name: "middle"
-                      orientation: [1, 2, 3] #Orientation relative to peg root frame
-                      gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-4, -4, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
     hole_8mm:
         stl_file: "file_location.stl"
         local_position: [36, -116, 0] #Starting position from task_frame
@@ -105,19 +111,25 @@ objects: #List objects and their required description
                 default_ properties:
                     grasp_pressure: 50 #Percent maximum force
                     #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-                locations:
-                    - pose: [50, 0, 0] #Position relative to peg root frame
-                      grasp_name: "tip"
-                      orientation: [1, 2, 3] #Orientation relative to peg root frame
-                      gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-                    - pose: [25, 0, 0] #Position relative to peg root frame
-                      grasp_name: "middle"
-                      orientation: [1, 2, 3] #Orientation relative to peg root frame
-                      gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                locations: #points of interest on the pin
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-1, -1, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
     hole_4mm:
         stl_file: "file_location.stl"
         local_position: [37, -191, 0] #Starting position from task_frame
@@ -147,18 +159,24 @@ objects: #List objects and their required description
                     grasp_pressure: 50 #Percent maximum force
                     #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
                 locations:
-                    - pose: [50, 0, 0] #Position relative to peg root frame
-                      grasp_name: "tip"
-                      orientation: [1, 2, 3] #Orientation relative to peg root frame
-                      gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-                    - pose: [25, 0, 0] #Position relative to peg root frame
-                      grasp_name: "middle"
-                      orientation: [1, 2, 3] #Orientation relative to peg root frame
-                      gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-8, -8, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
     hole_16mm:
         stl_file: "file_location.stl"
         local_position: [262, -266, 0] #Starting position from task_frame

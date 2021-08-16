@@ -186,6 +186,8 @@ Visualization Manager:
           Value: false
         forearm_link:
           Value: false
+        peg_corner_position:
+          Value: true
         shoulder_link:
           Value: false
         table:
@@ -214,7 +216,8 @@ Visualization Manager:
         base_link:
           base:
             tool0_controller:
-              {}
+              peg_corner_position:
+                {}
           base_link_inertia:
             shoulder_link:
               upper_arm_link:

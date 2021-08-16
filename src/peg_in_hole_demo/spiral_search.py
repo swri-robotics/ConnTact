@@ -101,7 +101,8 @@ class PegInHoleNodeCompliance(Machine):
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         self._target_pub = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
         self._tool_offset_pub = rospy.Publisher('peg_corner_position', PoseStamped, queue_size=2, latch=True)
-        #self._tf_broadcaster = tf2_ros.StaticTransformBroadcaster.
+        # rospy.init_node('peg_tf_static_broadcaster')
+        self.broadcaster = tf2_ros.StaticTransformBroadcaster()
 
         rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
         
@@ -122,11 +123,13 @@ class PegInHoleNodeCompliance(Machine):
         self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
         self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
         self._first_wrench = self._create_wrench([0,0,0], [0,0,0])
-        self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
-        self._amp_c  = np.double(.002)  #meters amplitude in _spiral_search_basic_compliance_control
-        self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
+        self._freq_c = np.double(0.20) #Hz frequency in _spiral_search_basic_compliance_control
+        self._amp_c  = np.double(.001)  #meters amplitude in _spiral_search_basic_compliance_control
+        self._amp_limit_c = 2 * np.pi * 15 #search number of radii distance outward
 
         #job parameters moved in from the peg_in_hole_params.yaml file
+        #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
+        #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
         target_peg = 'peg_10mm'
         target_hole = 'hole_10mm'
         temp_z_position_offset = 207 #Our robot is reading Z positions wrong on the pendant for some reason.
@@ -158,7 +161,9 @@ class PegInHoleNodeCompliance(Machine):
         self.peg_locations   = rospy.get_param('/objects/'+target_peg+'/grasping/pinch_grasping/locations')
         tempTF1 = PegInHoleNodeCompliance.get_pose_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
         "tool0_controller")
-        #.sendTransform(self.tf_buffer)
+        pegCornerTransform = PegInHoleNodeCompliance.get_tf_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
+        "tool0_controller", "peg_corner_position")
+        self.broadcaster.sendTransform(pegCornerTransform)
         tempTF2 = self.tf_buffer.lookup_transform("base_link", "tool0_controller", rospy.Time(0), rospy.Duration(100.0))
         # #Use that to calculate TCP goal rel. to hole position.
         self.peg_corner_pose = tf2_geometry_msgs.do_transform_pose(tempTF1, tempTF2)
@@ -693,9 +698,9 @@ class PegInHoleNodeCompliance(Machine):
         self._update_avg_speed()
         self._update_average_wrench()
         # self._update_plots()
-        # rospy.logwarn_throttle(.5, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
-        #     str(self._as_array(self._average_wrench.torque)))
-        # rospy.logwarn_throttle(.5, "Average speed in mm/second is " + str(1000*self.average_speed))
+        rospy.logwarn_throttle(1, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+             str(self._as_array(self._average_wrench.torque)))
+        rospy.logwarn_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
 
        
 
