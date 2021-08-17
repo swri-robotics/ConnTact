@@ -50,10 +50,22 @@
 
     </link>
 
+
+    <link name="${parent}_to_gripper_tip_link">
+    </link>
+
     <joint name="${parent}tool0_to_eoat_link" type="fixed">
         <parent link="${parent}" />
         <child link="${parent}_eoat_link" />
         <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.00" />
+    </joint>
+
+
+
+    <joint name="${parent}_gripper_TCP_joint" type="fixed">
+        <parent link="tool0" />
+        <child link="${parent}_to_gripper_tip_link" />
+        <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.1700" />
     </joint>
 
   </xacro:macro>

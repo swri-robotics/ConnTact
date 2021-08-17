@@ -6,6 +6,7 @@
 # Imports for ros
 # from _typeshed import StrPath
 from operator import truediv
+from pickle import STRING
 import rospy
 # import tf
 import numpy as np
@@ -53,6 +54,7 @@ INSERTING_PEG_STATE  = 'inserting peg'
 COMPLETION_STATE     = 'completed insertion'
 SAFETY_RETRACT_STATE = 'retracing to safety' 
 
+
 #Trigger names
 CHECK_FEEDBACK_TRIGGER     = 'check loadcell feedback'
 START_APPROACH_TRIGGER     = 'start approach'
@@ -60,6 +62,7 @@ SURFACE_FOUND_TRIGGER      = 'surface found'
 HOLE_FOUND_TRIGGER         = 'hole found'
 ASSEMBLY_COMPLETED_TRIGGER = 'assembly completed'
 SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
+RESTART_TEST_TRIGGER       = 'restart test'
 
 class PegInHoleNodeCompliance(Machine):
 
@@ -92,6 +95,8 @@ class PegInHoleNodeCompliance(Machine):
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':INSERTING_PEG_STATE , 'dest':SAFETY_RETRACT_STATE, 'after': 'safety_retraction'       },
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':COMPLETION_STATE    , 'dest':SAFETY_RETRACT_STATE, 'after': 'safety_retraction'       },
 
+            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':CHECK_FEEDBACK_STATE, 'after': 'check_load_cell_feedback'}
+
 
         ]
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
@@ -109,6 +114,7 @@ class PegInHoleNodeCompliance(Machine):
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        self.activeTCP = "tool0"
         
         self._rate_selected = 100
         self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
@@ -123,10 +129,36 @@ class PegInHoleNodeCompliance(Machine):
         self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
         self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
         self._first_wrench = self._create_wrench([0,0,0], [0,0,0])
-        self._freq_c = np.double(0.20) #Hz frequency in _spiral_search_basic_compliance_control
+        self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
         self._amp_c  = np.double(.001)  #meters amplitude in _spiral_search_basic_compliance_control
         self._amp_limit_c = 2 * np.pi * 15 #search number of radii distance outward
 
+        self.readYAML();
+        
+        #loop parameters
+        self.curr_time = rospy.get_rostime() - self._start_time
+        self.curr_time_numpy = np.double(self.curr_time.to_sec())
+        self.wrench_vec  = self._get_command_wrench([0,0,0])
+        self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
+
+        self.current_pose = self._get_current_pos()
+        self.pose_vec = self._full_compliance_position()
+        # rospy.logwarn_once('HERE IS THE POSE BELOW::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
+        # print(self.current_pose)
+        self.current_wrench = self._first_wrench
+        self._average_wrench = self._first_wrench.wrench 
+        self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
+        #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
+        self.average_speed = np.array([0.0,0.0,0.0])
+
+        
+        self.highForceWarning = False
+        self.surface_height = None
+        self.restart_height = .1
+        self.collision_confidence = 0;
+
+
+    def readYAML(self):
         #job parameters moved in from the peg_in_hole_params.yaml file
         #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
         #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
@@ -159,44 +191,22 @@ class PegInHoleNodeCompliance(Machine):
         
         #Calculate transform from TCP to peg corner
         self.peg_locations   = rospy.get_param('/objects/'+target_peg+'/grasping/pinch_grasping/locations')
-        tempTF1 = PegInHoleNodeCompliance.get_pose_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
-        "tool0_controller")
+        # tempTF1 = PegInHoleNodeCompliance.get_pose_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
+        # "tool0_to_gripper_tip_link")
+        
         pegCornerTransform = PegInHoleNodeCompliance.get_tf_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
-        "tool0_controller", "peg_corner_position")
+        "tool0_to_gripper_tip_link", "peg_corner_position")
         self.broadcaster.sendTransform(pegCornerTransform)
-        tempTF2 = self.tf_buffer.lookup_transform("base_link", "tool0_controller", rospy.Time(0), rospy.Duration(100.0))
+        # tempTF2 = self.tf_buffer.lookup_transform("base_link", "tool0_to_gripper_tip_link", rospy.Time(0), rospy.Duration(100.0))
         # #Use that to calculate TCP goal rel. to hole position.
-        self.peg_corner_pose = tf2_geometry_msgs.do_transform_pose(tempTF1, tempTF2)
+        # self.peg_corner_pose = tf2_geometry_msgs.do_transform_pose(tempTF1, tempTF2)
         # self.peg_corner_pose =  PegInHoleNodeCompliance.get_tf_from_YAML(self.peg_locations['corner']['pose'], self.peg_locations['corner']['orientation'],
-        # "tool0_controller", "peg_corner_position")
-        rospy.logerr("Peg Corner Position: " + str(self.peg_corner_pose))
-        self._tool_offset_pub.publish(self.peg_corner_pose)
-        rospy.sleep(.025)
-        self._tool_offset_pub.publish(self.peg_corner_pose)
+        # "tool0_to_gripper_tip_link", "peg_corner_position")
+        # rospy.logerr("Peg Corner Position: " + str(self.peg_corner_pose))
+        # self._tool_offset_pub.publish(self.peg_corner_pose)
+        # rospy.sleep(.025)
+        # self._tool_offset_pub.publish(self.peg_corner_pose)
         
-                # {'tip': {'pose': [0, 0, 50], 'orientation': [0, 0, 0], 'grasp_pressure': 50}, 
-                # 'corner': {'pose': [50, 3.5, 3.5], 'orientation': [-35.26, 30, 9.74], 'grasp_pressure': 50},
-                # 'middle': {'pose': [0, 0, 25], 'orientation': [0, 0, 0], 'grasp_pressure': 50}}
-        #rospy.logerr("From peg corner to robot wrist: " + str(self.tf_buffer.lookup_transform(tempTF1)))
-        #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
-        #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
-        
-        #loop parameters
-        self.curr_time = rospy.get_rostime() - self._start_time
-        self.curr_time_numpy = np.double(self.curr_time.to_sec())
-        self.wrench_vec  = self._get_command_wrench([0,0,0])
-        self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
-
-        self.current_pose = self._get_current_pos()
-        self.pose_vec = self._full_compliance_position()
-        # rospy.logwarn_once('HERE IS THE POSE BELOW::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
-        # print(self.current_pose)
-        self.current_wrench = self._first_wrench
-        self._average_wrench = self._first_wrench.wrench 
-        self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
-        #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
-        self.average_speed = np.array([0.0,0.0,0.0])
-
         #setup, run to calculate useful values based on params:azsxwaqzx
         self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
@@ -205,10 +215,6 @@ class PegInHoleNodeCompliance(Machine):
         #rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
         #rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
 
-        self.highForceWarning = False
-        self.surface_height = None
-        self.restart_height = .1
-        self.collision_confidence = 0;
 
     @staticmethod
     def get_tf_from_YAML(pos, ori, base_frame, child_frame): #Returns the transform from base_frame to child_frame based on vector inputs
@@ -234,12 +240,6 @@ class PegInHoleNodeCompliance(Machine):
         
         return output_pose
     
-    # def invert_tf(self, input):
-    #     input.translation = list(self._as_array(input.position)*-1.0)
-    #     input.rotation = tf2_ros.
-        
-
-
 
     def _spiral_search_basic_compliance_control(self):
         #Generate position, orientation vectors which describe a plane spiral about z; conform to the current z position. 
@@ -294,8 +294,13 @@ class PegInHoleNodeCompliance(Machine):
         newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
         return newVector3
 
-    def _get_current_pos(self):
-        transform = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(100.0))
+    def _get_current_pos(self, offset = None):
+        #Read in current pose from TF
+        transform = TransformStamped;
+        # if(type(offset) == str):
+        #     transform = self.tf_buffer.lookup_transform("base_link", self.activeTCP, rospy.Time(0), rospy.Duration(100.0))
+        # else:
+        transform = self.tf_buffer.lookup_transform("base_link", self.activeTCP, rospy.Time(0), rospy.Duration(100.0))
         return transform
 
     def _get_command_wrench(self, vec = [0,0,5]):
@@ -324,8 +329,9 @@ class PegInHoleNodeCompliance(Machine):
         self._wrench_pub.publish(result_wrench)
 
     # def _publish_pose(self, position, orientation):
-    def _publish_pose(self, pose_stamped_vec, offset = None):
+    def _publish_pose(self, pose_stamped_vec):
         #Takes in vector representations of position vector (x,y,z) and orientation quaternion
+        #If provided, subtracts offset (thus positioning peg endpoint instead of )
         # Ensure controller is loaded
         # self.check_controller(self.controller_name)
 
@@ -347,34 +353,22 @@ class PegInHoleNodeCompliance(Machine):
         pose_stamped.header.stamp = rospy.get_rostime()
         pose_stamped.header.frame_id = "base_link"
         
-        if(type(offset) == PoseStamped):
-            pose_stamped = tf2_geometry_msgs.do_transform_pose(pose_stamped, offset)
-
+        if(self.activeTCP != "tool0"):
+            #rospy.logerr_throttle(2, "Current pose is:" + str(self.current_pose))
+            rospy.logerr_throttle(5, "Original command pose was:" + str(pose_stamped))
+            transform_tcp_to_wrist = self.tf_buffer.lookup_transform(self.activeTCP, "tool0", rospy.Time(0), rospy.Duration(100.0))
+            rospy.logerr_throttle(5, "transform from tcp to wrist (up chain) is:" + str(transform_tcp_to_wrist))
+            pose_stamped = tf2_geometry_msgs.do_transform_pose(pose_stamped, transform_tcp_to_wrist)
+            pose_stamped.header.frame_id = "base_link"
+            self._tool_offset_pub.publish(pose_stamped)
+            rospy.logerr_throttle(5, "So new command pose is:" + str(pose_stamped))
+            rospy.logerr_throttle(5, "Distance from tool0 is " + str( np.linalg.norm(self._as_array(pose_stamped.pose.position)
+             -self._as_array(self.tf_buffer.lookup_transform("base_link", 'tool0', rospy.Time(0), rospy.Duration(100.0)).transform.translation )) ) )
+             #Finding that the new position isn't offset from the old position by the right straight-line distance
+             #This is symptomatic of the output of the Do_Transform function being wrong; what's causing that??? TODO
+            
         self._pose_pub.publish(pose_stamped)
 
-
-        # r = rospy.Rate(30)
-
-        # while 
-
-        # # Publish pose to controller, ensuring with a lock only one callback publishes at a time
-        # with self._pose_lock:
-        #     # Get transform from the base_link to tool0
-        #     # TODO: Documentation states args should be reversed, need to figure out why
-        #     (trans,rot) = self.tf_listener.lookupTransform('/base_link', '/tool0', rospy.Time(0))
-        #     rot = [rot[3], rot[0], rot[1], rot[2]] # Change quaternion order from xyzw to wxyz
-        #     rot_matrix = tf.transformations.quaternion_matrix(rot)
-        #     orientation_matrix = tf.transformations.quaternion_matrix(orientation)
-
-        #     # Continue publishing until given destination is reached
-        #     # TODO: Need to figure out a good way to check if the position is eventually reached, maybe a timeout?
-        #     while not (np.allclose(trans, position, rtol=.02, atol=.02) and np.allclose(rot_matrix, orientation_matrix, rtol=.01, atol=.01)):
-        #         self._pose_pub.publish(pose_stamped)
-        #         # Update transform to current location
-        #         (trans,rot) = self.tf_listener.lookupTransform('/base_link', '/tool0', rospy.Time(0))
-        #         rot = [rot[3], rot[0], rot[1], rot[2]] # Change quaternion order from xyzw to wxyz
-        #         rot_matrix = tf.transformations.quaternion_matrix(rot)
-        #         r.sleep()
 
     def _create_wrench(self, force, torque):
         wrench_stamped = WrenchStamped()
@@ -409,20 +403,8 @@ class PegInHoleNodeCompliance(Machine):
     def _update_avg_speed(self):
         self.curr_time = rospy.get_rostime() - self._start_time
         if(self.curr_time.to_sec() > rospy.Duration(.5).to_sec()):
-            #rospy.logwarn("Averageing speed! Time:" + str(self.curr_time.to_sec()))
-            #currentPosition = self._get_current_pos().transform.translation;
-            #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(100.0))
             try:
-                #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(2.0))
-                earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(2.0))
-                # earlierPosition = self.tf_buffer.lookup_transform_full(
-                #     "tool0",
-                #     (rospy.Time.now() - rospy.Duration(.1)),
-                #     "base_link",
-                #     (rospy.Time.now() - rospy.Duration(.1)),
-                #     "base_link",
-                #     rospy.Duration(1)
-                # )
+                earlierPosition = self.tf_buffer.lookup_transform("base_link", self.activeTCP, rospy.Time.now() - rospy.Duration(.1), rospy.Duration(2.0))
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
                 raise
             #Speed Diff: distance moved / time between poses
@@ -516,7 +498,8 @@ class PegInHoleNodeCompliance(Machine):
         #Take an average of static sensor reading to check that it's stable.
         switch_state = False
         while switch_state == False:
-
+            origTCP = self.activeTCP
+            self.activeTCP = "peg_corner_position"
             self.all_states_calc()
 
             seeking_force = 5
@@ -542,9 +525,12 @@ class PegInHoleNodeCompliance(Machine):
                     switch_state = True
                     self.next_trigger = SURFACE_FOUND_TRIGGER
                     self.collision_confidence = 0.01
+            else:
+                self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
  
             self._publish_pose(self.pose_vec)
             self._publish_wrench(self.wrench_vec)
+            self.activeTCP = origTCP
             self._rate.sleep()
 
     def finding_hole(self):
@@ -556,7 +542,7 @@ class PegInHoleNodeCompliance(Machine):
 
             self.all_states_calc()
 
-            seeking_force = 6.0
+            seeking_force = 7.0
             self.wrench_vec  = self._get_command_wrench([0,0,seeking_force])
             self.pose_vec = self._spiral_search_basic_compliance_control()
  
@@ -667,16 +653,16 @@ class PegInHoleNodeCompliance(Machine):
 
             rospy.logerr_throttle(.5, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
             if( self._vectorRegionCompare_symmetrical(self.average_speed, [2/1000,2/1000,3/1000]) 
-                and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,5.5])
+                and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [2,2,6])
                 and self.current_pose.transform.translation.z > self.restart_height):
                 self.collision_confidence = self.collision_confidence + .5/self._rate_selected
                 rospy.logerr_throttle(.5, "Static. Restarting confidence: " + str( np.round(self.collision_confidence, 2) ) + " out of 1.")
                 #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
                 if(self.collision_confidence > 1):
-                        #Stopped moving vertically and in contact with something that counters push force
+                        #Restart Search
                         rospy.logerr_throttle(1.0, "Restarting test!")
                         switch_state = True
-                        self.next_trigger = ASSEMBLY_COMPLETED_TRIGGER
+                        self.next_trigger = RESTART_TEST_TRIGGER
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 90/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z > self.restart_height):
