@@ -1,3 +1,4 @@
+import peg_in_hole_demo.spiral_search
     #State names
     # IDLE_STATE           = 'idle state'
     # CHECK_FEEDBACK_STATE = 'checking load cell feedback'
@@ -16,7 +17,7 @@
     # SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 
 
-class algorithm_spiral_search(PegInHoleNodeCompliance):
+class algorithm_spiral_search(peg_in_hole_demo.spiral_search.spiral_search.PegInHoleNodeCompliance):
 
     def __init__(self):
         
@@ -47,4 +48,7 @@ class algorithm_spiral_search(PegInHoleNodeCompliance):
 
 
         ]
-        Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
+        
+        self.Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
+
+

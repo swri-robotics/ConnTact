@@ -5,6 +5,7 @@
 
 # Imports for ros
 # from _typeshed import StrPath
+from builtins import staticmethod
 from operator import truediv
 from pickle import STRING
 import rospy
@@ -21,10 +22,12 @@ from controller_manager_msgs.srv import SwitchController, LoadController, ListCo
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
 
 import tf2_ros
+import tf2_py 
 # import tf2
 import tf2_geometry_msgs
 
-from tf.transformations import quaternion_from_euler
+#from tf.transformations import quaternion_from_euler
+import tf.transformations as trfm
 
 from threading import Lock
 
@@ -115,6 +118,7 @@ class PegInHoleNodeCompliance(Machine):
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.activeTCP = "tool0"
+        self.activeTCP_Title = "peg_10mm"
         
         self._rate_selected = 100
         self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
@@ -133,8 +137,14 @@ class PegInHoleNodeCompliance(Machine):
         self._amp_c  = np.double(.001)  #meters amplitude in _spiral_search_basic_compliance_control
         self._amp_limit_c = 2 * np.pi * 15 #search number of radii distance outward
 
+
+
+        #generate helpful transform matrix for later
+        self.tool_data = dict()
+
         self.readYAML();
-        
+
+
         #loop parameters
         self.curr_time = rospy.get_rostime() - self._start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
@@ -158,12 +168,14 @@ class PegInHoleNodeCompliance(Machine):
         self.collision_confidence = 0;
 
 
+
     def readYAML(self):
         #job parameters moved in from the peg_in_hole_params.yaml file
         #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
         #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
         target_peg = 'peg_10mm'
         target_hole = 'hole_10mm'
+        self.activeTCP_Title = target_peg
         temp_z_position_offset = 207 #Our robot is reading Z positions wrong on the pendant for some reason.
         taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position')))
         taskPos[2] = taskPos[2] + temp_z_position_offset
@@ -212,9 +224,15 @@ class PegInHoleNodeCompliance(Machine):
         self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
         self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
-        #rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
-        #rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
-
+        # rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
+        # rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
+        a = self.tf_buffer.lookup_transform("tool0", 'peg_corner_position', rospy.Time(0), rospy.Duration(100.0))
+        self.tool_data[target_peg + '_transform'] = a
+        self.tool_data[target_peg + '_matrix'] = PegInHoleNodeCompliance.to_homogeneous(a.transform.rotation, a.transform.translation)
+        rospy.logwarn('Transform for ' + target_peg + ' is ' + str(a) + " and that gives a homog matrix of " + str(self.tool_data[target_peg + '_matrix']))
+        b = PegInHoleNodeCompliance.matrix_to_tf(self.tool_data[target_peg + '_matrix'], 'tool0', 'peg_corner_position')
+        rospy.logwarn('Converting back to Transform! Result: ' + str(b))
+        #quit()
 
     @staticmethod
     def get_tf_from_YAML(pos, ori, base_frame, child_frame): #Returns the transform from base_frame to child_frame based on vector inputs
@@ -235,7 +253,7 @@ class PegInHoleNodeCompliance(Machine):
         output_pose = PoseStamped() #tf_task_board_to_hole
         output_pose.header.stamp = rospy.get_rostime()
         output_pose.header.frame_id = base_frame
-        tempQ = list(quaternion_from_euler(ori[0]*np.pi/180, ori[1]*np.pi/180, ori[2]*np.pi/180))
+        tempQ = list(trfm.quaternion_from_euler(ori[0]*np.pi/180, ori[1]*np.pi/180, ori[2]*np.pi/180))
         output_pose.pose = Pose(Point(pos[0]/1000,pos[1]/1000,pos[2]/1000) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
         
         return output_pose
@@ -336,7 +354,7 @@ class PegInHoleNodeCompliance(Machine):
         # self.check_controller(self.controller_name)
 
         # Create poseStamped msg
-        pose_stamped = PoseStamped()
+        goal_pose = PoseStamped()
 
         # Set the position and orientation
         point = Point()
@@ -344,31 +362,76 @@ class PegInHoleNodeCompliance(Machine):
 
         # point.x, point.y, point.z = position
         point.x, point.y, point.z = pose_stamped_vec[0][:]
-        pose_stamped.pose.position = point
+        goal_pose.pose.position = point
 
         quaternion.w, quaternion.x, quaternion.y, quaternion.z  = pose_stamped_vec[1][:]
-        pose_stamped.pose.orientation = quaternion
+        goal_pose.pose.orientation = quaternion
 
         # Set header values
-        pose_stamped.header.stamp = rospy.get_rostime()
-        pose_stamped.header.frame_id = "base_link"
+        goal_pose.header.stamp = rospy.get_rostime()
+        goal_pose.header.frame_id = "base_link"
         
         if(self.activeTCP != "tool0"):
-            #rospy.logerr_throttle(2, "Current pose is:" + str(self.current_pose))
-            rospy.logerr_throttle(5, "Original command pose was:" + str(pose_stamped))
-            transform_tcp_to_wrist = self.tf_buffer.lookup_transform(self.activeTCP, "tool0", rospy.Time(0), rospy.Duration(100.0))
-            rospy.logerr_throttle(5, "transform from tcp to wrist (up chain) is:" + str(transform_tcp_to_wrist))
-            pose_stamped = tf2_geometry_msgs.do_transform_pose(pose_stamped, transform_tcp_to_wrist)
-            pose_stamped.header.frame_id = "base_link"
-            self._tool_offset_pub.publish(pose_stamped)
-            rospy.logerr_throttle(5, "So new command pose is:" + str(pose_stamped))
-            rospy.logerr_throttle(5, "Distance from tool0 is " + str( np.linalg.norm(self._as_array(pose_stamped.pose.position)
-             -self._as_array(self.tf_buffer.lookup_transform("base_link", 'tool0', rospy.Time(0), rospy.Duration(100.0)).transform.translation )) ) )
-             #Finding that the new position isn't offset from the old position by the right straight-line distance
-             #This is symptomatic of the output of the Do_Transform function being wrong; what's causing that??? TODO
-            
-        self._pose_pub.publish(pose_stamped)
+            #Convert pose in TCP coordinates to assign wrist "tool0" position for controller
 
+            b_link = goal_pose.header.frame_id
+            goal_matrix = PegInHoleNodeCompliance.to_homogeneous(goal_pose.pose.orientation, goal_pose.pose.position) #tf from base_link to tcp_goal = bTg
+            backing_mx = trfm.inverse_matrix(self.tool_data[self.activeTCP_Title + '_matrix']) #tf from tcp_goal to wrist = gTw
+            goal_matrix = np.dot(goal_matrix, backing_mx) #bTg * gTw = bTw
+            goal_pose = PegInHoleNodeCompliance.matrix_to_pose(goal_matrix, b_link)
+            
+            self._tool_offset_pub.publish(goal_pose)
+
+            
+        self._pose_pub.publish(goal_pose)
+
+    @staticmethod
+    def to_homogeneous(quat, point):
+        #Takes a quaternion and msg.Point and outputs a homog. tf matrix.
+        #TODO candidate for Utils 
+        output = trfm.quaternion_matrix(np.array([quat.x, quat.y, quat.z, quat.w]))
+        output[0][3] = point.x
+        output[1][3] = point.y
+        output[2][3] = point.z
+        return output
+    
+    @staticmethod
+    def matrix_to_pose(input, base_frame):
+        output = PoseStamped()
+        output.header.stamp = rospy.get_rostime()
+        output.header.frame_id = base_frame
+
+        quat = trfm.quaternion_from_matrix(input)
+        output.pose.orientation.x = quat[0]
+        output.pose.orientation.y = quat[1]
+        output.pose.orientation.z = quat[2]
+        output.pose.orientation.w = quat[3]
+        output.pose.position.x = input[0][3]
+        output.pose.position.y = input[1][3]
+        output.pose.position.z = input[2][3]
+        return output
+    
+    @staticmethod
+    def matrix_to_tf(input, base_frame, child_frame):
+        pose = PegInHoleNodeCompliance.matrix_to_pose(input, base_frame)
+        output = PegInHoleNodeCompliance.swap_pose_tf(pose, child_frame)
+        return output
+
+    @staticmethod
+    def swap_pose_tf(input, child_frame = "endpoint"):
+        if('PoseStamped' in str(type(input))):
+            output = TransformStamped()
+            output.header = input.header
+            output.transform = input.pose
+            output.child_frame_id = child_frame
+            return output
+        else:
+            if('TransformStamped' in str(type(input))):
+                output = PoseStamped()
+                output.header = input.header
+                output.pose = input.transform
+                return output
+        rospy.logerr("Invalid input to swap_pose_tf !!!")
 
     def _create_wrench(self, force, torque):
         wrench_stamped = WrenchStamped()
