@@ -4,12 +4,12 @@
 
 import rospy
 
-from peg_in_hole_demo.spiral_search import PegInHoleNodeCompliance
+from peg_in_hole_demo.spiral_search import SpiralSearch
 
 if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
 
-    assembly_application = PegInHoleNodeCompliance()
+    assembly_application = SpiralSearch()
 
     assembly_application.main()
 
