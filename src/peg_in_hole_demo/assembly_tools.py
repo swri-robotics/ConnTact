@@ -193,6 +193,10 @@ class AssemblyTools():
 
         #Load cell current data
 
+    # Defines the state machine's next trigger it should execute 
+    def post_action(self, trigger_name):
+        return [trigger_name, True]
+
 
     def _subtract_vector3s(self, vec1, vec2):
         newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
@@ -337,20 +341,6 @@ class AssemblyTools():
             self.highForceWarning = True
             rospy.sleep(1) #Want the system to stop for a second in hopes that it prevents higher forces/torques. May not be helping.
         return True
-        
-
-    # def main(self):
-    #     # rospy.init_node("demo_assembly_application_compliance")
-
-    #     # assembly_application = SpiralSearch()
-    #     # assembly_application._algorithm_force_control()
-
-    #     #---------------------------------------------COMPLIANCE CONTROL BELOW, FORCE CONTROL ABOVE
-    #     rospy.logwarn_once('MADE IT TO MAIN FUNCTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    #     rospy.sleep(3.5)
-    #     # assembly_application._init_plot()
-
-    #     self._algorithm_compliance_control()
         
 class AssemblyFilters():
 
