@@ -19,7 +19,7 @@
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find peg_in_hole_demo)/config/basic_config_example.rviz" required="true" />
 
-  <node type="demo_assembly_application_compliance_control" name="demo_assembly_application_compliance_control" pkg="peg_in_hole_demo" output="screen" required="true" />
+  <node type="spiral_search_node" name="spiral_search_node" pkg="peg_in_hole_demo" output="screen" required="true" />
 
   <!--node type="mutable_transform_pub" name="mutable_tf_pub" pkg="mutable_transform_publisher" _yaml_path:="$(find peg_in_hole_demo)/config/peg_in_hole_params.yaml"  /-->  
   <!-- rosrun mutable_transform_publisher mutable_transform_pub _yaml_path:=<PATH_TO_YOUR_YAML>-->
