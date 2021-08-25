@@ -1,10 +1,12 @@
 objects: #List objects and their required description
-    peg:
+    peg_10mm:
         stl_file: "file_location.stl"
-        local_part_pose: [1, 2, 3] #Starting transformation from Newtonian inertial frame
+        local_position: [36.5, -202, 7.5] #Starting position from kitting_frame
+        local_orientation: [90, 0, 0]     #Starting rotation from kitting frame
         dimensions:
-            diameter: 16 #mm
+            diameter: 10 #mm
             length: 50 #mm
+            min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
         tolerance:
             upper_tolerance:  0.00 #e.g., h7 (ISO 286)
             lower_tolerance:  -0.01 #e.g., h7 (ISO 286)
@@ -14,22 +16,171 @@ objects: #List objects and their required description
                 default_ properties:
                     grasp_pressure: 50 #Percent maximum force
                     #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-                locations:
-                    - pose: [1, 2, 3] #Coordinate transformation relative to peg/hole local_part_pose being grasped
-                      grasp_name: "tip"
-                      part_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose
-                      gripper_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
+                locations: #points of interest on the pin
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-3.5, -3.5, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
                       #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-                    - pose: [1, 2, 3] #Coordinate transformation relative to peg/hole local_part_pose being grasped
-                      grasp_name: "middle"
-                      part_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose
-                      gripper_grasp_pose: [1, 2, 3] #transformation relative to local_part_pose. Robot solves path planning to reach this cartesian position
-                      grasp_pressure: 50 #Percent maximum force
-                      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
-    hole:
+    hole_10mm:
         stl_file: "file_location.stl"
-        local_part_pose: [1, 2, 3] #Starting transformation from Newtonian inertial frame
+        local_position: [264, -41.3, 0] #Starting position from task_frame
+        local_orientation: [0,0,0]
+        dimensions:
+            diameter: 10.4 #mm
+            depth: 20 #mm
+        tolerance:
+            upper_tolerance:  0.01 #e.g., H7 (ISO 286)
+            lower_tolerance:  0.00 #e.g., H7 (ISO 286)
+        material: "stainless steel"
+    peg_8mm:
+        stl_file: "file_location.stl"
+        local_position: [36.5, -202, 4] #TODO:_Get real values #Starting position from kitting_frame
+        local_orientation: [90, 0, 0]   #TODO: Get real values  #rotations about new relative axes
+        dimensions:
+            diameter: 8 #mm
+            length: 50 #mm
+            min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
+        tolerance:
+            upper_tolerance:  0.00 #mm, e.g., h7 (ISO 286)
+            lower_tolerance:  -0.05 #mm, e.g., h7 (ISO 286)
+        material: "stainless steel"
+        grasping:
+            pinch_grasping: #For pinch gripper being used on the demo. True for shafts, false for fixed pegs
+                default_ properties:
+                    grasp_pressure: 50 #Percent maximum force
+                    #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                locations:
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-4, -4, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+    hole_8mm:
+        stl_file: "file_location.stl"
+        local_position: [36, -116, 0] #Starting position from task_frame
+        local_orientation: [0,0,0]
+        dimensions:
+            diameter: 8.4 #mm
+            depth: 20 #mm
+        tolerance:
+            upper_tolerance:  0.01 #e.g., H7 (ISO 286)
+            lower_tolerance:  0.00 #e.g., H7 (ISO 286)
+        material: "stainless steel"
+    peg_4mm:
+        stl_file: "file_location.stl"
+        local_position: [36.5, -202, 2] #TODO:_Get real values #Starting position from kitting_frame
+        local_orientation: [90, 0, 0]   #TODO: Get real values  #rotations about new relative axes
+        dimensions:
+            diameter: 3.5 #mm
+            length: 50 #mm
+            min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
+        tolerance:
+            upper_tolerance:  0.00 #mm, e.g., h7 (ISO 286)
+            lower_tolerance:  -0.05 #mm, e.g., h7 (ISO 286)
+        material: "stainless steel"
+        grasping:
+            pinch_grasping: #For pinch gripper being used on the demo. True for shafts, false for fixed pegs
+                default_ properties:
+                    grasp_pressure: 50 #Percent maximum force
+                    #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                locations: #points of interest on the pin
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-1, -1, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+    hole_4mm:
+        stl_file: "file_location.stl"
+        local_position: [37, -191, 0] #Starting position from task_frame
+        local_orientation: [0,0,0]
+        dimensions:
+            diameter: 3.7 #mm
+            depth: 20 #mm
+        tolerance:
+            upper_tolerance:  0.01 #e.g., H7 (ISO 286)
+            lower_tolerance:  0.00 #e.g., H7 (ISO 286)
+        material: "stainless steel"
+    peg_16mm:
+        stl_file: "file_location.stl"
+        local_position: [36.5, -202, 8] #TODO:_Get real values #Starting position from kitting_frame
+        local_orientation: [90, 0, 0]   #TODO: Get real values  #rotations about new relative axes
+        dimensions:
+            diameter: 16 #mm
+            length: 50 #mm
+            min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
+        tolerance:
+            upper_tolerance:  0.00 #mm, e.g., h7 (ISO 286)
+            lower_tolerance:  -0.05 #mm, e.g., h7 (ISO 286)
+        material: "stainless steel"
+        grasping:
+            pinch_grasping: #For pinch gripper being used on the demo. True for shafts, false for fixed pegs
+                default_ properties:
+                    grasp_pressure: 50 #Percent maximum force
+                    #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                locations:
+                    tip:
+                        pose: [0, 0, 50] #location relative to peg root frame
+                        orientation: [0, 0, 0] #transformation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                    corner:
+                        pose: [-8, -8, 50] #location relative to peg/hole local_part_pose being grasped
+                        #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+                        #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+                    middle:
+                        pose: [0, 0, 25] #location relative to peg/hole local_part_pose being grasped
+                        #- grasp_name: "middle"
+                        orientation: [0, 0, 0] #Orientation relative to peg root frame
+                        #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+                        grasp_pressure: 50 #Percent maximum force
+    hole_16mm:
+        stl_file: "file_location.stl"
+        local_position: [262, -266, 0] #Starting position from task_frame
+        local_orientation: [0,0,0]
         dimensions:
             diameter: 16.4 #mm
             depth: 20 #mm
@@ -39,13 +190,13 @@ objects: #List objects and their required description
         material: "stainless steel"
 environment_state:
     task_frame:
-        location: [266, -137, -475]
-        orientation: [0, 0, -90]
+        position: [266, -137, -455]
+        orientation: [0, 0, 0]
     kitting_frame:
-        location: [640, 544, -502]
+        position: [640, 544, -502]
         orientation: [0, 0, 0]
 assembled_state: #List the desired assembled state
     peg:
-        location: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
+        position: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
     hole: 
-        location: [1, 2, 3] #Transformation from hole.local_part_pose relative to chosen Newtonian inertial frame
+        position: [1, 2, 3] #Transformation from hole.local_part_pose relative to chosen Newtonian inertial frame

@@ -7,8 +7,11 @@ Panels:
         - /Global Options1
         - /Status1
         - /Grid1
-        - /WrenchStamped1
-      Splitter Ratio: 0.5
+        - /Pose1
+        - /TF1
+        - /TF1/Frames1
+        - /Pose2
+      Splitter Ratio: 0.75
     Tree Height: 719
   - Class: rviz/Selection
     Name: Selection
@@ -110,6 +113,10 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
+        tool0_to_gripper_tip_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
         upper_arm_link:
           Alpha: 1
           Show Axes: false
@@ -151,6 +158,107 @@ Visualization Manager:
       Torque Color: 204; 204; 51
       Unreliable: false
       Value: true
+    - Alpha: 1
+      Axes Length: 0.20000000298023224
+      Axes Radius: 0.029999999329447746
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Queue Size: 10
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic: /target_hole_position
+      Unreliable: false
+      Value: true
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: false
+        base:
+          Value: false
+        base_link:
+          Value: true
+        base_link_inertia:
+          Value: false
+        base_plate:
+          Value: false
+        flange:
+          Value: false
+        forearm_link:
+          Value: false
+        peg_corner_position:
+          Value: true
+        shoulder_link:
+          Value: false
+        table:
+          Value: false
+        tool0:
+          Value: false
+        tool0_controller:
+          Value: false
+        tool0_eoat_link:
+          Value: false
+        tool0_to_gripper_tip_link:
+          Value: false
+        upper_arm_link:
+          Value: false
+        wrist_1_link:
+          Value: false
+        wrist_2_link:
+          Value: false
+        wrist_3_link:
+          Value: false
+      Marker Alpha: 1
+      Marker Scale: 1
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Tree:
+        base_link:
+          base:
+            tool0_controller:
+              {}
+          base_link_inertia:
+            shoulder_link:
+              upper_arm_link:
+                forearm_link:
+                  wrist_1_link:
+                    wrist_2_link:
+                      wrist_3_link:
+                        flange:
+                          tool0:
+                            tool0_eoat_link:
+                              {}
+                            tool0_to_gripper_tip_link:
+                              peg_corner_position:
+                                {}
+          table:
+            base_plate:
+              {}
+      Update Interval: 0
+      Value: true
+    - Alpha: 1
+      Axes Length: 0.05000000074505806
+      Axes Radius: 0.019999999552965164
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Queue Size: 10
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic: /peg_corner_position
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -179,7 +287,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 5.538990497589111
+      Distance: 2.004884958267212
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -187,17 +295,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.11068261414766312
-        Y: 0.2365475296974182
-        Z: -0.6009188294410706
+        X: 0.5126998424530029
+        Y: -0.25097477436065674
+        Z: 0.3139975965023041
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9453984498977661
+      Pitch: 0.7497969269752502
       Target Frame: <Fixed Frame>
-      Yaw: 5.6535749435424805
+      Yaw: 0.15029563009738922
     Saved: ~
 Window Geometry:
   Displays:
@@ -205,7 +313,7 @@ Window Geometry:
   Height: 1016
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001560000035afc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d0000035a000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f0000035afc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073010000003d0000035a000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e100000197000000030000039c0000003efc0100000002fb0000000800540069006d006501000000000000039c000002eb00fffffffb0000000800540069006d006501000000000000045000000000000000000000012b0000035a00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001560000035afc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d0000035a000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f0000035afc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d0000035a000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000004f30000003efc0100000002fb0000000800540069006d00650100000000000004f3000002eb00fffffffb0000000800540069006d00650100000000000004500000000000000000000003970000035a00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -214,6 +322,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 924
-  X: 996
+  Width: 1267
+  X: 653
   Y: 27
