@@ -8,7 +8,7 @@ import rospy
 import numpy as np
 import matplotlib.pyplot as plt
 from rospkg import RosPack
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3
+from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from rospy.core import configure_logging
 
 from sensor_msgs.msg import JointState
@@ -18,27 +18,100 @@ from controller_manager_msgs.srv import SwitchController, LoadController, ListCo
 import tf2_ros
 # import tf2
 import tf2_geometry_msgs
+from tf.transformations import quaternion_from_euler
 
 from threading import Lock
 
-class AssemblyStateEmitter():
+
+#State names    
+IDLE_STATE           = 'idle'
+CHECK_FEEDBACK_STATE = 'checking load cell feedback'
+APPROACH_STATE       = 'approaching hole surface'
+FIND_HOLE_STATE      = 'finding hole'
+INSERTING_PEG_STATE  = 'inserting peg'
+COMPLETION_STATE     = 'completed insertion'
+SAFETY_RETRACT_STATE = 'retracting to safety' 
+
+#Trigger names
+CHECK_FEEDBACK_TRIGGER     = 'check loadcell feedback'
+APPROACH_SURFACE_TRIGGER   = 'start approach'
+FIND_HOLE_TRIGGER          = 'surface found'
+INSERT_PEG_TRIGGER         = 'hole found'
+ASSEMBLY_COMPLETED_TRIGGER = 'assembly completed'
+SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
+
+
+class AssemblyTools():
 
     def __init__(self, ROS_rate, start_time):
-        rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
-        
+
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
         self._rate_selected = ROS_rate
-        self.rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
+        self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
         self._seq = 0
         self._start_time = start_time #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
         
-        #loop parameters
+        #Spiral parameters
+        self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
+        self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
         self._first_wrench = self._create_wrench([0,0,0], [0,0,0])
+        self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
+        self._amp_c  = np.double(.002)  #meters amplitude in _spiral_search_basic_compliance_control
+        self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
+
+        #job parameters moved in from the peg_in_hole_params.yaml file
+        target_peg = 'peg_10mm'
+        target_hole = 'hole_10mm'
+        temp_z_position_offset = 207/1000 #Our robot is reading Z positions wrong on the pendant for some reason.
+        taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position'))/1000)
+        taskPos[2] = taskPos[2] + temp_z_position_offset
+        taskOri = rospy.get_param('/environment_state/task_frame/orientation')
+        holePos = list(np.array(rospy.get_param('/objects/'+target_hole+'/local_position'))/1000)
+        holePos[2] = holePos[2] + temp_z_position_offset
+        holeOri = rospy.get_param('/objects/'+target_hole+'/local_orientation')
+        
+        self.tf_robot_to_task_board = TransformStamped() #tf_task_board_to_hole
+        self.tf_robot_to_task_board.header.stamp = rospy.get_rostime()
+        self.tf_robot_to_task_board.header.frame_id = "base_link"
+        self.tf_robot_to_task_board.child_frame_id = "task_board"
+        tempQ = list(quaternion_from_euler(taskOri[0]*np.pi/180, taskOri[1]*np.pi/180, taskOri[2]*np.pi/180))
+        self.tf_robot_to_task_board.transform = Transform(Point(taskPos[0],taskPos[1],taskPos[2]) , Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        self.pose_task_board_to_hole = PoseStamped() #tf_task_board_to_hole
+        self.pose_task_board_to_hole.header.stamp = rospy.get_rostime()
+        self.pose_task_board_to_hole.header.frame_id = "task_board"
+        tempQ = list(quaternion_from_euler(holeOri[0]*np.pi/180, holeOri[1]*np.pi/180, holeOri[2]*np.pi/180))
+        self.pose_task_board_to_hole.pose = Pose(Point(holePos[0],holePos[1],holePos[2]), Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
+        
+        self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
+
+        #rospy.logerr("Hole Pose: " + str(self.target_hole_pose))
+        self._target_pub.publish(self.target_hole_pose)
+        self.x_pos_offset = self.target_hole_pose.pose.position.x
+        self.y_pos_offset = self.target_hole_pose.pose.position.y
+        
+        peg_diameter     = rospy.get_param('/objects/'+target_peg+'/dimensions/diameter')/1000 #mm
+        peg_tol_plus     = rospy.get_param('/objects/'+target_peg+'/tolerance/upper_tolerance')/1000
+        peg_tol_minus    = rospy.get_param('/objects/'+target_peg+'/tolerance/lower_tolerance')/1000
+
+        hole_diameter    = rospy.get_param('/objects/'+target_hole+'/dimensions/diameter')/1000 #mm
+        hole_tol_plus    = rospy.get_param('/objects/'+target_hole+'/tolerance/upper_tolerance')/1000
+        hole_tol_minus   = rospy.get_param('/objects/'+target_hole+'/tolerance/lower_tolerance')/1000    
+        self.hole_depth  = rospy.get_param('/objects/'+target_peg+'/dimensions/min_insertion_depth')/1000
+        #self.hole_depth = rospy.get_param('/objects/peg/dimensions/length', )
+        #self.hole_depth = .0075 #we need to insert at least this far before it will consider if it's inserted
+        
+        #loop parameters
+        self.curr_time = rospy.get_rostime() - self._start_time
+        self.curr_time_numpy = np.double(self.curr_time.to_sec())
+        self.wrench_vec  = self._get_command_wrench([0,0,0])
+        self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
 
         self.current_pose = self._get_current_pos()
+        self.pose_vec = self._full_compliance_position()
         self.current_wrench = self._first_wrench
         self._average_wrench = self._first_wrench.wrench 
         self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
@@ -60,7 +133,18 @@ class AssemblyStateEmitter():
         self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
         self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
 
-        
+        #setup, run to calculate useful values based on params:
+        self.clearance_max = hole_tol_plus - peg_tol_minus #calculate the total error zone;
+        self.clearance_min = hole_tol_minus + peg_tol_plus #calculate minimum clearance;     =0
+        self.clearance_avg = .5 * (self.clearance_max- self.clearance_min) #provisional calculation of "wiggle room"
+        self.safe_clearance = (hole_diameter-peg_diameter + self.clearance_min)/2; # = .2 *radial* clearance i.e. on each side.
+        rospy.logerr("Peg is " + str(target_peg) + " and hole is " + str(target_hole))
+        rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
+
+        self.highForceWarning = False
+        self.surface_height = None
+        self.restart_height = .1
+        self.collision_confidence = 0;
         
 
     def _spiral_search_basic_compliance_control(self):
@@ -108,13 +192,11 @@ class AssemblyStateEmitter():
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
         #Load cell current data
-    def _callback_update_wrench(self, data):
-        self.current_wrench = data
-        #self.current_wrench = data
-        #self.current_wrench.wrench.force = self._subtract_vector3s(self.current_wrench.wrench.force, self._bias_wrench.force)
-        #self.current_wrench.wrench.torque = self._subtract_vector3s(self.current_wrench.wrench.force, self._bias_wrench.force)
-        #self.current_wrench.force = self._create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
-        rospy.logwarn_once("Callback working! " + str(data))
+
+    # Defines the state machine's next trigger it should execute 
+    def post_action(self, trigger_name):
+        return [trigger_name, True]
+
 
     def _subtract_vector3s(self, vec1, vec2):
         newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
@@ -141,42 +223,6 @@ class AssemblyStateEmitter():
     def _calibrate_force_zero(self):
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
-    
-
-    def _publish_wrench(self, input_vec):
-        # self.check_controller(self.force_controller)
-        # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
-        # result_wrench = self._create_wrench(result[:3], result[3:])
-        # result_wrench = self._create_wrench([7,0,0], [0,0,0])
-        result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
-        
-        self._wrench_pub.publish(result_wrench)
-
-    # def _publish_pose(self, position, orientation):
-    def _publish_pose(self, pose_stamped_vec):
-        #Takes in vector representations of position vector (x,y,z) and orientation quaternion
-        # Ensure controller is loaded
-        # self.check_controller(self.controller_name)
-
-        # Create poseStamped msg
-        pose_stamped = PoseStamped()
-
-        # Set the position and orientation
-        point = Point()
-        quaternion = Quaternion()
-
-        # point.x, point.y, point.z = position
-        point.x, point.y, point.z = pose_stamped_vec[0][:]
-        pose_stamped.pose.position = point
-
-        quaternion.w, quaternion.x, quaternion.y, quaternion.z  = pose_stamped_vec[1][:]
-        pose_stamped.pose.orientation = quaternion
-
-        # Set header values
-        pose_stamped.header.stamp = rospy.get_rostime()
-        pose_stamped.header.frame_id = "base_link"
-
-        self._pose_pub.publish(pose_stamped)
 
     def _create_wrench(self, force, torque):
         wrench_stamped = WrenchStamped()
