@@ -63,10 +63,10 @@ class SpiralSearch(AssemblyTools, Machine):
 
     def __init__(self):
 
-        self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
-        self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
-        self._target_pub    = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
-        self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
+        # self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
+        # self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
+        # self._target_pub    = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
+        # self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
 
 
 
@@ -106,6 +106,12 @@ class SpiralSearch(AssemblyTools, Machine):
         start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
+    def _update_commands(self):
+        AssemblyTools._publish_pose(self.pose_vec)
+        AssemblyTools._publish_wrench(self.wrench_vec)
+        AssemblyTools._rate.sleep()
+        # self._update_commands()
+
     def check_load_cell_feedback(self):
         switch_state = False
         #Take an average of static sensor reading to check that it's stable.
@@ -127,9 +133,7 @@ class SpiralSearch(AssemblyTools, Machine):
                     rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
                     self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
 
-            self._publish_pose(self.pose_vec)
-            self._publish_wrench(self.wrench_vec)
-            self._rate.sleep()
+            self._update_commands()
 
     def finding_surface(self):
         #seek in Z direction until we stop moving for about 1 second. 
@@ -165,10 +169,8 @@ class SpiralSearch(AssemblyTools, Machine):
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
  
-            self._publish_pose(self.pose_vec)
-            self._publish_wrench(self.wrench_vec)
+            self._update_commands()
             self.activeTCP = origTCP
-            self._rate.sleep()
 
     def finding_hole(self):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
@@ -204,9 +206,7 @@ class SpiralSearch(AssemblyTools, Machine):
                     rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
                         + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
 
-            self._publish_pose(self.pose_vec)
-            self._publish_wrench(self.wrench_vec)
-            self._rate.sleep()
+            self._update_commands()
 
     
     def inserting_peg(self):
@@ -242,9 +242,7 @@ class SpiralSearch(AssemblyTools, Machine):
                     rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
                         + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
     
-            self._publish_pose(self.pose_vec)
-            self._publish_wrench(self.wrench_vec)
-            self._rate.sleep()
+            self._update_commands()
 
     def completed_insertion(self):
         #Inserted properly.
@@ -263,9 +261,7 @@ class SpiralSearch(AssemblyTools, Machine):
             self._force_cap_check()
             self.pose_vec = self._full_compliance_position()
 
-            self._publish_pose(self.pose_vec)
-            self._publish_wrench(self.wrench_vec)
-            self._rate.sleep()
+            self._update_commands()
 
     def safety_retraction(self):
         #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
@@ -300,9 +296,7 @@ class SpiralSearch(AssemblyTools, Machine):
                 if(self.current_pose.transform.translation.z > self.restart_height):
                     rospy.logwarn_throttle(.5, "That's high enough! Let robot stop and come to zero force.")
 
-            self._publish_pose(self.pose_vec)
-            self._publish_wrench(self.wrench_vec)
-            self._rate.sleep()
+            self._update_commands()
 
     #All state callbacks need to calculate this in a while loop
     def all_states_calc(self):
@@ -320,48 +314,44 @@ class SpiralSearch(AssemblyTools, Machine):
              str(self._as_array(self._average_wrench.torque)))
         rospy.logwarn_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
 
-    def _publish_wrench(self, input_vec):
-        # self.check_controller(self.force_controller)
-        # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
-        # result_wrench = self._create_wrench(result[:3], result[3:])
-        # result_wrench = self._create_wrench([7,0,0], [0,0,0])
-        result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
+    # def _publish_wrench(self, input_vec):
+    #     # self.check_controller(self.force_controller)
+    #     # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
+    #     # result_wrench = self._create_wrench(result[:3], result[3:])
+    #     # result_wrench = self._create_wrench([7,0,0], [0,0,0])
+    #     result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
         
-        self._wrench_pub.publish(result_wrench)
+    #     self._wrench_pub.publish(result_wrench)
 
     def _callback_update_wrench(self, data):
         self.current_wrench = data
-        #self.current_wrench = data
-        #self.current_wrench.wrench.force = self._subtract_vector3s(self.current_wrench.wrench.force, self._bias_wrench.force)
-        #self.current_wrench.wrench.torque = self._subtract_vector3s(self.current_wrench.wrench.force, self._bias_wrench.force)
-        #self.current_wrench.force = self._create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
         rospy.logwarn_once("Callback working! " + str(data))
 
-    # def _publish_pose(self, position, orientation):
-    def _publish_pose(self, pose_stamped_vec):
-        #Takes in vector representations of position vector (x,y,z) and orientation quaternion
-        # Ensure controller is loaded
-        # self.check_controller(self.controller_name)
+    # # def _publish_pose(self, position, orientation):
+    # def _publish_pose(self, pose_stamped_vec):
+    #     #Takes in vector representations of position vector (x,y,z) and orientation quaternion
+    #     # Ensure controller is loaded
+    #     # self.check_controller(self.controller_name)
 
-        # Create poseStamped msg
-        pose_stamped = PoseStamped()
+    #     # Create poseStamped msg
+    #     pose_stamped = PoseStamped()
 
-        # Set the position and orientation
-        point = Point()
-        quaternion = Quaternion()
+    #     # Set the position and orientation
+    #     point = Point()
+    #     quaternion = Quaternion()
 
-        # point.x, point.y, point.z = position
-        point.x, point.y, point.z = pose_stamped_vec[0][:]
-        pose_stamped.pose.position = point
+    #     # point.x, point.y, point.z = position
+    #     point.x, point.y, point.z = pose_stamped_vec[0][:]
+    #     pose_stamped.pose.position = point
 
-        quaternion.w, quaternion.x, quaternion.y, quaternion.z  = pose_stamped_vec[1][:]
-        pose_stamped.pose.orientation = quaternion
+    #     quaternion.w, quaternion.x, quaternion.y, quaternion.z  = pose_stamped_vec[1][:]
+    #     pose_stamped.pose.orientation = quaternion
 
-        # Set header values
-        pose_stamped.header.stamp = rospy.get_rostime()
-        pose_stamped.header.frame_id = "base_link"
+    #     # Set header values
+    #     pose_stamped.header.stamp = rospy.get_rostime()
+    #     pose_stamped.header.frame_id = "base_link"
 
-        self._pose_pub.publish(pose_stamped)
+    #     self._pose_pub.publish(pose_stamped)
 
     def _algorithm_compliance_control(self):
         # state = 0
