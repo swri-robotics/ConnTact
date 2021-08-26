@@ -2,6 +2,7 @@
 
 <launch>
   <!--  todo:Change this to happen in source code instead-->
+  <arg name="algorythm_selected" default="True" doc="Select the algorythm to be used: SpiralSearch or CornerSearch"/>
   <rosparam file="$(find peg_in_hole_demo)/config/peg_in_hole_params.yaml" />
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
 
@@ -19,10 +20,13 @@
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find peg_in_hole_demo)/config/basic_config_example.rviz" required="true" />
 
-  <node type="spiral_search_node" name="spiral_search_node" pkg="peg_in_hole_demo" output="screen" required="true" />
-
-  <!--node type="mutable_transform_pub" name="mutable_tf_pub" pkg="mutable_transform_publisher" _yaml_path:="$(find peg_in_hole_demo)/config/peg_in_hole_params.yaml"  /-->  
-  <!-- rosrun mutable_transform_publisher mutable_transform_pub _yaml_path:=<PATH_TO_YOUR_YAML>-->
+  <node if="$(arg algorythm_selected)" type="spiral_search_node" name="spiral_search_node" 
+    pkg="peg_in_hole_demo" output="screen" required="true" />
+  <node unless="$(arg algorythm_selected)" type="corner_search_node" name="corner_search_node" 
+    pkg="peg_in_hole_demo" output="screen" required="true" />
+  <!--node unless="$(arg algorythm_selected)" name="joint_state" 
+    pkg="fanuc_driver" type="robot_state" /-->
+  <!--node type="spiral_search_node" name="spiral_search_node" pkg="peg_in_hole_demo" output="screen" required="true" /-->
 
 </launch>
 

@@ -107,9 +107,10 @@ class SpiralSearch(AssemblyTools, Machine):
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
     def _update_commands(self):
-        AssemblyTools._publish_pose(self.pose_vec)
-        AssemblyTools._publish_wrench(self.wrench_vec)
-        AssemblyTools._rate.sleep()
+        rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
+        self._publish_pose(self.pose_vec)
+        self._publish_wrench(self.wrench_vec)
+        self._rate.sleep()
         # self._update_commands()
 
     def check_load_cell_feedback(self):
@@ -141,8 +142,8 @@ class SpiralSearch(AssemblyTools, Machine):
         #Take an average of static sensor reading to check that it's stable.
         switch_state = False
         while switch_state == False:
-            origTCP = self.activeTCP
-            self.activeTCP = "peg_corner_position"
+            # origTCP = self.activeTCP
+            # self.activeTCP = "peg_corner_position"
             self.all_states_calc()
 
             seeking_force = 5
@@ -170,7 +171,7 @@ class SpiralSearch(AssemblyTools, Machine):
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
  
             self._update_commands()
-            self.activeTCP = origTCP
+            # self.activeTCP = origTCP
 
     def finding_hole(self):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
