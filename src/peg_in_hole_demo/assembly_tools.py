@@ -49,8 +49,6 @@ class AssemblyTools():
         self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         self._target_pub    = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
-        #self._tool_offset_pub = rospy.Publisher('peg_corner_position', PoseStamped, queue_size=2, latch=True)
-
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
@@ -364,7 +362,7 @@ class AssemblyTools():
             goal_matrix = np.dot(goal_matrix, backing_mx) #bTg * gTw = bTw
             goal_pose = AssemblyTools.matrix_to_pose(goal_matrix, b_link)
             
-            #self._tool_offset_pub.publish(goal_pose)
+            self._tool_offset_pub.publish(goal_pose)
 
             
         self._pose_pub.publish(goal_pose)

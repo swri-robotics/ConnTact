@@ -34,13 +34,13 @@ from peg_in_hole_demo.assembly_tools import AssemblyTools
 from transitions import Machine
 
 #State names
-IDLE_STATE           = 'idle state'
-CHECK_FEEDBACK_STATE = 'checking load cell feedback'
-APPROACH_STATE       = 'approaching hole surface'
-FIND_HOLE_STATE      = 'finding hole'
-INSERTING_PEG_STATE  = 'inserting peg'
-COMPLETION_STATE     = 'completed insertion'
-SAFETY_RETRACT_STATE = 'retracing to safety' 
+IDLE_STATE           = 'state_idle'
+CHECK_FEEDBACK_STATE = 'state_checking_load_cell_feedback'
+APPROACH_STATE       = 'state_approaching_surface'
+FIND_HOLE_STATE      = 'state_finding_hole'
+INSERTING_PEG_STATE  = 'state_inserting_peg'
+COMPLETION_STATE     = 'state_completed_insertion'
+SAFETY_RETRACT_STATE = 'state_retracing_to_safety' 
 
 
 #Trigger names
@@ -71,7 +71,7 @@ class CornerSearch(AssemblyTools, Machine):
 
 
         states = [
-            IDLE_STATE,
+            IDLE_STATE, 
             CHECK_FEEDBACK_STATE,
             APPROACH_STATE, 
             FIND_HOLE_STATE, 
@@ -106,10 +106,29 @@ class CornerSearch(AssemblyTools, Machine):
         start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
+    def on_enter_state_checking_load_cell_feedback(self):
+        self._log_state_transition()
+    def on_enter_state_finding_hole(self):
+        self._log_state_transition()
+    def on_enter_state_approaching_surface(self):
+        self._log_state_transition()
+    def on_enter_state_inserting_peg(self):
+        self._log_state_transition()
+    def on_enter_completed_insertion(self):
+        self._log_state_transition()
+    def on_enter_state_retracing_to_safety(self):
+        self._log_state_transition()
+
+    def _log_state_transition(self):
+        rospy.logerr("State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) )
+
+
+
     def _update_commands(self):
-        AssemblyTools._publish_pose(self.pose_vec)
-        AssemblyTools._publish_wrench(self.wrench_vec)
-        AssemblyTools._rate.sleep()
+        rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
+        self._publish_pose(self.pose_vec)
+        self._publish_wrench(self.wrench_vec)
+        self._rate.sleep()
         # self._update_commands()
 
     def check_load_cell_feedback(self):
@@ -141,8 +160,8 @@ class CornerSearch(AssemblyTools, Machine):
         #Take an average of static sensor reading to check that it's stable.
         switch_state = False
         while switch_state == False:
-            origTCP = self.activeTCP
-            self.activeTCP = "peg_corner_position"
+            # origTCP = self.activeTCP
+            # self.activeTCP = "peg_corner_position"
             self.all_states_calc()
 
             seeking_force = 5
@@ -170,7 +189,7 @@ class CornerSearch(AssemblyTools, Machine):
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
  
             self._update_commands()
-            self.activeTCP = origTCP
+            # self.activeTCP = origTCP
 
     def finding_hole(self):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
@@ -290,7 +309,7 @@ class CornerSearch(AssemblyTools, Machine):
                 if(self.collision_confidence > 1):
                         #Restart Search
                         rospy.logerr_throttle(1.0, "Restarting test!")
-                        self.next_trigger, switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
+                        self.next_trigger, switch_state = self.post_action(RESTART_TEST_TRIGGER) 
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 90/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z > self.restart_height):
@@ -359,18 +378,19 @@ class CornerSearch(AssemblyTools, Machine):
         self._average_wrench = self._first_wrench.wrench
         self.collision_confidence = 0
         
-        rospy.logwarn_once('BELOW IS THE STATE BEFORE CHECK_FEEDBACK_TRIGGER')
+        #rospy.logwarn_once('BELOW IS THE STATE BEFORE CHECK_FEEDBACK_TRIGGER')
         print(self.state)
 
         if not rospy.is_shutdown():
             self.trigger(CHECK_FEEDBACK_TRIGGER)
 
         while not rospy.is_shutdown():
-            rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED FROM:')
-            print(self.state)
+            # rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED FROM:')
+            # print(self.state)
             self.trigger(self.next_trigger)
-            rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED TO:')
-            print(self.state)        
+            rospy.logwarn('TRANSITIONING TO: ' + str(self.state))
+            
+                    
             # self._publish_pose(self.pose_vec)
             # self._publish_wrench(self.wrench_vec)
             # self._rate.sleep()
