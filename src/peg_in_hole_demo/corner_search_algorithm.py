@@ -98,8 +98,7 @@ class CornerSearch(AssemblyTools, Machine):
 
 
         ]
-        rospy.logwarn_once('MRO IS HERE:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
-        print(CornerSearch.__mro__)
+       
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         
         ROS_rate = 100 #setup for sleeping in hz
@@ -217,12 +216,12 @@ class CornerSearch(AssemblyTools, Machine):
                         self.y_pos_offset = self.current_pose.transform.translation.y
                         self._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
                         #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
-                        rospy.logerr_throttle(1.0, "Hole found, peg inserting...")
+                        rospy.logerr_throttle(2.0, "Hole found, peg inserting...")
                         self.next_trigger, switch_state = self.post_action(INSERT_PEG_TRIGGER) 
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                    rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
+                    rospy.loginfo_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
                         + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
 
             self._update_commands()
@@ -258,7 +257,7 @@ class CornerSearch(AssemblyTools, Machine):
                 #rospy.logwarn_throttle(.5, "NOT a flat surface. Time: " + str((rospy.Time.now()-marked_time).to_sec()))
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                    rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
+                    rospy.loginfo_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
                         + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
     
             self._update_commands()
@@ -313,7 +312,7 @@ class CornerSearch(AssemblyTools, Machine):
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 90/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z > self.restart_height):
-                    rospy.logwarn_throttle(.5, "That's high enough! Let robot stop and come to zero force.")
+                    rospy.loginfo_throttle(.5, "That's high enough! Let robot stop and come to zero force.")
 
             self._update_commands()
 
@@ -329,9 +328,9 @@ class CornerSearch(AssemblyTools, Machine):
         self._update_avg_speed()
         self._update_average_wrench()
         # self._update_plots()
-        rospy.logwarn_throttle(1, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+        rospy.loginfo_throttle(1, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
              str(self._as_array(self._average_wrench.torque)))
-        rospy.logwarn_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
+        rospy.loginfo_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
 
     # def _publish_wrench(self, input_vec):
     #     # self.check_controller(self.force_controller)
@@ -344,7 +343,7 @@ class CornerSearch(AssemblyTools, Machine):
 
     def _callback_update_wrench(self, data):
         self.current_wrench = data
-        rospy.logwarn_once("Callback working! " + str(data))
+        # rospy.loginfo_once("Callback working! " + str(data))
 
     # # def _publish_pose(self, position, orientation):
     # def _publish_pose(self, pose_stamped_vec):
@@ -378,14 +377,14 @@ class CornerSearch(AssemblyTools, Machine):
         self._average_wrench = self._first_wrench.wrench
         self.collision_confidence = 0
         
-        #rospy.logwarn_once('BELOW IS THE STATE BEFORE CHECK_FEEDBACK_TRIGGER')
+        #rospy.loginfo_once('BELOW IS THE STATE BEFORE CHECK_FEEDBACK_TRIGGER')
         print(self.state)
 
         if not rospy.is_shutdown():
             self.trigger(CHECK_FEEDBACK_TRIGGER)
 
         while not rospy.is_shutdown():
-            # rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED FROM:')
+            # rospy.loginfo('BELOW IS THE STATE BEING TRANSITIONED FROM:')
             # print(self.state)
             self.trigger(self.next_trigger)
             rospy.logwarn('TRANSITIONING TO: ' + str(self.state))
@@ -404,7 +403,7 @@ class CornerSearch(AssemblyTools, Machine):
         # assembly_application._algorithm_force_control()
 
         #---------------------------------------------COMPLIANCE CONTROL BELOW, FORCE CONTROL ABOVE
-        rospy.logwarn_once('MADE IT TO MAIN FUNCTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        rospy.logwarn_once('Starting Corner Search algorithm')
         rospy.sleep(3.5)
         # assembly_application._init_plot()
 
