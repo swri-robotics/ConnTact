@@ -96,7 +96,6 @@ class CornerSearch(AssemblyTools, Machine):
 
             {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':CHECK_FEEDBACK_STATE, 'after': 'check_load_cell_feedback'}
 
-
         ]
        
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
@@ -106,10 +105,13 @@ class CornerSearch(AssemblyTools, Machine):
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
     def on_enter_state_checking_load_cell_feedback(self):
-        self._log_state_transition()
-    def on_enter_state_finding_hole(self):
+        self._select_tool('tool0')
         self._log_state_transition()
     def on_enter_state_approaching_surface(self):
+        self._select_tool('corner')
+        self._log_state_transition()
+    def on_enter_state_finding_hole(self):
+        self._select_tool('corner')
         self._log_state_transition()
     def on_enter_state_inserting_peg(self):
         self._log_state_transition()
@@ -120,8 +122,6 @@ class CornerSearch(AssemblyTools, Machine):
 
     def _log_state_transition(self):
         rospy.logerr("State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) )
-
-
 
     def _update_commands(self):
         rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
@@ -137,7 +137,7 @@ class CornerSearch(AssemblyTools, Machine):
 
             self.all_states_calc()
 
-            rospy.logwarn_once('In the check_load_cell_feedback. switch_state is:' + str(switch_state) )
+            # rospy.logwarn_once('In check_load_cell_feedback. switch_state is:' + str(switch_state) )
 
             if (self.curr_time_numpy > 2):
                 self._bias_wrench = self._average_wrench
@@ -186,7 +186,6 @@ class CornerSearch(AssemblyTools, Machine):
                     self.collision_confidence = 0.01
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
- 
             self._update_commands()
             # self.activeTCP = origTCP
 
@@ -226,7 +225,6 @@ class CornerSearch(AssemblyTools, Machine):
 
             self._update_commands()
 
-    
     def inserting_peg(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
         #horizontally. We keep going until vertical speed is very near to zero.
@@ -332,45 +330,6 @@ class CornerSearch(AssemblyTools, Machine):
              str(self._as_array(self._average_wrench.torque)))
         rospy.loginfo_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
 
-    # def _publish_wrench(self, input_vec):
-    #     # self.check_controller(self.force_controller)
-    #     # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
-    #     # result_wrench = self._create_wrench(result[:3], result[3:])
-    #     # result_wrench = self._create_wrench([7,0,0], [0,0,0])
-    #     result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
-        
-    #     self._wrench_pub.publish(result_wrench)
-
-    def _callback_update_wrench(self, data):
-        self.current_wrench = data
-        # rospy.loginfo_once("Callback working! " + str(data))
-
-    # # def _publish_pose(self, position, orientation):
-    # def _publish_pose(self, pose_stamped_vec):
-    #     #Takes in vector representations of position vector (x,y,z) and orientation quaternion
-    #     # Ensure controller is loaded
-    #     # self.check_controller(self.controller_name)
-
-    #     # Create poseStamped msg
-    #     pose_stamped = PoseStamped()
-
-    #     # Set the position and orientation
-    #     point = Point()
-    #     quaternion = Quaternion()
-
-    #     # point.x, point.y, point.z = position
-    #     point.x, point.y, point.z = pose_stamped_vec[0][:]
-    #     pose_stamped.pose.position = point
-
-    #     quaternion.w, quaternion.x, quaternion.y, quaternion.z  = pose_stamped_vec[1][:]
-    #     pose_stamped.pose.orientation = quaternion
-
-    #     # Set header values
-    #     pose_stamped.header.stamp = rospy.get_rostime()
-    #     pose_stamped.header.frame_id = "base_link"
-
-    #     self._pose_pub.publish(pose_stamped)
-
     def _algorithm_compliance_control(self):
         # state = 0
         # cycle = 0
@@ -393,8 +352,6 @@ class CornerSearch(AssemblyTools, Machine):
             # self._publish_pose(self.pose_vec)
             # self._publish_wrench(self.wrench_vec)
             # self._rate.sleep()
-
-
 
     def main(self):
         # rospy.init_node("demo_assembly_application_compliance")

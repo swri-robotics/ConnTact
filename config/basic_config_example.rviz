@@ -193,6 +193,8 @@ Visualization Manager:
           Value: false
         peg_corner_position:
           Value: true
+        peg_middle_position:
+          Value: false
         shoulder_link:
           Value: false
         table:
@@ -233,10 +235,12 @@ Visualization Manager:
                       wrist_3_link:
                         flange:
                           tool0:
+                            peg_corner_position:
+                              {}
                             tool0_eoat_link:
                               {}
                             tool0_to_gripper_tip_link:
-                              peg_corner_position:
+                              peg_middle_position:
                                 {}
           table:
             base_plate:
@@ -287,7 +291,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 2.004884958267212
+      Distance: 1.4231172800064087
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -295,17 +299,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.5126998424530029
-        Y: -0.25097477436065674
-        Z: 0.3139975965023041
+        X: 0.6599876284599304
+        Y: -0.08442015200853348
+        Z: 0.1298094093799591
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7497969269752502
+      Pitch: 0.6547968983650208
       Target Frame: <Fixed Frame>
-      Yaw: 0.15029563009738922
+      Yaw: 6.248480796813965
     Saved: ~
 Window Geometry:
   Displays:
