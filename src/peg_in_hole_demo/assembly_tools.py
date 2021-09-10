@@ -120,10 +120,12 @@ class AssemblyTools():
    
 
     def readYAML(self):
+        """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
+        """
         
         self.read_board_positions()
         
-        self.read_peg_hole_dimensions();
+        self.read_peg_hole_dimensions()
 
         #Calculate transform from TCP to peg corner        
         self.peg_locations   = rospy.get_param('/objects/'+self.target_peg+'/grasping/pinch_grasping/locations')
@@ -154,8 +156,8 @@ class AssemblyTools():
         # quit()
 
     def read_board_positions(self):
-        # Calculates poses of target hole
-
+        """ Calculates pose of target hole relative to robot base frame.
+        """
         temp_z_position_offset = 207 #Our robot is reading Z positions wrong on the pendant for some reason.
         taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position')))
         taskPos[2] = taskPos[2] + temp_z_position_offset
@@ -196,7 +198,8 @@ class AssemblyTools():
         # self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
 
     def read_peg_hole_dimensions(self):
-        #read peg and hole data
+        """Read peg and hole data from YAML configuration file.
+        """
         peg_diameter         = rospy.get_param('/objects/'+self.target_peg+'/dimensions/diameter')/1000 #mm
         peg_tol_plus         = rospy.get_param('/objects/'+self.target_peg+'/tolerance/upper_tolerance')/1000
         peg_tol_minus        = rospy.get_param('/objects/'+self.target_peg+'/tolerance/lower_tolerance')/1000
@@ -215,7 +218,14 @@ class AssemblyTools():
             
     @staticmethod
     def get_tf_from_YAML(pos, ori, base_frame, child_frame): #Returns the transform from base_frame to child_frame based on vector inputs
-        #move to utils
+        """Reads a TF from config YAML.
+        :param pos: (string) Param key for desired position parameter.
+        :param ori: (string) Param key for desired orientation parameter.
+        :param base_frame: (string) Base frame for output TF.
+        :param child_frame:  (string) Child frame for output TF.
+        :return: Geometry_Msgs.TransformStamped with linked parameters.
+        """
+        
         output_pose = AssemblyTools.get_pose_from_YAML(pos, ori, base_frame) #tf_task_board_to_hole
         output_tf = TransformStamped()
         output_tf.header = output_pose.header
@@ -227,6 +237,14 @@ class AssemblyTools():
         return output_tf
     @staticmethod
     def get_pose_from_YAML(pos, ori, base_frame): #Returns the pose wrt base_frame based on vector inputs.
+        """Reads a Pose from config YAML.
+        :param pos: (string) Param key for desired position parameter.
+        :param ori: (string) Param key for desired orientation parameter.
+        :param base_frame: (string) Base frame for output pose.
+        :param child_frame:  (string) Child frame for output pose.
+        :return: Geometry_Msgs.PoseStamped with linked parameters.
+        """
+        
         #Inputs are in mm XYZ and degrees RPY
         #move to utils
         output_pose = PoseStamped() #tf_task_board_to_hole
@@ -238,12 +256,18 @@ class AssemblyTools():
         return output_pose
     
     def _select_tool(self, tool_name):
+        """Sets activeTCP frame according to title of desired peg frame (tip, middle, etc.). This frame must be included in the YAML.
+        :param tool_name: (string) Key in tool_data dictionary for desired frame.
+        """
         if(tool_name in list(self.tool_data)):
             self.activeTCP = tool_name
             self.broadcaster.sendTransform(self.tool_data[self.activeTCP]['transform'])
 
     def _spiral_search_basic_compliance_control(self):
-        #Generate position, orientation vectors which describe a plane spiral about z; conform to the current z position. 
+        """Generates position, orientation offset vectors which describe a plane spiral about z; 
+        Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
+        x,y vector currently comes from x_ and y_pos_offset variables.
+        """
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
         curr_amp = self._amp_c + self.safe_clearance * np.mod(2.0 * np.pi * self._freq_c *curr_time_numpy, self._amp_limit_c);
@@ -269,7 +293,11 @@ class AssemblyTools():
         return [pose_position, pose_orientation]
 
     def _linear_search_position(self, direction_vector = [0,0,0], desired_orientation = [0, 1, 0, 0]):
-        #makes a command to simply stay still in a certain orientation
+        """Generates a command pose vector which causes the robot to hold a certain orientation
+         and comply in z while maintaining the approach vector along x_ and y_pos_offset.
+        :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion in z.
+        :param desired_orientation: (list of floats) quaternion parameters for orientation. 
+        """
         pose_position = self.current_pose.transform.translation
         pose_position.x = self.x_pos_offset + direction_vector[0]
         pose_position.y = self.y_pos_offset + direction_vector[1]
@@ -277,10 +305,12 @@ class AssemblyTools():
         pose_orientation = desired_orientation
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
-        #function used for parking the robot in neutral. The pose_position needs to be published elsewhere.
-
     def _full_compliance_position(self, direction_vector = [0,0,0], desired_orientation = [0, 1, 0, 0]):
-        #makes a command to simply stay still in a certain orientation
+        """Generates a command pose vector which causes the robot to hold a certain orientation
+         and comply translationally in all directions.
+        :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion.
+        :param desired_orientation: (list of floats) quaternion parameters for orientation. 
+        """ 
         pose_position = self.current_pose.transform.translation
         pose_position.x = pose_position.x + direction_vector[0]
         pose_position.y = pose_position.y + direction_vector[1]
@@ -291,44 +321,47 @@ class AssemblyTools():
         #Load cell current data
 
     def _callback_update_wrench(self, data):
+        """Callback to update current wrench data whenever new data becomes available.
+        """
         self.current_wrench = data
         # rospy.loginfo_once("Callback working! " + str(data))
 
-    # Defines the state machine's next trigger it should execute 
     def post_action(self, trigger_name):
+        """Defines the next trigger which the state machine should execute.
+        """
         return [trigger_name, True]
 
     def _subtract_vector3s(self, vec1, vec2):
+
         newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
         return newVector3
 
-    def _get_current_pos(self, offset = None):
-        #Read in current pose from TF
-        transform = TransformStamped;
+    def _get_current_pos(self):
+        """Read in current pose from robot base to activeTCP.        
+        """
+        transform = TransformStamped() #TODO: Check that this worked.
         # if(type(offset) == str):
         #     transform = self.tf_buffer.lookup_transform("base_link", self.activeTCP, rospy.Time(0), rospy.Duration(100.0))
         # else:
         transform = self.tf_buffer.lookup_transform("base_link", self.tool_data[self.activeTCP]['transform'].child_frame_id, rospy.Time(0), rospy.Duration(100.0))
         return transform
 
-    #Convert normal math to ROS wrench. 5 is the default downward commanded force.
-    def _get_command_wrench(self, vec = [0,0,5]):
-        # curr_time = rospy.get_rostime() - self._start_time
-        # curr_time_numpy = np.double(curr_time.to_sec())
+    def _get_command_wrench(self, vec = [0,0,0], ori = [0,0,0]):
+        """Output ROS wrench parameters from human-readable vector inputs. 
+        :param vec: (list of floats) Vector of desired force in each direction (in Newtons).
+        :param ori: (list of floats) Vector of desired torque about each axis (in N*m)
+        """
 
-        # x_f = self._amp * np.cos(2.0 * np.pi * self._freq *curr_time_numpy)
-        # y_f = self._amp * np.sin(2.0 * np.pi * self._freq *curr_time_numpy)
-        x_f = vec[0]
-        y_f = vec[1]
-        z_f = vec[2] #apply constant downward force
+        return [vec[0], vec[1], vec[2], ori[0], ori[1], ori[2]]
 
-        return [x_f, y_f, z_f, 0, 0, 0]
-
-    def _calibrate_force_zero(self):
-        curr_time = rospy.get_rostime() - self._start_time
-        curr_time_numpy = np.double(curr_time.to_sec())
+    # TODO: Determine if removing the following has changed program at all.
+    # def _calibrate_force_zero(self):
+    #     curr_time = rospy.get_rostime() - self._start_time
+    #     curr_time_numpy = np.double(curr_time.to_sec())
 
     def _publish_wrench(self, input_vec):
+        """Publish the commanded wrench to the command topic.
+        """
         # self.check_controller(self.force_controller)
         # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
         # result_wrench = self._create_wrench(result[:3], result[3:])
@@ -339,8 +372,9 @@ class AssemblyTools():
 
     # def _publish_pose(self, position, orientation):
     def _publish_pose(self, pose_stamped_vec):
-        #Takes in vector representations of position vector (x,y,z) and orientation quaternion
-        #If provided, subtracts offset (thus positioning peg endpoint instead of )
+        """Takes in vector representations of position 
+        :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
+        """
         # Ensure controller is loaded
         # self.check_controller(self.controller_name)
 
@@ -378,7 +412,11 @@ class AssemblyTools():
 
     @staticmethod
     def to_homogeneous(quat, point):
-        #Takes a quaternion and msg.Point and outputs a homog. tf matrix.
+        """Takes a quaternion and msg.Point and outputs a homog. tf matrix.
+        :param quat: (geometry_msgs.Quaternion) Orientation information.
+        :param point: (geometry.msgs.Point) Position information.
+        :return: (np.Array()) 4x4 Homogeneous transform matrix.
+        """
         #TODO candidate for Utils 
         output = trfm.quaternion_matrix(np.array([quat.x, quat.y, quat.z, quat.w]))
         output[0][3] = point.x
@@ -388,6 +426,11 @@ class AssemblyTools():
     
     @staticmethod
     def matrix_to_pose(input, base_frame):
+        """Converts matrix into a pose.
+        :param input: (np.Array) 4x4 homogeneous transformation matrix
+        :param base_frame: (string) base frame for new pose.
+        :return: (geometry_msgs.PoseStamped) Pose based on input.
+        """
         output = PoseStamped()
         output.header.stamp = rospy.get_rostime()
         output.header.frame_id = base_frame
@@ -404,12 +447,22 @@ class AssemblyTools():
     
     @staticmethod
     def matrix_to_tf(input, base_frame, child_frame):
+        """Converts matrix back into a TF.
+        :param input: (np.Array) 4x4 homogeneous transformation matrix
+        :param base_frame: (string) base frame for new pose.
+        :return: (geometry_msgs.TransformStamped) Transform based on input.
+        """
         pose = AssemblyTools.matrix_to_pose(input, base_frame)
         output = AssemblyTools.swap_pose_tf(pose, child_frame)
         return output
 
     @staticmethod
-    def swap_pose_tf(input, child_frame = "endpoint"):
+    def swap_pose_tf(input, child_frame):
+        """Swaps pose for tf and vice-versa.
+        :param input: (geometry_msgs.PoseStamped or geometry_msgs.TransformStamped) Input data type.
+        :param child_frame: (string) Child frame name if converting Pose to Transform.
+        :return: (geometry_msgs.TransformStamped or geometry_msgs.PoseStamped) Output data, of the other type from input.
+        """
         if('PoseStamped' in str(type(input))):
             output = TransformStamped()
             output.header = input.header
@@ -425,6 +478,11 @@ class AssemblyTools():
         rospy.logerr("Invalid input to swap_pose_tf !!!")
 
     def _create_wrench(self, force, torque):
+        """Composes a standard wrench object from human-readable vectors.
+        :param force: (list of floats) x,y,z force values
+        :param torque: (list of floats) torques about x,y,z
+        :return: (geometry.msgs.WrenchStamped) Output wrench.
+        """
         wrench_stamped = WrenchStamped()
         wrench = Wrench()
 
@@ -447,12 +505,20 @@ class AssemblyTools():
     #The faster you run the function, the faster it responds to changes in the force/torque. 
     #Trying to create a slow moving average of the force and torque data. Maybe get numpy/scipi low-pass implementation
     def _update_average_wrench(self):
-        #get a very simple average of wrench reading
+        """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
+        """
         #self._average_wrench = self._weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
         self._average_wrench = self._weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
         #rospy.logwarn_throttle(.5, "Updating wrench toward " + str(self.current_wrench.wrench.force))
 
     def _weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
+        """Returns a simple linear interpolation between wrenches.
+        :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
+        :param scale1: (float) Weight of first input wrench
+        :param wrench2:(geometry_msgs.WrenchStamped) Second input wrench
+        :param scale2: (float) Weight of second input wrench
+        :return: (geometry_msgs.WrenchStamped)
+        """
         newForce = (self._as_array(wrench1.force) * scale1 + self._as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
         newTorque = (self._as_array(wrench1.torque) * scale1 + self._as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
         return self._create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
@@ -462,22 +528,17 @@ class AssemblyTools():
     #instantaneious speed with a 0.1 second time step.
     #Not tested, but it is used and seems to work fine. 
     def _update_avg_speed(self):
+        """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
+         previous pose (.1 s in the past) and the current pose; this speed is filtered and stored as self.average_speed.
+        """
         curr_time = rospy.get_rostime() - self._start_time
         if(curr_time.to_sec() > rospy.Duration(.5).to_sec()):
             #rospy.logwarn("Averageing speed! Time:" + str(curr_time.to_sec()))
             #currentPosition = self._get_current_pos().transform.translation;
             #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(100.0))
             try:
-                #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time(0), rospy.Duration(2.0))
+                
                 earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(2.0))
-                # earlierPosition = self.tf_buffer.lookup_transform_full(
-                #     "tool0",
-                #     (rospy.Time.now() - rospy.Duration(.1)),
-                #     "base_link",
-                #     (rospy.Time.now() - rospy.Duration(.1)),
-                #     "base_link",
-                #     rospy.Duration(1)
-                # )
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
                 raise
             #Speed Diff: distance moved / time between poses
@@ -485,9 +546,8 @@ class AssemblyTools():
             timeDiff = ((self.current_pose.header.stamp) - (earlierPosition.header.stamp)).to_sec()
             if(timeDiff > 0.0): #Update only if we're using a new pose; also, avoid divide by zero
                 speedDiff = positionDiff / timeDiff
-                #Moving averate weighted toward old speed; response is now independent of rate selected.
+                #Moving averate weighted toward old speed; response is independent of rate selected.
                 self.average_speed = self.average_speed * (1-10/self._rate_selected) + speedDiff * (10/self._rate_selected)
-            #rospy.logwarn("Speed average: " + str(self.average_speed) )
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
     @staticmethod
@@ -496,6 +556,13 @@ class AssemblyTools():
     
     #See if the force/speed (any vector) is within a 3-d bound. Technically, it is a box, with sqrt(2)*bound okay at diagonals.
     def _vectorRegionCompare_symmetrical(self, input, bounds_max):
+        """See ``_vectorRegionCompare``_. Compares an input to boundaries element-wise. Essentially checks whether a vector
+         is within a rectangular region. This version assumes min values to be the negative of max values.
+        :param input: (list of floats) x,y,z of a vector to check.
+        :param bounds_max: (list of floats) x,y,z max value of each element.
+        :return: (bool) Whether the vector falls within the region.
+        """
+
         #initialize a minimum list
         bounds_min = [0,0,0] 
         #Each min value is the negative of the max value
@@ -508,21 +575,31 @@ class AssemblyTools():
     # bounds_max and bounds_min let you set a range for each dimension. 
     #This just compares if you are in the cube described above. 
     def _vectorRegionCompare(self, input, bounds_max, bounds_min):
+        """.. _vectorRegionCompare Compares an input to boundaries element-wise. Essentially checks whether a vector is within a rectangular region.
+        :param input: (list of floats) x,y,z of a vector to check.
+        :param bounds_max: (list of floats) x,y,z max value of each element.
+        :param bounds_min: (list of floats) x,y,z min value of each element.
+        :return: (bool) Whether the vector falls within the region. 
+        """
         #Simply compares abs. val.s of input's elements to a vector of maximums and returns whether it exceeds
         #if(symmetrical):
         #    bounds_min[0], bounds_min[1], bounds_min[2] = bounds_max[0] * -1, bounds_max[1] * -1, bounds_max[2] * -1
         #TODO - convert to a process of numpy arrays! They process way faster because that library is written in C++
+        #Note - actually Numpy's allclose() method may be perfect here.
         if( bounds_max[0] >= input[0] >= bounds_min[0]):
             if( bounds_max[1] >= input[1] >= bounds_min[1]):
                 if( bounds_max[2] >= input[2] >= bounds_min[2]):
-                    #rospy.logwarn(.5, "_______________ping!________________")
                     return True
         return False
 
     #TODO: Make the parameters of function part of the constructor or something...
     def _force_cap_check(self):
-        #Checks if any forces or torques are dangerously high.
-
+        """Checks whether any forces or torques are dangerously high. There are two levels of response:
+            *Elevated levels of force cause this program to pause for 1s. If forces remain high after pause, 
+            the system will enter a freewheeling state
+            *Dangerously high forces will kill this program immediately to prevent damage.
+        :return: 
+        """
         if(not (self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [45, 45, 45])
             and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [3.5, 3.5, 3.5]))):
                 rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
@@ -543,6 +620,8 @@ class AssemblyTools():
         return True
         
 class AssemblyFilters():
+    """WIP, not used so far.
+    """
 
     def __init__(self):
         #Simple Moving Average Parameters
