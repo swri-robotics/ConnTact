@@ -500,10 +500,7 @@ class AssemblyTools():
         wrench_stamped.wrench = wrench
 
         return wrench_stamped
-    
-    # Not sure if working correctly. 9 abnd 1 are weights. Does not work well when you change selected rate variable.
-    #The faster you run the function, the faster it responds to changes in the force/torque. 
-    #Trying to create a slow moving average of the force and torque data. Maybe get numpy/scipi low-pass implementation
+
     def _update_average_wrench(self):
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
@@ -522,23 +519,16 @@ class AssemblyTools():
         newForce = (self._as_array(wrench1.force) * scale1 + self._as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
         newTorque = (self._as_array(wrench1.torque) * scale1 + self._as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
         return self._create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
-            
-    #Go back in time a 1/10 of a second (0.1). This function is averaging the speed instead of the wrench data. 
-    #This function currently works though. 
-    #instantaneious speed with a 0.1 second time step.
-    #Not tested, but it is used and seems to work fine. 
+
     def _update_avg_speed(self):
         """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
          previous pose (.1 s in the past) and the current pose; this speed is filtered and stored as self.average_speed.
         """
         curr_time = rospy.get_rostime() - self._start_time
         if(curr_time.to_sec() > rospy.Duration(.5).to_sec()):
-            #rospy.logwarn("Averageing speed! Time:" + str(curr_time.to_sec()))
-            #currentPosition = self._get_current_pos().transform.translation;
-            #earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(100.0))
             try:
-                
-                earlierPosition = self.tf_buffer.lookup_transform("base_link", "tool0", rospy.Time.now() - rospy.Duration(.1), rospy.Duration(2.0))
+                earlierPosition = self.tf_buffer.lookup_transform("base_link", self.tool_data[self.activeTCP]['transform'].child_frame_id, 
+                    rospy.Time.now() - rospy.Duration(.1), rospy.Duration(2.0))
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
                 raise
             #Speed Diff: distance moved / time between poses
