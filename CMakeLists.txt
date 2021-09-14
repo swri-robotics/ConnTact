@@ -163,7 +163,7 @@ include_directories(
 #   scripts/my_python_script
 #   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
-catkin_install_python(PROGRAMS nodes/spiral_search_node
+catkin_install_python(PROGRAMS nodes/spiral_search_node nodes/corner_search_node
                       DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 

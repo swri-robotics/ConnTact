@@ -34,13 +34,13 @@ from peg_in_hole_demo.assembly_tools import AssemblyTools
 from transitions import Machine
 
 #State names
-IDLE_STATE           = 'idle state'
-CHECK_FEEDBACK_STATE = 'checking load cell feedback'
-APPROACH_STATE       = 'approaching hole surface'
-FIND_HOLE_STATE      = 'finding hole'
-INSERTING_PEG_STATE  = 'inserting peg'
-COMPLETION_STATE     = 'completed insertion'
-SAFETY_RETRACT_STATE = 'retracing to safety' 
+IDLE_STATE           = 'state_idle'
+CHECK_FEEDBACK_STATE = 'state_checking_load_cell_feedback'
+APPROACH_STATE       = 'state_approaching_surface'
+FIND_HOLE_STATE      = 'state_finding_hole'
+INSERTING_PEG_STATE  = 'state_inserting_peg'
+COMPLETION_STATE     = 'state_completed_insertion'
+SAFETY_RETRACT_STATE = 'state_retracing_to_safety' 
 
 
 #Trigger names
@@ -57,7 +57,7 @@ class testing():
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
 
 
-class SpiralSearch(AssemblyTools, Machine):
+class CornerSearch(AssemblyTools, Machine):
 
 
 
@@ -71,7 +71,7 @@ class SpiralSearch(AssemblyTools, Machine):
 
 
         states = [
-            IDLE_STATE,
+            IDLE_STATE, 
             CHECK_FEEDBACK_STATE,
             APPROACH_STATE, 
             FIND_HOLE_STATE, 
@@ -96,15 +96,32 @@ class SpiralSearch(AssemblyTools, Machine):
 
             {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':CHECK_FEEDBACK_STATE, 'after': 'check_load_cell_feedback'}
 
-
         ]
-        rospy.logwarn_once('MRO IS HERE:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::')
-        print(SpiralSearch.__mro__)
+       
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         
         ROS_rate = 100 #setup for sleeping in hz
         start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
         AssemblyTools.__init__(self, ROS_rate, start_time)       
+
+    def on_enter_state_checking_load_cell_feedback(self):
+        self._select_tool('tool0')
+        self._log_state_transition()
+    def on_enter_state_approaching_surface(self):
+        self._select_tool('corner')
+        self._log_state_transition()
+    def on_enter_state_finding_hole(self):
+        self._select_tool('corner')
+        self._log_state_transition()
+    def on_enter_state_inserting_peg(self):
+        self._log_state_transition()
+    def on_enter_completed_insertion(self):
+        self._log_state_transition()
+    def on_enter_state_retracing_to_safety(self):
+        self._log_state_transition()
+
+    def _log_state_transition(self):
+        rospy.logerr("State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) )
 
     def _update_commands(self):
         rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
@@ -120,7 +137,7 @@ class SpiralSearch(AssemblyTools, Machine):
 
             self.all_states_calc()
 
-            rospy.logwarn_once('In the check_load_cell_feedback. switch_state is:' + str(switch_state) )
+            # rospy.logwarn_once('In check_load_cell_feedback. switch_state is:' + str(switch_state) )
 
             if (self.curr_time_numpy > 2):
                 self._bias_wrench = self._average_wrench
@@ -169,7 +186,6 @@ class SpiralSearch(AssemblyTools, Machine):
                     self.collision_confidence = 0.01
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
- 
             self._update_commands()
             # self.activeTCP = origTCP
 
@@ -199,17 +215,16 @@ class SpiralSearch(AssemblyTools, Machine):
                         self.y_pos_offset = self.current_pose.transform.translation.y
                         self._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
                         #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
-                        rospy.logerr_throttle(1.0, "Hole found, peg inserting...")
+                        rospy.logerr_throttle(2.0, "Hole found, peg inserting...")
                         self.next_trigger, switch_state = self.post_action(INSERT_PEG_TRIGGER) 
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                    rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
+                    rospy.loginfo_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
                         + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
 
             self._update_commands()
 
-    
     def inserting_peg(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
         #horizontally. We keep going until vertical speed is very near to zero.
@@ -240,7 +255,7 @@ class SpiralSearch(AssemblyTools, Machine):
                 #rospy.logwarn_throttle(.5, "NOT a flat surface. Time: " + str((rospy.Time.now()-marked_time).to_sec()))
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                    rospy.logwarn_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
+                    rospy.loginfo_throttle(.5, "Height is still " + str(self.current_pose.transform.translation.z) 
                         + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) )
     
             self._update_commands()
@@ -291,11 +306,11 @@ class SpiralSearch(AssemblyTools, Machine):
                 if(self.collision_confidence > 1):
                         #Restart Search
                         rospy.logerr_throttle(1.0, "Restarting test!")
-                        self.next_trigger, switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
+                        self.next_trigger, switch_state = self.post_action(RESTART_TEST_TRIGGER) 
             else:
                 self.collision_confidence = np.max( np.array([self.collision_confidence * 90/self._rate_selected, .01]))
                 if(self.current_pose.transform.translation.z > self.restart_height):
-                    rospy.logwarn_throttle(.5, "That's high enough! Let robot stop and come to zero force.")
+                    rospy.loginfo_throttle(.5, "That's high enough! Let robot stop and come to zero force.")
 
             self._update_commands()
 
@@ -311,48 +326,9 @@ class SpiralSearch(AssemblyTools, Machine):
         self._update_avg_speed()
         self._update_average_wrench()
         # self._update_plots()
-        rospy.logwarn_throttle(1, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
+        rospy.loginfo_throttle(1, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
              str(self._as_array(self._average_wrench.torque)))
-        rospy.logwarn_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
-
-    # def _publish_wrench(self, input_vec):
-    #     # self.check_controller(self.force_controller)
-    #     # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
-    #     # result_wrench = self._create_wrench(result[:3], result[3:])
-    #     # result_wrench = self._create_wrench([7,0,0], [0,0,0])
-    #     result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
-        
-    #     self._wrench_pub.publish(result_wrench)
-
-    def _callback_update_wrench(self, data):
-        self.current_wrench = data
-        rospy.logwarn_once("Callback working! " + str(data))
-
-    # # def _publish_pose(self, position, orientation):
-    # def _publish_pose(self, pose_stamped_vec):
-    #     #Takes in vector representations of position vector (x,y,z) and orientation quaternion
-    #     # Ensure controller is loaded
-    #     # self.check_controller(self.controller_name)
-
-    #     # Create poseStamped msg
-    #     pose_stamped = PoseStamped()
-
-    #     # Set the position and orientation
-    #     point = Point()
-    #     quaternion = Quaternion()
-
-    #     # point.x, point.y, point.z = position
-    #     point.x, point.y, point.z = pose_stamped_vec[0][:]
-    #     pose_stamped.pose.position = point
-
-    #     quaternion.w, quaternion.x, quaternion.y, quaternion.z  = pose_stamped_vec[1][:]
-    #     pose_stamped.pose.orientation = quaternion
-
-    #     # Set header values
-    #     pose_stamped.header.stamp = rospy.get_rostime()
-    #     pose_stamped.header.frame_id = "base_link"
-
-    #     self._pose_pub.publish(pose_stamped)
+        rospy.loginfo_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
 
     def _algorithm_compliance_control(self):
         # state = 0
@@ -360,32 +336,31 @@ class SpiralSearch(AssemblyTools, Machine):
         self._average_wrench = self._first_wrench.wrench
         self.collision_confidence = 0
         
-        rospy.logwarn_once('BELOW IS THE STATE BEFORE CHECK_FEEDBACK_TRIGGER')
+        #rospy.loginfo_once('BELOW IS THE STATE BEFORE CHECK_FEEDBACK_TRIGGER')
         print(self.state)
 
         if not rospy.is_shutdown():
             self.trigger(CHECK_FEEDBACK_TRIGGER)
 
         while not rospy.is_shutdown():
-            rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED FROM:')
-            print(self.state)
+            # rospy.loginfo('BELOW IS THE STATE BEING TRANSITIONED FROM:')
+            # print(self.state)
             self.trigger(self.next_trigger)
-            rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED TO:')
-            print(self.state)        
+            rospy.logwarn('TRANSITIONING TO: ' + str(self.state))
+            
+                    
             # self._publish_pose(self.pose_vec)
             # self._publish_wrench(self.wrench_vec)
             # self._rate.sleep()
 
-
-
     def main(self):
         # rospy.init_node("demo_assembly_application_compliance")
 
-        # assembly_application = SpiralSearch()
+        # assembly_application = CornerSearch()
         # assembly_application._algorithm_force_control()
 
         #---------------------------------------------COMPLIANCE CONTROL BELOW, FORCE CONTROL ABOVE
-        rospy.logwarn_once('MADE IT TO MAIN FUNCTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        rospy.logwarn_once('Starting Corner Search algorithm')
         rospy.sleep(3.5)
         # assembly_application._init_plot()
 
@@ -393,7 +368,7 @@ class SpiralSearch(AssemblyTools, Machine):
 
 if __name__ == '__main__':
     
-    assembly_application = SpiralSearch()
+    assembly_application = CornerSearch()
 
     assembly_application.main()
     
