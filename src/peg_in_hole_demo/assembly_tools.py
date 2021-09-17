@@ -376,7 +376,7 @@ class AssemblyTools():
             newData = self._create_wrench([0,0,0],[0,0,0])
             # TODO: Get projection on target hole 
             newData.header.frame_id = "target_hole_position"
-            newData.wrench = self._average_wrench
+            newData.wrench = self.current_wrench.wrench
             transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
             # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
             rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
@@ -392,7 +392,7 @@ class AssemblyTools():
             # torque = [ newData.wrench.torque.x, newData.wrench.torque.y, newData.wrench.torque.z]
             
             # rospy.logwarn_throttle(2, "For comparison, here's the vec rot by quat: " 
-            #     + str(AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)))
+            #     + str(AssemblyTools.rotate_vec_by_quaFt(transform.transform.rotation, newData.wrench.force)))
 
             newData.wrench.force = Point(force[0],force[1],force[2])
             newData.wrench.torque = Point(torque[0],torque[1],torque[2])
@@ -569,7 +569,7 @@ class AssemblyTools():
 
         # create wrench
         wrench.force.x, wrench.force.y, wrench.force.z = force
-        wrench.torque.x, wrench.torque.y, wrench.torque.z = torque
+        wrench.torque.x, wrench.torque.y, wrench.torque.z = torque 
 
         # create header
         wrench_stamped.header.seq = self._seq
