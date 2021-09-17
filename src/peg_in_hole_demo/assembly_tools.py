@@ -44,7 +44,6 @@ SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 class AssemblyTools():
 
     def __init__(self, ROS_rate, start_time):
-
         self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         # self._target_pub    = rospy.Publisher('target_hole', TransformStamped, queue_size=2, latch=True)
@@ -328,18 +327,6 @@ class AssemblyTools():
 
         # rospy.loginfo_once("Callback working! " + str(data))
     
-    @staticmethod
-    def rotate_vector_by_matrix(inputVec, inputMat):
-        """ Applies a rotation from a transformation matrix to a 3d vector 
-        :param inputVec: (geometry_msgs.Point) Vector to be processed
-        :param inputMat: (np.Array) 4x4 homogeneous tranformation matrix.
-        """        
-        # arrayVec = np.array([[inputVec.x],[inputVec.y],[inputVec.z]])
-        arrayVec = np.array([inputVec.x,inputVec.y,inputVec.z,0])
-        out = np.matmul(inputMat[0:4,0:4], arrayVec)
-        rospy.loginfo_throttle(2, 'Matrix math ' + str(inputVec) + str(inputMat) + str(out))
-        return out
-
     def post_action(self, trigger_name):
         """Defines the next trigger which the state machine should execute.
         """
@@ -390,21 +377,76 @@ class AssemblyTools():
             # TODO: Get projection on target hole 
             newData.header.frame_id = "target_hole_position"
             newData.wrench = self._average_wrench
-            transform = self.tf_buffer.lookup_transform("target_hole_position", 'tool0', rospy.Time(0), rospy.Duration(0.1))
-            rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
-
-            # [0.76459799  0.56323147  0.31330532  ]
-            # [ 0.64419435 -0.68300507 -0.34426403 ]
-            # [ 0.02008879  0.4650531  -0.88505483 ]
-
-            # rospy.loginfo_throttle(2, "Rotation Mat is " + str(rotationMat))
-            # newData.wrench.force = AssemblyTools._as_array(newData.wrench.force)
-            force = AssemblyTools.rotate_vector_by_matrix(newData.wrench.force, rotationMat)
-            torque = AssemblyTools.rotate_vector_by_matrix(newData.wrench.torque, rotationMat)
+            transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
+            # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
+            rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
+            # force = AssemblyTools.rotate_vector_by_matrix(newData.wrench.force, rotationMat)
+            # torque = AssemblyTools.rotate_vector_by_matrix(newData.wrench.torque, rotationMat)
+            rospy.logerr_throttle(1, "RPY should be " + str(trfm.euler_from_quaternion(AssemblyTools.list_from_quat(transform.transform.rotation))))
+            rospy.logwarn_throttle(.5, "Before rotation: "+str(newData.wrench.force))
+            force = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)
+            torque = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.torque)
+            
+            # x: 0.8544504620022602 y: -0.23258048185592703 z: 0.4032640942545468 w: 0.23064864562543824
+            # force =  [ newData.wrench.force.x, newData.wrench.force.y, newData.wrench.force.z]
+            # torque = [ newData.wrench.torque.x, newData.wrench.torque.y, newData.wrench.torque.z]
+            
+            # rospy.logwarn_throttle(2, "For comparison, here's the vec rot by quat: " 
+            #     + str(AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)))
 
             newData.wrench.force = Point(force[0],force[1],force[2])
             newData.wrench.torque = Point(torque[0],torque[1],torque[2])
+            rospy.logwarn_throttle(.5, "After rotation: "+str(newData.wrench.force))
+            
+            # rospy.logwarn_throttle(1, "Force from basic mult is " + str(newData.wrench.force) 
+            #     + "\nFor comparison, here's the vec rot by quat: " 
+            #     + str(AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)))
             self._adj_wrench_pub.publish(newData)
+    
+    @staticmethod
+    def list_from_quat(quat):
+        return [quat.x, quat.y, quat.z, quat.w]
+
+    @staticmethod
+    def list_from_point(point):
+        return [point.x, point.y, point.z]
+
+    @staticmethod
+    def rotate_vec_by_quat(quat, vec):
+        # q1 = [quat.x, quat.y, quat.z, quat.w]
+        # q2 = [vec.x, vec.y, vec.z, 0.0]
+
+        q1 = [quat.x, quat.y, quat.z, quat.w]
+        q2 = [vec.x, vec.y, vec.z, 0.0]
+        # v1 = trfm.transformations.unit_vector(v1)
+        b = trfm.quaternion_multiply(
+            trfm.quaternion_multiply(q1, q2), 
+            trfm.quaternion_conjugate(q1)
+        )
+        return [b[0],b[1],b[2]]
+    
+    @staticmethod
+    def rotate_vector_by_matrix(inputVec, inputMat):
+        """ Applies a rotation from a transformation matrix to a 3d vector 
+        :param inputVec: (geometry_msgs.Point) Vector to be processed
+        :param inputMat: (np.Array) 4x4 homogeneous tranformation matrix.
+        """        
+        # arrayVec = np.array([[inputVec.x],[inputVec.y],[inputVec.z]])
+
+        # v1 = tf.transformations.unit_vector(v1)
+        # q2 = list(v1)
+        # q2.append(0.0)
+        # return tf.transformations.quaternion_multiply(
+        #     tf.transformations.quaternion_multiply(q1, q2), 
+        #     tf.transformations.quaternion_conjugate(q1)
+        # )[:3]
+
+        arrayVec = np.array([inputVec.x,inputVec.y,inputVec.z])
+        out = np.matmul(inputMat[0:3,0:3], arrayVec)
+        
+        
+        return out
+
 
     # def _publish_pose(self, position, orientation):
     def _publish_pose(self, pose_stamped_vec):
