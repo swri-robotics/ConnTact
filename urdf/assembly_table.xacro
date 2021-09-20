@@ -9,9 +9,9 @@
 
     <link name="table">
       <visual>
-        <origin xyz="0 0 -0.05"/>
+        <origin xyz="0 0 -0.10"/>
         <geometry>
-          <box size="$(arg table_size) $(arg table_size) 0.1"/>
+          <box size="$(arg table_size) $(arg table_size) 0.05"/>
         </geometry>
         <material name="StainlessSteel">
           <color rgba="0.8 0.8 0.8 0.9"/>

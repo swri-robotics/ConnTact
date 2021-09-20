@@ -7,10 +7,8 @@ Panels:
         - /Global Options1
         - /Status1
         - /Grid1
-        - /Pose1
-        - /TF1
+        - /WrenchStamped1
         - /TF1/Frames1
-        - /Pose2
         - /WrenchStamped2
       Splitter Ratio: 0.75
     Tree Height: 719
@@ -273,14 +271,14 @@ Visualization Manager:
       Arrow Width: 0.5
       Class: rviz/WrenchStamped
       Enabled: true
-      Force Arrow Scale: 0.10000000149011612
+      Force Arrow Scale: 0.05000000074505806
       Force Color: 204; 51; 51
       Hide Small Values: true
       History Length: 1
       Name: WrenchStamped
       Queue Size: 10
       Topic: /adjusted_wrench_force
-      Torque Arrow Scale: 0.10000000149011612
+      Torque Arrow Scale: 2
       Torque Color: 204; 204; 51
       Unreliable: false
       Value: true
@@ -312,7 +310,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 5.1016154289245605
+      Distance: 3.741973638534546
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -328,9 +326,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6147971749305725
+      Pitch: -0.03020302951335907
       Target Frame: <Fixed Frame>
-      Yaw: 3.6934618949890137
+      Yaw: 4.563459873199463
     Saved: ~
 Window Geometry:
   Displays:
