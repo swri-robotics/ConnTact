@@ -157,7 +157,7 @@ class AssemblyTools():
             # rospy.logwarn(self.target_peg + " gives a homog matrix of " + str(self.tool_data[str(key)]['matrix']))
             
         rospy.logerr("TCP position dictionary now contains: " + str(list(self.tool_data))+ ", selected tool publishing now: ")
-        self._select_tool(self.activeTCP)
+        self.select_tool(self.activeTCP)
 
         # quit()
 
@@ -365,15 +365,15 @@ class AssemblyTools():
         """
         # self.check_controller(self.force_controller)
         # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
-        # result_wrench = self._create_wrench(result[:3], result[3:])
-        # result_wrench = self._create_wrench([7,0,0], [0,0,0])
-        result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
+        # result_wrench = self.create_wrench(result[:3], result[3:])
+        # result_wrench = self.create_wrench([7,0,0], [0,0,0])
+        result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
         self._wrench_pub.publish(result_wrench)
 
         if (self.curr_time >= rospy.Duration(1)):
             # Calculate a wrench value which is aligned to the target hole frame; publish it.
 
-            newData = self._create_wrench([0,0,0],[0,0,0])
+            newData = self.create_wrench([0,0,0],[0,0,0])
             # TODO: Get projection on target hole 
             newData.header.frame_id = "target_hole_position"
             newData.wrench = self.current_wrench.wrench
