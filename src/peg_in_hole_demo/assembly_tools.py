@@ -49,7 +49,7 @@ class AssemblyTools():
         # self._target_pub    = rospy.Publisher('target_hole', TransformStamped, queue_size=2, latch=True)
         self._adj_wrench_pub = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
 
-        self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
+        self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
 
         #Needed to get current pose of the robot
@@ -71,14 +71,14 @@ class AssemblyTools():
         self._rate_selected = ROS_rate
         self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
         self._seq = 0
-        self._start_time = start_time #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
+        self._start_time = start_time #for _spiral_search_basic_force_control and spiral_search_basic_compliance_control
         
         #Spiral parameters
         self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
         self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
-        self._first_wrench = self._create_wrench([0,0,0], [0,0,0])
-        self._freq_c = np.double(0.15) #Hz frequency in _spiral_search_basic_compliance_control
-        self._amp_c  = np.double(.002)  #meters amplitude in _spiral_search_basic_compliance_control
+        self._first_wrench = self.create_wrench([0,0,0], [0,0,0])
+        self._freq_c = np.double(0.15) #Hz frequency in spiral_search_basic_compliance_control
+        self._amp_c  = np.double(.002)  #meters amplitude in spiral_search_basic_compliance_control
         self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
         
         # # Establish goal position -- TODO: Analyse whether redundant  
@@ -91,11 +91,11 @@ class AssemblyTools():
         #loop parameters
         self.curr_time = rospy.get_rostime() - self._start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
-        self.wrench_vec  = self._get_command_wrench([0,0,0])
+        self.wrench_vec  = self.get_command_wrench([0,0,0])
         self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
 
-        self.current_pose = self._get_current_pos()
-        self.pose_vec = self._full_compliance_position()
+        self.current_pose = self.get_current_pos()
+        self.pose_vec = self.full_compliance_position()
         self.current_wrench = self._first_wrench
         self._average_wrench = self._first_wrench.wrench 
         self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
@@ -251,7 +251,7 @@ class AssemblyTools():
         
         return output_pose
     
-    def _select_tool(self, tool_name):
+    def select_tool(self, tool_name):
         """Sets activeTCP frame according to title of desired peg frame (tip, middle, etc.). This frame must be included in the YAML.
         :param tool_name: (string) Key in tool_data dictionary for desired frame.
         """
@@ -263,7 +263,7 @@ class AssemblyTools():
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
 
 
-    def _spiral_search_basic_compliance_control(self):
+    def spiral_search_basic_compliance_control(self):
         """Generates position, orientation offset vectors which describe a plane spiral about z; 
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
@@ -292,7 +292,7 @@ class AssemblyTools():
 
         return [pose_position, pose_orientation]
 
-    def _linear_search_position(self, direction_vector = [0,0,0], desired_orientation = [0, 1, 0, 0]):
+    def linear_search_position(self, direction_vector = [0,0,0], desired_orientation = [0, 1, 0, 0]):
         """Generates a command pose vector which causes the robot to hold a certain orientation
          and comply in z while maintaining the approach vector along x_ and y_pos_offset.
         :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion in z.
@@ -305,7 +305,7 @@ class AssemblyTools():
         pose_orientation = desired_orientation
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
-    def _full_compliance_position(self, direction_vector = [0,0,0], desired_orientation = [0, 1, 0, 0]):
+    def full_compliance_position(self, direction_vector = [0,0,0], desired_orientation = [0, 1, 0, 0]):
         """Generates a command pose vector which causes the robot to hold a certain orientation
          and comply translationally in all directions.
         :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion.
@@ -320,7 +320,7 @@ class AssemblyTools():
 
         #Load cell current data
 
-    def _callback_update_wrench(self, data: WrenchStamped):
+    def callback_update_wrench(self, data: WrenchStamped):
         """Callback to update current wrench data whenever new data becomes available.
         """
         self.current_wrench = data
@@ -332,12 +332,12 @@ class AssemblyTools():
         """
         return [trigger_name, True]
 
-    def _subtract_vector3s(self, vec1, vec2):
+    def subtract_vector3s(self, vec1, vec2):
 
         newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
         return newVector3
 
-    def _get_current_pos(self):
+    def get_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
         """
         transform = TransformStamped() #TODO: Check that this worked.
@@ -352,7 +352,7 @@ class AssemblyTools():
             rospy.Time(0), rospy.Duration(10.0))
         return transform
 
-    def _get_command_wrench(self, vec = [0,0,0], ori = [0,0,0]):
+    def get_command_wrench(self, vec = [0,0,0], ori = [0,0,0]):
         """Output ROS wrench parameters from human-readable vector inputs. 
         :param vec: (list of floats) Vector of desired force in each direction (in Newtons).
         :param ori: (list of floats) Vector of desired torque about each axis (in N*m)
@@ -360,7 +360,7 @@ class AssemblyTools():
 
         return [vec[0], vec[1], vec[2], ori[0], ori[1], ori[2]]
 
-    def _publish_wrench(self, input_vec):
+    def publish_wrench(self, input_vec):
         """Publish the commanded wrench to the command topic.
         """
         # self.check_controller(self.force_controller)
@@ -449,7 +449,7 @@ class AssemblyTools():
 
 
     # def _publish_pose(self, position, orientation):
-    def _publish_pose(self, pose_stamped_vec):
+    def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
@@ -558,7 +558,7 @@ class AssemblyTools():
                 return output
         rospy.logerr("Invalid input to swap_pose_tf !!!")
 
-    def _create_wrench(self, force, torque):
+    def create_wrench(self, force, torque):
         """Composes a standard wrench object from human-readable vectors.
         :param force: (list of floats) x,y,z force values
         :param torque: (list of floats) torques about x,y,z
@@ -582,14 +582,14 @@ class AssemblyTools():
 
         return wrench_stamped
 
-    def _update_average_wrench(self):
+    def update_average_wrench(self):
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
-        #self._average_wrench = self._weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
-        self._average_wrench = self._weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
+        #self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
+        self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
         #rospy.logwarn_throttle(.5, "Updating wrench toward " + str(self.current_wrench.wrench.force))
 
-    def _weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
+    def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
         """Returns a simple linear interpolation between wrenches.
         :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
         :param scale1: (float) Weight of first input wrench
@@ -597,11 +597,11 @@ class AssemblyTools():
         :param scale2: (float) Weight of second input wrench
         :return: (geometry_msgs.WrenchStamped)
         """
-        newForce = (self._as_array(wrench1.force) * scale1 + self._as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
-        newTorque = (self._as_array(wrench1.torque) * scale1 + self._as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
-        return self._create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
+        newForce = (self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
+        newTorque = (self.as_array(wrench1.torque) * scale1 + self.as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
+        return self.create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
 
-    def _update_avg_speed(self):
+    def update_avg_speed(self):
         """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
          previous pose (.1 s in the past) and the current pose; this speed is filtered and stored as self.average_speed.
         """
@@ -613,7 +613,7 @@ class AssemblyTools():
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
                 raise
             #Speed Diff: distance moved / time between poses
-            positionDiff = self._as_array(self.current_pose.transform.translation) - self._as_array(earlierPosition.transform.translation)
+            positionDiff = self.as_array(self.current_pose.transform.translation) - self.as_array(earlierPosition.transform.translation)
             timeDiff = ((self.current_pose.header.stamp) - (earlierPosition.header.stamp)).to_sec()
             if(timeDiff > 0.0): #Update only if we're using a new pose; also, avoid divide by zero
                 speedDiff = positionDiff / timeDiff
@@ -622,12 +622,12 @@ class AssemblyTools():
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
     @staticmethod
-    def _as_array(vec):
+    def as_array(vec):
         return np.array([vec.x, vec.y, vec.z])
     
     #See if the force/speed (any vector) is within a 3-d bound. Technically, it is a box, with sqrt(2)*bound okay at diagonals.
-    def _vectorRegionCompare_symmetrical(self, input, bounds_max):
-        """See ``_vectorRegionCompare``_. Compares an input to boundaries element-wise. Essentially checks whether a vector
+    def vectorRegionCompare_symmetrical(self, input, bounds_max):
+        """See ``vectorRegionCompare``_. Compares an input to boundaries element-wise. Essentially checks whether a vector
          is within a rectangular region. This version assumes min values to be the negative of max values.
         :param input: (list of floats) x,y,z of a vector to check.
         :param bounds_max: (list of floats) x,y,z max value of each element.
@@ -641,12 +641,12 @@ class AssemblyTools():
         bounds_min[0] = bounds_max[0] * -1.0
         bounds_min[1] = bounds_max[1] * -1.0
         bounds_min[2] = bounds_max[2] * -1.0
-        return self._vectorRegionCompare(input, bounds_max, bounds_min)
+        return self.vectorRegionCompare(input, bounds_max, bounds_min)
     
     # bounds_max and bounds_min let you set a range for each dimension. 
     #This just compares if you are in the cube described above. 
-    def _vectorRegionCompare(self, input, bounds_max, bounds_min):
-        """.. _vectorRegionCompare Compares an input to boundaries element-wise. Essentially checks whether a vector is within a rectangular region.
+    def vectorRegionCompare(self, input, bounds_max, bounds_min):
+        """.. vectorRegionCompare Compares an input to boundaries element-wise. Essentially checks whether a vector is within a rectangular region.
         :param input: (list of floats) x,y,z of a vector to check.
         :param bounds_max: (list of floats) x,y,z max value of each element.
         :param bounds_min: (list of floats) x,y,z min value of each element.
@@ -664,21 +664,21 @@ class AssemblyTools():
         return False
 
     #TODO: Make the parameters of function part of the constructor or something...
-    def _force_cap_check(self):
+    def force_cap_check(self):
         """Checks whether any forces or torques are dangerously high. There are two levels of response:
             *Elevated levels of force cause this program to pause for 1s. If forces remain high after pause, 
             the system will enter a freewheeling state
             *Dangerously high forces will kill this program immediately to prevent damage.
         :return: 
         """
-        if(not (self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [45, 45, 45])
-            and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [3.5, 3.5, 3.5]))):
+        if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), [45, 45, 45])
+            and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), [3.5, 3.5, 3.5]))):
                 rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
                 rospy.logerr("Killing program.")
                 quit() # kills the program. Since the node is required, it kills the ROS application.
                 return False
-        if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [25, 25, 25])):
-            if(self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.torque), [2, 2, 2])):
+        if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), [25, 25, 25])):
+            if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), [2, 2, 2])):
                 return True
         rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
         if(self.highForceWarning):
@@ -704,22 +704,22 @@ class AssemblyFilters():
         # self._data_buffer = np.zeros(self._buffer_window)
         # self._moving_avg_data = [] #Empty to start
 
-    def _simple_moving_average(self, new_data_point, window=None):
+    def simple_moving_average(self, new_data_point, window=None):
         if window == None:
             window =  self._buffer_window #Unless new input provided, use class member
 
         #Fill up the first window while returning current value, else calculate moving average using constant window
         if len(self._data_buffer) < window:
             self._data_buffer = np.append(self.data_buffer, new_data_point)
-            avg = self._calc_moving_average(self._data_buffer, len(self._data_buffer))
+            avg = self.calc_moving_average(self._data_buffer, len(self._data_buffer))
         else:
             self._data_buffer = np.append(self._data_buffer, new_data_point) #append new datapoint to the end
             self.data_buffer = np.delete(self.data_buffer, 0) #pop the first element
-            avg = self._calc_moving_average(self._data_buffer, window)
+            avg = self.calc_moving_average(self._data_buffer, window)
         
         return avg
         
-    def _calc_moving_average(buffered_data, w): #w is the window
+    def calc_moving_average(buffered_data, w): #w is the window
         return np.convolve(buffered_data, np.ones(w), 'valid') / w
 
 if __name__ == '__main__':
