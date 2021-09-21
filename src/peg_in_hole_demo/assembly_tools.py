@@ -51,6 +51,7 @@ class AssemblyTools():
 
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
+        self.filters = AssemblyFilters(5)
 
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
@@ -105,7 +106,7 @@ class AssemblyTools():
         self.highForceWarning = False
         self.surface_height = 0.0
         self.restart_height = .1
-        self.collision_confidence = 0;
+        self.collision_confidence = 0
 
         #Simple Moving Average Parameters
         self._buffer_window = self._rate_selected #self._rate_selected = 1/Hz since this variable is the rate of ROS commands
@@ -585,9 +586,10 @@ class AssemblyTools():
     def update_average_wrench(self):
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
-        #self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
-        self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
-        #rospy.logwarn_throttle(.5, "Updating wrench toward " + str(self.current_wrench.wrench.force))
+
+        # self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
+        self._average_wrench = filter.average_wrench(self.current_wrench.wrench)
+        rospy.logwarn_throttle(2, "Buffers is " + str(filter._data_buffer))
 
     def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
         """Returns a simple linear interpolation between wrenches.
@@ -621,8 +623,7 @@ class AssemblyTools():
                 self.average_speed = self.average_speed * (1-10/self._rate_selected) + speedDiff * (10/self._rate_selected)
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
-    @staticmethod
-    def as_array(vec):
+    def as_array(self, vec):
         return np.array([vec.x, vec.y, vec.z])
     
     #See if the force/speed (any vector) is within a 3-d bound. Technically, it is a box, with sqrt(2)*bound okay at diagonals.
@@ -694,28 +695,56 @@ class AssemblyFilters():
     """WIP, not used so far.
     """
 
-    def __init__(self):
+    def __init__(self, window = 15):
         #Simple Moving Average Parameters
-        self._buffer_window = self._rate_selected #self._rate_selected = 1/Hz since this variable is the rate of ROS commands
-        self._data_buffer = []
+        self._buffer_window["wrench"] = window # should tie to self._rate_selected = 1/Hz since this variable is the rate of ROS commands
+        self._data_buffer = dict()
         # self._moving_avg_data = np. #Empty to start. make larger than we need since np is contiguous memory. Will ignore NaN values.
         # self._data_buffer = np.empty(self._buffer_window)
         # self.avg_it = 0#iterator for allocating the first window in the moving average calculation
         # self._data_buffer = np.zeros(self._buffer_window)
         # self._moving_avg_data = [] #Empty to start
+    
+    def average_wrench(self, input):
+        # out = input
+        # Combine 
+        force = self.average_threes(input.force, 'force')
+        torque = self.average_threes(input.torque, 'torque')
+        
+        return Wrench(self.dict_to_point(force), self.dict_to_point(torque))
+    
+    def average_threes(self, input, name):
+        """Returns the moving average of a dict of x,y,z values
+        :param input: (geometry_msgs.msg.Point) A point with x,y,z properties
+        :param name: (string) Name to use for buffer dictionary
+        :return: (dict) x,y,z dictionary of the averaged values.
+        """
 
-    def simple_moving_average(self, new_data_point, window=None):
-        if window == None:
-            window =  self._buffer_window #Unless new input provided, use class member
+        vals = self.point_to_dict(input)
+        for k, v in vals:
+            vals[k] = self.simple_moving_average(k, key=name+'_'+v)
+        return vals
 
+    def point_to_dict(self, input):
+        return {"x": input.x, "y":input.y, "z":input.z}
+
+    def dict_to_point(self, input):
+        return Point(input["x"], input["y"], input["z"])
+
+    def simple_moving_average(self, new_data_point, window=None, key="wrench"):
+
+        if not key in list(self._data_buffer[key]):
+            self._data_buffer[key] = np.array([])
+            self._buffer_window[key] = window
+        window =  self._buffer_window[key] #Unless new input provided, use class member
         #Fill up the first window while returning current value, else calculate moving average using constant window
-        if len(self._data_buffer) < window:
-            self._data_buffer = np.append(self.data_buffer, new_data_point)
-            avg = self.calc_moving_average(self._data_buffer, len(self._data_buffer))
+        if len(self._data_buffer[key]) < window:
+            self._data_buffer[key] = np.append(self._data_buffer[key], new_data_point)
+            avg = self.calc_moving_average(self._data_buffer[key], len(self._data_buffer[key]))
         else:
-            self._data_buffer = np.append(self._data_buffer, new_data_point) #append new datapoint to the end
-            self.data_buffer = np.delete(self.data_buffer, 0) #pop the first element
-            avg = self.calc_moving_average(self._data_buffer, window)
+            self._data_buffer[key] = np.append(self._data_buffer[key], new_data_point) #append new datapoint to the end
+            self._data_buffer[key] = np.delete(self._data_buffer[key], 0) #pop the first element
+            avg = self.calc_moving_average(self._data_buffer[key], window)
         
         return avg
         
