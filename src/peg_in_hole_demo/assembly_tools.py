@@ -51,7 +51,6 @@ class AssemblyTools():
 
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
-        self.filters = AssemblyFilters(5)
 
         #Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
@@ -73,7 +72,8 @@ class AssemblyTools():
         self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
         self._seq = 0
         self._start_time = start_time #for _spiral_search_basic_force_control and spiral_search_basic_compliance_control
-        
+        self.filters = AssemblyFilters(5, self._rate_selected)
+
         #Spiral parameters
         self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
         self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
@@ -377,33 +377,33 @@ class AssemblyTools():
             newData = self.create_wrench([0,0,0],[0,0,0])
             # TODO: Get projection on target hole 
             newData.header.frame_id = "target_hole_position"
-            newData.wrench = self._average_wrench
             transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
+            newData.wrench = AssemblyTools.reorient_wrench(self._average_wrench, transform)
             # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
             # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
-            # force = AssemblyTools.rotate_vector_by_matrix(newData.wrench.force, rotationMat)
-            # torque = AssemblyTools.rotate_vector_by_matrix(newData.wrench.torque, rotationMat)
-            # rospy.logerr_throttle(1, "RPY should be " + str(trfm.euler_from_quaternion(AssemblyTools.list_from_quat(transform.transform.rotation))))
-            # rospy.logwarn_throttle(.5, "Before rotation: "+str(newData.wrench.force))
-            force = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)
-            torque = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.torque)
-            
-            # x: 0.8544504620022602 y: -0.23258048185592703 z: 0.4032640942545468 w: 0.23064864562543824
-            # force =  [ newData.wrench.force.x, newData.wrench.force.y, newData.wrench.force.z]
-            # torque = [ newData.wrench.torque.x, newData.wrench.torque.y, newData.wrench.torque.z]
-            
-            # rospy.logwarn_throttle(2, "For comparison, here's the vec rot by quat: " 
-            #     + str(AssemblyTools.rotate_vec_by_quaFt(transform.transform.rotation, newData.wrench.force)))
 
-            newData.wrench.force = Point(force[0],force[1],force[2])
-            newData.wrench.torque = Point(torque[0],torque[1],torque[2])
-            # rospy.logwarn_throttle(.5, "After rotation: "+str(newData.wrench.force))
-            
-            # rospy.logwarn_throttle(1, "Force from basic mult is " + str(newData.wrench.force) 
-            #     + "\nFor comparison, here's the vec rot by quat: " 
-            #     + str(AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)))
-            self._adj_wrench_pub.publish(newData)
-    
+        self._adj_wrench_pub.publish(newData)    
+
+    @staticmethod
+    def reorient_wrench(wrench, transform):
+        """Rotates a wrench to move from one frame to another while maintaining orientation relative to the world.
+        :param wrench: (geometry_msgs.Wrench) Wrench to rotate
+        :param transform: (geometry_msgs.Transform) Transform from original frame to new frame.
+        :return: (Wrench) Reoriented wrench
+        """
+
+        force = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, wrench.force)
+        torque = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, wrench.torque)
+        # force =  [ newData.wrench.force.x, newData.wrench.force.y, newData.wrench.force.z]
+        # torque = [ newData.wrench.torque.x, newData.wrench.torque.y, newData.wrench.torque.z]
+        
+        # rospy.logwarn_throttle(2, "For comparison, here's the vec rot by quat: " 
+        #     + str(AssemblyTools.rotate_vec_by_quaFt(transform.transform.rotation, newData.wrench.force)))
+
+        wrench.force = Point(force[0],force[1],force[2])
+        wrench.torque = Point(torque[0],torque[1],torque[2])
+        return wrench
+
     @staticmethod
     def list_from_quat(quat):
         return [quat.x, quat.y, quat.z, quat.w]
@@ -589,7 +589,7 @@ class AssemblyTools():
 
         # self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
         self._average_wrench = self.filters.average_wrench(self.current_wrench.wrench)
-        rospy.logwarn_throttle(2, "Buffers is " + str(self.filters._data_buffer))
+        # rospy.logwarn_throttle(2, "Buffers is " + str(self.filters._data_buffer))
 
     def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
         """Returns a simple linear interpolation between wrenches.
@@ -620,7 +620,9 @@ class AssemblyTools():
             if(timeDiff > 0.0): #Update only if we're using a new pose; also, avoid divide by zero
                 speedDiff = positionDiff / timeDiff
                 #Moving averate weighted toward old speed; response is independent of rate selected.
-                self.average_speed = self.average_speed * (1-10/self._rate_selected) + speedDiff * (10/self._rate_selected)
+                # self.average_speed = self.average_speed * (1-10/self._rate_selected) + speedDiff * (10/self._rate_selected)
+                rospy.logwarn_throttle(2.0, "Speed is currently about " + str(speedDiff))
+                self.average_speed = self.filters.average_speed(speedDiff)
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
     def as_array(self, vec):
@@ -692,11 +694,15 @@ class AssemblyTools():
         return True
         
 class AssemblyFilters():
-    """WIP, not used so far.
+    """Averages a signal based on a history log of previous values. Window size is normallized to different
+    frequency values using _rate_selected; window should be for 100hz cycle time.
     """
 
-    def __init__(self, window = 15):
+    def __init__(self, window = 15, rate_selected=100):
+
+
         #Simple Moving Average Parameters
+        self._rate_selected = rate_selected
         self._buffer_window = dict()
         self._buffer_window["wrench"] = window # should tie to self._rate_selected = 1/Hz since this variable is the rate of ROS commands
         self._data_buffer = dict()
@@ -714,6 +720,16 @@ class AssemblyFilters():
         
         return Wrench(self.dict_to_point(force), self.dict_to_point(torque))
     
+    def average_speed(self, input):
+        """Takes speed as a list of components, returns smoothed version
+        :param input: (numpy.Array) Speed vector
+        :return: (numpy.Array) Smoothed speed vector
+        """
+
+        speed = self.average_threes(Point(input[0], input[1], input[2]), 'speed') 
+        return np.array([speed['x'], speed['y'], speed['z']])
+
+
     def average_threes(self, input, name):
         """Returns the moving average of a dict of x,y,z values
         :param input: (geometry_msgs.msg.Point) A point with x,y,z properties
@@ -737,7 +753,7 @@ class AssemblyFilters():
         if not key in self._data_buffer:
             self._data_buffer[key] = np.array([])
             self._buffer_window[key] = window
-        window =  self._buffer_window[key] #Unless new input provided, use class member
+        window =  int(np.floor(self._buffer_window[key] * self._rate_selected/100)) #Unless new input provided, use class member
         #Fill up the first window while returning current value, else calculate moving average using constant window
         if len(self._data_buffer[key]) < window:
             self._data_buffer[key] = np.append(self._data_buffer[key], new_data_point)
