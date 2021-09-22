@@ -377,14 +377,14 @@ class AssemblyTools():
             newData = self.create_wrench([0,0,0],[0,0,0])
             # TODO: Get projection on target hole 
             newData.header.frame_id = "target_hole_position"
-            newData.wrench = self.current_wrench.wrench
+            newData.wrench = self._average_wrench
             transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
             # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
-            rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
+            # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
             # force = AssemblyTools.rotate_vector_by_matrix(newData.wrench.force, rotationMat)
             # torque = AssemblyTools.rotate_vector_by_matrix(newData.wrench.torque, rotationMat)
-            rospy.logerr_throttle(1, "RPY should be " + str(trfm.euler_from_quaternion(AssemblyTools.list_from_quat(transform.transform.rotation))))
-            rospy.logwarn_throttle(.5, "Before rotation: "+str(newData.wrench.force))
+            # rospy.logerr_throttle(1, "RPY should be " + str(trfm.euler_from_quaternion(AssemblyTools.list_from_quat(transform.transform.rotation))))
+            # rospy.logwarn_throttle(.5, "Before rotation: "+str(newData.wrench.force))
             force = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.force)
             torque = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, newData.wrench.torque)
             
@@ -397,7 +397,7 @@ class AssemblyTools():
 
             newData.wrench.force = Point(force[0],force[1],force[2])
             newData.wrench.torque = Point(torque[0],torque[1],torque[2])
-            rospy.logwarn_throttle(.5, "After rotation: "+str(newData.wrench.force))
+            # rospy.logwarn_throttle(.5, "After rotation: "+str(newData.wrench.force))
             
             # rospy.logwarn_throttle(1, "Force from basic mult is " + str(newData.wrench.force) 
             #     + "\nFor comparison, here's the vec rot by quat: " 
@@ -588,8 +588,8 @@ class AssemblyTools():
         """
 
         # self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
-        self._average_wrench = filter.average_wrench(self.current_wrench.wrench)
-        rospy.logwarn_throttle(2, "Buffers is " + str(filter._data_buffer))
+        self._average_wrench = self.filters.average_wrench(self.current_wrench.wrench)
+        rospy.logwarn_throttle(2, "Buffers is " + str(self.filters._data_buffer))
 
     def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
         """Returns a simple linear interpolation between wrenches.
@@ -697,6 +697,7 @@ class AssemblyFilters():
 
     def __init__(self, window = 15):
         #Simple Moving Average Parameters
+        self._buffer_window = dict()
         self._buffer_window["wrench"] = window # should tie to self._rate_selected = 1/Hz since this variable is the rate of ROS commands
         self._data_buffer = dict()
         # self._moving_avg_data = np. #Empty to start. make larger than we need since np is contiguous memory. Will ignore NaN values.
@@ -721,8 +722,8 @@ class AssemblyFilters():
         """
 
         vals = self.point_to_dict(input)
-        for k, v in vals:
-            vals[k] = self.simple_moving_average(k, key=name+'_'+v)
+        for k, v in vals.items():
+            vals[k] = self.simple_moving_average(v, 15, key=name+'_'+k)
         return vals
 
     def point_to_dict(self, input):
@@ -733,7 +734,7 @@ class AssemblyFilters():
 
     def simple_moving_average(self, new_data_point, window=None, key="wrench"):
 
-        if not key in list(self._data_buffer[key]):
+        if not key in self._data_buffer:
             self._data_buffer[key] = np.array([])
             self._buffer_window[key] = window
         window =  self._buffer_window[key] #Unless new input provided, use class member
@@ -748,7 +749,7 @@ class AssemblyFilters():
         
         return avg
         
-    def calc_moving_average(buffered_data, w): #w is the window
+    def calc_moving_average(self, buffered_data, w): #w is the window
         return np.convolve(buffered_data, np.ones(w), 'valid') / w
 
 if __name__ == '__main__':
