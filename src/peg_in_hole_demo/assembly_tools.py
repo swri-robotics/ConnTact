@@ -98,7 +98,8 @@ class AssemblyTools():
         self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()
         self.current_wrench = self._first_wrench
-        self._average_wrench = self._first_wrench.wrench 
+        self._average_wrench_gripper = self._first_wrench.wrench 
+        self._average_wrench_world = self._first_wrench.wrench 
         self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
         #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
         self.average_speed = np.array([0.0,0.0,0.0])
@@ -370,19 +371,10 @@ class AssemblyTools():
         # result_wrench = self.create_wrench([7,0,0], [0,0,0])
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
         self._wrench_pub.publish(result_wrench)
-
-        if (self.curr_time >= rospy.Duration(1)):
-            # Calculate a wrench value which is aligned to the target hole frame; publish it.
-
-            newData = self.create_wrench([0,0,0],[0,0,0])
-            # TODO: Get projection on target hole 
-            newData.header.frame_id = "target_hole_position"
-            transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
-            newData.wrench = AssemblyTools.reorient_wrench(self._average_wrench, transform)
-            # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
-            # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
-
-        self._adj_wrench_pub.publish(newData)    
+        guy = self.create_wrench([0,0,0], [0,0,0])
+        guy.wrench = self._average_wrench_gripper
+        guy.header.frame_id = "target_hole_position"
+        self._adj_wrench_pub.publish(guy)    
 
     @staticmethod
     def reorient_wrench(wrench, transform):
@@ -447,7 +439,6 @@ class AssemblyTools():
         
         
         return out
-
 
     # def _publish_pose(self, position, orientation):
     def publish_pose(self, pose_stamped_vec):
@@ -587,8 +578,19 @@ class AssemblyTools():
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
 
-        # self._average_wrench = self.weighted_average_wrenches(self._average_wrench, 9, self.current_wrench.wrench, 1)
-        self._average_wrench = self.filters.average_wrench(self.current_wrench.wrench)
+        # self._average_wrench_gripper = self.weighted_average_wrenches(self._average_wrench_gripper, 9, self.current_wrench.wrench, 1)
+        self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
+        if (self.curr_time >= rospy.Duration(1)):
+            # Calculate a wrench value which is aligned to the target hole frame; publish it.
+
+            # newData = self.create_wrench([0,0,0],[0,0,0])
+            # # TODO: Get projection on target hole 
+            # newData.header.frame_id = "target_hole_position"
+            transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
+            self._average_wrench_world = AssemblyTools.reorient_wrench(self._average_wrench_gripper, transform) #Wrench rel. to gripper
+            # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
+            # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
+
         # rospy.logwarn_throttle(2, "Buffers is " + str(self.filters._data_buffer))
 
     def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
@@ -621,11 +623,16 @@ class AssemblyTools():
                 speedDiff = positionDiff / timeDiff
                 #Moving averate weighted toward old speed; response is independent of rate selected.
                 # self.average_speed = self.average_speed * (1-10/self._rate_selected) + speedDiff * (10/self._rate_selected)
-                rospy.logwarn_throttle(2.0, "Speed is currently about " + str(speedDiff))
+                # rospy.logwarn_throttle(2.0, "Speed is currently about " + str(speedDiff))
                 self.average_speed = self.filters.average_speed(speedDiff)
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
+    
     def as_array(self, vec):
+        """Takes a Point and returns a Numpy array.
+        :param vec: (geometry_msgs.Point) Vector in serialized ROS format.
+        :return: (numpy.Array) Vector in 3x1 numpy array format.
+        """
         return np.array([vec.x, vec.y, vec.z])
     
     #See if the force/speed (any vector) is within a 3-d bound. Technically, it is a box, with sqrt(2)*bound okay at diagonals.
@@ -667,21 +674,22 @@ class AssemblyTools():
         return False
 
     #TODO: Make the parameters of function part of the constructor or something...
-    def force_cap_check(self):
+    def force_cap_check(self, danger_force=[45, 45, 45], danger_transverse_force=[3.5, 3.5, 3.5], warning_force=[25, 25, 25], warning_transverse_force=[2, 2, 2]):
         """Checks whether any forces or torques are dangerously high. There are two levels of response:
             *Elevated levels of force cause this program to pause for 1s. If forces remain high after pause, 
             the system will enter a freewheeling state
             *Dangerously high forces will kill this program immediately to prevent damage.
-        :return: 
+        :return: (Bool) True if all is safe; False if a warning stop is requested.
         """
-        if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), [45, 45, 45])
-            and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), [3.5, 3.5, 3.5]))):
+
+        if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), danger_force)
+            and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), danger_transverse_force))):
                 rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
                 rospy.logerr("Killing program.")
                 quit() # kills the program. Since the node is required, it kills the ROS application.
                 return False
-        if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), [25, 25, 25])):
-            if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), [2, 2, 2])):
+        if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), warning_force)):
+            if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), warning_transverse_force)):
                 return True
         rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
         if(self.highForceWarning):
