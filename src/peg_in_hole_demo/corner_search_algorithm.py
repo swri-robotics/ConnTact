@@ -110,7 +110,7 @@ class CornerSearch(AssemblyTools, Machine):
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
     def on_enter_state_checking_load_cell_feedback(self):
-        self.select_tool('tool0')
+        self.select_tool('corner')
         self._log_state_transition()
     def on_enter_state_approaching_surface(self):
         self.select_tool('corner')

@@ -302,7 +302,7 @@ class SpiralSearch(AssemblyTools, Machine):
     #All state callbacks need to calculate this in a while loop
     def all_states_calc(self):
         #All once-per-loop functions
-        self.current_pose = self._get_current_pos()
+        self.current_pose = self.get_current_pos()
         self.curr_time = rospy.get_rostime() - self._start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
         marked_state = 1; #returns to this state after a soft restart in state 99
