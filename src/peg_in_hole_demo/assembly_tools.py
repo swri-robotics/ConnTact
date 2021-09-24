@@ -687,15 +687,21 @@ class AssemblyTools():
             *Dangerously high forces will kill this program immediately to prevent damage.
         :return: (Bool) True if all is safe; False if a warning stop is requested.
         """
+        #Calculate acceptable torque from transverse forces
+        radius = np.linalg.norm(self.as_array(self.tool_data[self.activeTCP]['transform'].transform.translation))
+        rospy.logerr_once("Radius is coming out to " + str(radius))
+        warning_torque=[warning_force[a]*radius for a in range(3)]
+        danger_torque=[danger_force[b]*radius for b in range(3)]
+        rospy.logerr_once("So forces are limited to  " + str(warning_torque) + str(danger_torque))
 
         if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), danger_force)
-            and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), danger_transverse_force))):
+            and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), danger_torque))):
                 rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
                 rospy.logerr("Killing program.")
                 quit() # kills the program. Since the node is required, it kills the ROS application.
                 return False
         if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), warning_force)):
-            if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), warning_transverse_force)):
+            if(self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), warning_torque)):
                 return True
         rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
         if(self.highForceWarning):

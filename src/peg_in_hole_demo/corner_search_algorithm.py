@@ -74,6 +74,8 @@ class CornerSearch(AssemblyTools, Machine):
         force_transverse_dangerous = np.array([20,20,20])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         force_warning = [25,25,25]                          #Force value which pauses the program. Rel. to gripper.
         force_transverse_warning = np.array([15,15,15])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning 
+
 
         states = [
             IDLE_STATE, 
@@ -168,17 +170,17 @@ class CornerSearch(AssemblyTools, Machine):
             # self.activeTCP = "peg_corner_position"
             self.all_states_calc()
 
-            seeking_force = 15
+            seeking_force = 5
             self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
             self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
 
             rospy.logwarn_once('In the finding_surface. switch_state is:' + str(switch_state))
  
-            if(not self.force_cap_check()):
+            if(not self.force_cap_check(*self.cap_check_forces)):
                 self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
                 rospy.logerr("Force/torque unsafe; pausing application.")
             elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
-                and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [2.5,2.5,seeking_force*-.75], [-2.5,-2.5,seeking_force*-1.25])):
+                and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [10,10,seeking_force*10], [-10,-10,seeking_force*-10])):
                 self.collision_confidence = self.collision_confidence + 1/self._rate_selected
                 rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(self.collision_confidence))
                 #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -208,10 +210,10 @@ class CornerSearch(AssemblyTools, Machine):
             self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
             self.pose_vec = self.spiral_search_basic_compliance_control()
  
-            if(not self.force_cap_check()):
+            if(not self.force_cap_check(*self.cap_check_forces)):
                 self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
                 rospy.logerr("Force/torque unsafe; pausing application.")
-            elif( self.current_pose.transform.translation.z <= self.surface_height - .0005):
+            elif( self.current_pose.transform.translation.z <= self.surface_height - .0004):
                 #If we've descended at least 5mm below the flat surface detected, consider it a hole.
                 self.collision_confidence = self.collision_confidence + 1/self._rate_selected
                 rospy.logerr_throttle(1, "Monitoring for hole location, confidence = " + str(self.collision_confidence))
@@ -243,7 +245,7 @@ class CornerSearch(AssemblyTools, Machine):
             self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
             self.pose_vec = self.full_compliance_position()
  
-            if(not self.force_cap_check()):
+            if(not self.force_cap_check(*self.cap_check_forces)):
                 self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
                 rospy.logerr("Force/torque unsafe; pausing application.")
             elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
@@ -280,7 +282,7 @@ class CornerSearch(AssemblyTools, Machine):
             else:
                 #pull upward gently to move out of trouble hopefully.
                 seeking_force = -10
-            self.force_cap_check()
+            self.force_cap_check(*self.cap_check_forces)
             self.pose_vec = self.full_compliance_position()
 
             self.update_commands()
