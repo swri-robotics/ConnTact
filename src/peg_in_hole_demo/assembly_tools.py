@@ -99,7 +99,7 @@ class AssemblyTools():
         self.pose_vec = self.full_compliance_position()
         self.current_wrench = self._first_wrench
         self._average_wrench_gripper = self._first_wrench.wrench 
-        self._average_wrench_world = self._first_wrench.wrench 
+        self._average_wrench_world = Wrench()
         self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
         #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
         self.average_speed = np.array([0.0,0.0,0.0])
@@ -372,7 +372,7 @@ class AssemblyTools():
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
         self._wrench_pub.publish(result_wrench)
         guy = self.create_wrench([0,0,0], [0,0,0])
-        guy.wrench = self._average_wrench_gripper
+        guy.wrench = self._average_wrench_world
         guy.header.frame_id = "target_hole_position"
         self._adj_wrench_pub.publish(guy)    
 
@@ -380,21 +380,23 @@ class AssemblyTools():
     def reorient_wrench(wrench, transform):
         """Rotates a wrench to move from one frame to another while maintaining orientation relative to the world.
         :param wrench: (geometry_msgs.Wrench) Wrench to rotate
-        :param transform: (geometry_msgs.Transform) Transform from original frame to new frame.
+        :param transform: (geometry_msgs.TransformStamped) Transform from original frame to new frame.
         :return: (Wrench) Reoriented wrench
         """
 
         force = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, wrench.force)
         torque = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, wrench.torque)
-        # force =  [ newData.wrench.force.x, newData.wrench.force.y, newData.wrench.force.z]
-        # torque = [ newData.wrench.torque.x, newData.wrench.torque.y, newData.wrench.torque.z]
-        
+        newWrench = Wrench()
+
+        # force = AssemblyTools.rotate_vec_by_matrix(transform.transform.rotation, wrench.force)
+        # torque = AssemblyTools.rotate_vec_by_matrix(transform.transform.rotation, wrench.torque)
+
         # rospy.logwarn_throttle(2, "For comparison, here's the vec rot by quat: " 
         #     + str(AssemblyTools.rotate_vec_by_quaFt(transform.transform.rotation, newData.wrench.force)))
 
-        wrench.force = Point(force[0],force[1],force[2])
-        wrench.torque = Point(torque[0],torque[1],torque[2])
-        return wrench
+        newWrench.force = Point(force[0],force[1],force[2])
+        newWrench.torque = Point(torque[0],torque[1],torque[2])
+        return newWrench
 
     @staticmethod
     def list_from_quat(quat):
@@ -412,14 +414,16 @@ class AssemblyTools():
         q1 = [quat.x, quat.y, quat.z, quat.w]
         q2 = [vec.x, vec.y, vec.z, 0.0]
         # v1 = trfm.transformations.unit_vector(v1)
-        b = trfm.quaternion_multiply(
-            trfm.quaternion_multiply(q1, q2), 
-            trfm.quaternion_conjugate(q1)
-        )
+        # b = trfm.quaternion_multiply(
+        #     trfm.quaternion_multiply(q1, q2), 
+        #     trfm.quaternion_conjugate(q1)
+        # )
+        a = trfm.quaternion_multiply(q1, q2)
+        b = trfm.quaternion_multiply(a, trfm.quaternion_conjugate(q1))
         return [b[0],b[1],b[2]]
     
     @staticmethod
-    def rotate_vector_by_matrix(inputVec, inputMat):
+    def rotate_vec_by_matrix(quat, inputVec):
         """ Applies a rotation from a transformation matrix to a 3d vector 
         :param inputVec: (geometry_msgs.Point) Vector to be processed
         :param inputMat: (np.Array) 4x4 homogeneous tranformation matrix.
@@ -433,12 +437,13 @@ class AssemblyTools():
         #     tf.transformations.quaternion_multiply(q1, q2), 
         #     tf.transformations.quaternion_conjugate(q1)
         # )[:3]
+        mat = AssemblyTools.to_homogeneous(quat, Point(0,0,0))
 
         arrayVec = np.array([inputVec.x,inputVec.y,inputVec.z])
-        out = np.matmul(inputMat[0:3,0:3], arrayVec)
+        out = np.matmul(mat[0:3,0:3], arrayVec)
         
         
-        return out
+        return list(out)
 
     # def _publish_pose(self, position, orientation):
     def publish_pose(self, pose_stamped_vec):
@@ -580,13 +585,14 @@ class AssemblyTools():
 
         # self._average_wrench_gripper = self.weighted_average_wrenches(self._average_wrench_gripper, 9, self.current_wrench.wrench, 1)
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
+        
         if (self.curr_time >= rospy.Duration(1)):
             # Calculate a wrench value which is aligned to the target hole frame; publish it.
 
             # newData = self.create_wrench([0,0,0],[0,0,0])
             # # TODO: Get projection on target hole 
             # newData.header.frame_id = "target_hole_position"
-            transform = self.tf_buffer.lookup_transform('tool0', "base_link", rospy.Time(0), rospy.Duration(0.1))
+            transform = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
             self._average_wrench_world = AssemblyTools.reorient_wrench(self._average_wrench_gripper, transform) #Wrench rel. to gripper
             # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
             # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))

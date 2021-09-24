@@ -71,9 +71,9 @@ class CornerSearch(AssemblyTools, Machine):
         #Configuration variables, to be moved to a yaml file later:
         self.speed_static = [1/1000,1/1000,1/1000]          #Speed at which the system considers itself stopped. Rel. to target hole.
         force_dangerous = [45,45,45]                        #Force value which kills the program. Rel. to gripper.
-        force_transverse_dangerous = np.Array([20,20,20])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        force_transverse_dangerous = np.array([20,20,20])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         force_warning = [25,25,25]                          #Force value which pauses the program. Rel. to gripper.
-        force_transverse_warning = np.Array([15,15,15])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        force_transverse_warning = np.array([15,15,15])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
 
         states = [
             IDLE_STATE, 
