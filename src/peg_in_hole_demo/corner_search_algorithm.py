@@ -112,13 +112,16 @@ class CornerSearch(AssemblyTools, Machine):
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
     def on_enter_state_checking_load_cell_feedback(self):
-        self.select_tool('corner')
+        # self.select_tool('corner')
+        self.select_tool('tip')
         self._log_state_transition()
     def on_enter_state_approaching_surface(self):
-        self.select_tool('corner')
+        # self.select_tool('corner')
+        self.select_tool('tip')
         self._log_state_transition()
     def on_enter_state_finding_hole(self):
-        self.select_tool('corner')
+        # self.select_tool('corner')
+        self.select_tool('tip')
         self._log_state_transition()
     def on_enter_state_inserting_peg(self):
         self._log_state_transition()
@@ -150,8 +153,8 @@ class CornerSearch(AssemblyTools, Machine):
                 self._bias_wrench = self._average_wrench_gripper
                 rospy.logerr("Measured bias wrench: " + str(self._bias_wrench))
 
-                if( self.vectorRegionCompare_symmetrical(self.as_array(self._bias_wrench.torque), [1,1,1]) 
-                and self.vectorRegionCompare_symmetrical(self.as_array(self._bias_wrench.force), [1.5,1.5,5])):
+                self.force_cap_check(*self.cap_check_forces);
+                if(not self.highForceWarning):
                     rospy.logerr("Starting linear search.")
                     self.next_trigger, switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
                 else:
@@ -304,7 +307,7 @@ class CornerSearch(AssemblyTools, Machine):
             self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
             self.pose_vec = self.full_compliance_position()
 
-            rospy.logerr_throttle(1, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
+            rospy.logerr_throttle(1, "Task suspended for safety. Freewheeling until low forces and height reset above " + str(self.restart_height) + ': ' + str(self.current_pose.transform.translation.z))
             if( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
                 and self.vectorRegionCompare_symmetrical(self.as_array(self._average_wrench_gripper.force), [2,2,6])
                 and self.current_pose.transform.translation.z > self.restart_height):

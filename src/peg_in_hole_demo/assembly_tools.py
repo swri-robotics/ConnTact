@@ -106,7 +106,7 @@ class AssemblyTools():
  
         self.highForceWarning = False
         self.surface_height = 0.0
-        self.restart_height = .1
+        self.restart_height = -.3
         self.collision_confidence = 0
 
         #Simple Moving Average Parameters
