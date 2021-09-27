@@ -66,7 +66,7 @@ class SpiralSearch(AssemblyTools, Machine):
         # self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         # self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         # self._target_pub    = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
-        # self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self._callback_update_wrench, queue_size=2)
+        # self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
 
 
 
@@ -103,13 +103,13 @@ class SpiralSearch(AssemblyTools, Machine):
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         
         ROS_rate = 100 #setup for sleeping in hz
-        start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and _spiral_search_basic_compliance_control
+        start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and spiral_search_basic_compliance_control
         AssemblyTools.__init__(self, ROS_rate, start_time)       
 
     def _update_commands(self):
         rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
-        self._publish_pose(self.pose_vec)
-        self._publish_wrench(self.wrench_vec)
+        self.publish_pose(self.pose_vec)
+        self.publish_wrench(self.wrench_vec)
         self._rate.sleep()
         # self._update_commands()
 
@@ -126,8 +126,8 @@ class SpiralSearch(AssemblyTools, Machine):
                 self._bias_wrench = self._average_wrench
                 rospy.logerr("Measured bias wrench: " + str(self._bias_wrench))
 
-                if( self._vectorRegionCompare_symmetrical(self._as_array(self._bias_wrench.torque), [1,1,1]) 
-                and self._vectorRegionCompare_symmetrical(self._as_array(self._bias_wrench.force), [1.5,1.5,5])):
+                if( self.vectorRegionCompare_symmetrical(self.as_array(self._bias_wrench.torque), [1,1,1]) 
+                and self.vectorRegionCompare_symmetrical(self.as_array(self._bias_wrench.force), [1.5,1.5,5])):
                     rospy.logerr("Starting linear search.")
                     self.next_trigger, switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
                 else:
@@ -147,16 +147,16 @@ class SpiralSearch(AssemblyTools, Machine):
             self.all_states_calc()
 
             seeking_force = 5
-            self.wrench_vec  = self._get_command_wrench([0,0,seeking_force])
-            self.pose_vec = self._linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
+            self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+            self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
 
             rospy.logwarn_once('In the finding_surface. switch_state is:' + str(switch_state))
  
-            if(not self._force_cap_check()):
+            if(not self.force_cap_check()):
                 self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
                 rospy.logerr("Force/torque unsafe; pausing application.")
-            elif( self._vectorRegionCompare_symmetrical(self.average_speed, [5/1000,5/1000, 1/1000]) 
-                and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [2.5,2.5,seeking_force*-.75], [-2.5,-2.5,seeking_force*-1.25])):
+            elif( self.vectorRegionCompare_symmetrical(self.average_speed, [5/1000,5/1000, 1/1000]) 
+                and self.vectorRegionCompare(self.as_array(self.current_wrench.wrench.force), [2.5,2.5,seeking_force*-.75], [-2.5,-2.5,seeking_force*-1.25])):
                 self.collision_confidence = self.collision_confidence + 1/self._rate_selected
                 rospy.logerr_throttle(.5, "Monitoring for flat surface, confidence = " + str(self.collision_confidence))
                 #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -183,10 +183,10 @@ class SpiralSearch(AssemblyTools, Machine):
             self.all_states_calc()
 
             seeking_force = 7.0
-            self.wrench_vec  = self._get_command_wrench([0,0,seeking_force])
-            self.pose_vec = self._spiral_search_basic_compliance_control()
+            self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+            self.pose_vec = self.spiral_search_basic_compliance_control()
  
-            if(not self._force_cap_check()):
+            if(not self.force_cap_check()):
                 self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
                 rospy.logerr("Force/torque unsafe; pausing application.")
             elif( self.current_pose.transform.translation.z <= self.surface_height - .0005):
@@ -219,15 +219,15 @@ class SpiralSearch(AssemblyTools, Machine):
             self.all_states_calc()
 
             seeking_force = 5.0
-            self.wrench_vec  = self._get_command_wrench([0,0,seeking_force])
-            self.pose_vec = self._full_compliance_position()
+            self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+            self.pose_vec = self.full_compliance_position()
  
-            if(not self._force_cap_check()):
+            if(not self.force_cap_check()):
                 self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
                 rospy.logerr("Force/torque unsafe; pausing application.")
-            elif( self._vectorRegionCompare_symmetrical(self.average_speed, [2.5/1000,2.5/1000,.5/1000]) 
-                #and not self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [6,6,80], [-6,-6,-80])
-                and self._vectorRegionCompare(self._as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])
+            elif( self.vectorRegionCompare_symmetrical(self.average_speed, [2.5/1000,2.5/1000,.5/1000]) 
+                #and not self.vectorRegionCompare(self.as_array(self.current_wrench.wrench.force), [6,6,80], [-6,-6,-80])
+                and self.vectorRegionCompare(self.as_array(self.current_wrench.wrench.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])
                 and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
                 self.collision_confidence = self.collision_confidence + 1/self._rate_selected
                 rospy.logerr_throttle(.5, "Monitoring for peg insertion, confidence = " + str(self.collision_confidence))
@@ -259,8 +259,8 @@ class SpiralSearch(AssemblyTools, Machine):
             else:
                 #pull upward gently to move out of trouble hopefully.
                 seeking_force = -10
-            self._force_cap_check()
-            self.pose_vec = self._full_compliance_position()
+            self.force_cap_check()
+            self.pose_vec = self.full_compliance_position()
 
             self._update_commands()
 
@@ -278,12 +278,12 @@ class SpiralSearch(AssemblyTools, Machine):
             else:
                 #pull upward gently to move out of trouble hopefully.
                 seeking_force = -7
-            self.wrench_vec  = self._get_command_wrench([0,0,seeking_force])
-            self.pose_vec = self._full_compliance_position()
+            self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+            self.pose_vec = self.full_compliance_position()
 
             rospy.logerr_throttle(.5, "Task suspended for safety. Freewheeling until low forces and height reset above .20: " + str(self.current_pose.transform.translation.z))
-            if( self._vectorRegionCompare_symmetrical(self.average_speed, [2/1000,2/1000,3/1000]) 
-                and self._vectorRegionCompare_symmetrical(self._as_array(self.current_wrench.wrench.force), [2,2,6])
+            if( self.vectorRegionCompare_symmetrical(self.average_speed, [2/1000,2/1000,3/1000]) 
+                and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), [2,2,6])
                 and self.current_pose.transform.translation.z > self.restart_height):
                 self.collision_confidence = self.collision_confidence + .5/self._rate_selected
                 rospy.logerr_throttle(.5, "Static. Restarting confidence: " + str( np.round(self.collision_confidence, 2) ) + " out of 1.")
@@ -302,34 +302,34 @@ class SpiralSearch(AssemblyTools, Machine):
     #All state callbacks need to calculate this in a while loop
     def all_states_calc(self):
         #All once-per-loop functions
-        self.current_pose = self._get_current_pos()
+        self.current_pose = self.get_current_pos()
         self.curr_time = rospy.get_rostime() - self._start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
         marked_state = 1; #returns to this state after a soft restart in state 99
-        self.wrench_vec  = self._get_command_wrench([0,0,-2])
-        self.pose_vec = self._full_compliance_position()
-        self._update_avg_speed()
-        self._update_average_wrench()
+        self.wrench_vec  = self.get_command_wrench([0,0,-2])
+        self.pose_vec = self.full_compliance_position()
+        self.update_avg_speed()
+        self.update_average_wrench()
         # self._update_plots()
-        rospy.logwarn_throttle(1, "Average wrench in newtons  is " + str(self._as_array(self._average_wrench.force))+ 
-             str(self._as_array(self._average_wrench.torque)))
+        rospy.logwarn_throttle(1, "Average wrench in newtons  is " + str(self.as_array(self._average_wrench.force))+ 
+             str(self.as_array(self._average_wrench.torque)))
         rospy.logwarn_throttle(1, "Average speed in mm/second is " + str(1000*self.average_speed))
 
-    # def _publish_wrench(self, input_vec):
+    # def publish_wrench(self, input_vec):
     #     # self.check_controller(self.force_controller)
     #     # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
-    #     # result_wrench = self._create_wrench(result[:3], result[3:])
-    #     # result_wrench = self._create_wrench([7,0,0], [0,0,0])
-    #     result_wrench = self._create_wrench(input_vec[:3], input_vec[3:])
+    #     # result_wrench = self.create_wrench(result[:3], result[3:])
+    #     # result_wrench = self.create_wrench([7,0,0], [0,0,0])
+    #     result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
         
     #     self._wrench_pub.publish(result_wrench)
 
-    def _callback_update_wrench(self, data):
+    def callback_update_wrench(self, data):
         self.current_wrench = data
         rospy.logwarn_once("Callback working! " + str(data))
 
-    # # def _publish_pose(self, position, orientation):
-    # def _publish_pose(self, pose_stamped_vec):
+    # # def publish_pose(self, position, orientation):
+    # def publish_pose(self, pose_stamped_vec):
     #     #Takes in vector representations of position vector (x,y,z) and orientation quaternion
     #     # Ensure controller is loaded
     #     # self.check_controller(self.controller_name)
@@ -372,8 +372,8 @@ class SpiralSearch(AssemblyTools, Machine):
             self.trigger(self.next_trigger)
             rospy.logwarn('BELOW IS THE STATE BEING TRANSITIONED TO:')
             print(self.state)        
-            # self._publish_pose(self.pose_vec)
-            # self._publish_wrench(self.wrench_vec)
+            # self.publish_pose(self.pose_vec)
+            # self.publish_wrench(self.wrench_vec)
             # self._rate.sleep()
 
 
