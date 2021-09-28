@@ -1,0 +1,21 @@
+repositories:
+  Universal_Robots_ROS_Driver:
+    type: git
+    url: https://github.com/UniversalRobots/Universal_Robots_ROS_Driver.git
+    version: master
+  cartesian_controllers:
+    type: git
+    url: https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git
+    version: master
+  fmauch_universal_robot:
+    type: git
+    url: https://github.com/fmauch/universal_robot.git
+    version: calibration_devel
+  robotiq:
+    type: git
+    url: https://github.com/ros-industrial/robotiq.git
+    version: kinetic-devel
+  ur_msgs:
+    type: git
+    url: https://github.com/ros-industrial/ur_msgs.git
+    version: melodic-devel
