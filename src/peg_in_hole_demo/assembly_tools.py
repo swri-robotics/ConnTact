@@ -7,6 +7,7 @@ import rospy
 # import tf
 import numpy as np
 import matplotlib.pyplot as plt
+from colorama import Fore, Back, Style
 from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from rospy.core import configure_logging
@@ -208,7 +209,7 @@ class AssemblyTools():
     
     def send_reference_TFs(self):
         if(self.reference_frames['tcp'].header.frame_id != ''):
-            print("Broadcasting tfs: " + str(self.reference_frames))
+            # print("Broadcasting tfs: " + str(self.reference_frames))
             self._rate.sleep()
             self.broadcaster.sendTransform(list(self.reference_frames.values()))
         else:
@@ -472,6 +473,8 @@ class AssemblyTools():
         goal_pose.header.stamp = rospy.get_rostime()
         goal_pose.header.frame_id = "base_link"
         
+
+
         if(self.activeTCP != "tool0"):
             #Convert pose in TCP coordinates to assign wrist "tool0" position for controller
 
@@ -690,10 +693,12 @@ class AssemblyTools():
         """
         #Calculate acceptable torque from transverse forces
         radius = np.linalg.norm(self.as_array(self.tool_data[self.activeTCP]['transform'].transform.translation))
-        rospy.logerr_once("Radius is coming out to " + str(radius))
-        warning_torque=[warning_force[a]*radius for a in range(3)]
-        danger_torque=[danger_force[b]*radius for b in range(3)]
-        rospy.logerr_once("So forces are limited to  " + str(warning_torque) + str(danger_torque))
+        #Set a minimum radius to always permit some torque
+        radius = max(3, radius)
+        rospy.logerr_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))
+        warning_torque=[warning_transverse_force[a]*radius for a in range(3)]
+        danger_torque=[danger_transverse_force[b]*radius for b in range(3)]
+        rospy.logerr_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
 
         if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), danger_force)
             and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), danger_torque))):

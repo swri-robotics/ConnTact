@@ -5,6 +5,7 @@
 
 # Imports for ros
 # from _typeshed import StrPath
+
 from builtins import staticmethod
 from operator import truediv
 from pickle import STRING
@@ -16,7 +17,8 @@ from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from rospy.core import configure_logging
 
-from sensor_msgs.msg import JointState
+from colorama import Fore, Back, Style, init
+# from sensor_msgs.msg import JointState
 # from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
 from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
@@ -44,8 +46,8 @@ APPROACH_STATE       = 'state_finding_surface'
 FIND_HOLE_STATE      = 'state_finding_hole'
 INSERTING_PEG_STATE  = 'state_inserting_peg'
 COMPLETION_STATE     = 'state_completed_insertion'
-EXIT_STATE            = 'state_exit'
-SAFETY_RETRACT_STATE = 'state_retracing_to_safety' 
+EXIT_STATE           = 'state_exit'
+SAFETY_RETRACT_STATE = 'state_safety_retraction' 
 
 
 #Trigger names
@@ -74,9 +76,9 @@ class CornerSearch(AssemblyTools, Machine):
         #Configuration variables, to be moved to a yaml file later:
         self.speed_static = [1/1000,1/1000,1/1000]          #Speed at which the system considers itself stopped. Rel. to target hole.
         force_dangerous = [45,45,45]                        #Force value which kills the program. Rel. to gripper.
-        force_transverse_dangerous = np.array([20,20,20])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        force_transverse_dangerous = np.array([30,30,30])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         force_warning = [25,25,25]                          #Force value which pauses the program. Rel. to gripper.
-        force_transverse_warning = np.array([15,15,15])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning 
 
 
@@ -115,8 +117,10 @@ class CornerSearch(AssemblyTools, Machine):
         ROS_rate = 100 #setup for sleeping in hz
         start_time = rospy.get_rostime() #for _spiral_search_basic_force_control and spiral_search_basic_compliance_control
         AssemblyTools.__init__(self, ROS_rate, start_time)
+        # Set up Colorama for colorful terminal outputs on all platforms
+        init(autoreset=True)
         # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search 
-        self.tcp_selected = 'tip'       
+        self.tcp_selected = 'tip'
 
 
     def on_enter_state_checking_load_cell_feedback(self):
@@ -139,7 +143,8 @@ class CornerSearch(AssemblyTools, Machine):
         self._log_state_transition()
 
     def _log_state_transition(self):
-        rospy.logerr("State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) )
+        rospy.loginfo_once(Fore.CYAN + "State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) + Style.RESET_ALL)
+ 
 
     def update_commands(self):
         rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
@@ -150,14 +155,16 @@ class CornerSearch(AssemblyTools, Machine):
     def run_loop(self):
         state_name=str(self.state)
         if("state_") in state_name:
-            method_name = state_name[state_name.find('state_')+6:]+'()'
+            method_name = "self."+state_name[state_name.find('state_')+6:]+'()'
         else:
             rospy.logerr("Invalid state name! Terminating.")
             quit()
         try:
+            rospy.loginfo_throttle(2, Fore.CYAN + "Running program "+method_name + Style.RESET_ALL)
             exec(method_name)
-        except NameError:
-            rospy.logerr_throttle(1, "State name does not match 'state_'+(state loop method name) in algorithm!")
+        except (NameError, AttributeError):
+            rospy.logerr_throttle(2, "State name " + method_name + " does not match 'state_'+(state loop method name) in algorithm!")
+            pass
         except:
             print("Unexpected error when trying to locate state loop name:", sys.exc_info()[0])
             raise
@@ -267,7 +274,7 @@ class CornerSearch(AssemblyTools, Machine):
             rospy.logerr("Force/torque unsafe; pausing application.")
         elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
             #and not self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [6,6,80], [-6,-6,-80])
-            and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [1.5,1.5,seeking_force*-.75], [-1.5,-1.5,seeking_force*-1.25])
+            and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [1.5,1.5,seeking_force*1.5], [-1.5,-1.5,seeking_force*-.75])
             and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
             self.collision_confidence = self.collision_confidence + 1/self._rate_selected
             rospy.logerr_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.collision_confidence))
@@ -347,9 +354,9 @@ class CornerSearch(AssemblyTools, Machine):
         self.update_avg_speed()
         self.update_average_wrench()
         # self._update_plots()
-        rospy.logwarn_throttle(1, "Average wrench in newtons  is force \n" + str(self._average_wrench_world.force)+ 
+        rospy.loginfo_throttle(1, Fore.BLUE + "Average wrench in newtons  is force \n" + str(self._average_wrench_world.force)+ 
             " and torque \n" + str(self._average_wrench_world.torque))
-        rospy.logwarn_throttle(1, "\nAverage speed in mm/second is \n" + str(1000*self.average_speed))
+        rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.average_speed))
 
     # def callback_update_wrench(self, data):
     #     self.current_wrench = data
