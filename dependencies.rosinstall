@@ -1,0 +1,23 @@
+# Universal Robot Driver for UR10e
+- git:
+    local-name: Universal_Robots_ROS_Driver
+    uri: 'https://github.com/UniversalRobots/Universal_Robots_ROS_Driver.git'
+    version: 'ec2beb65afd6be5373d1e21a86dd42a07e25b447'
+    
+# UR Description Files
+- git:
+    local-name: fmauch_universal_robot
+    uri: 'https://github.com/fmauch/universal_robot.git'
+    version: '1ffdd69181389b14b7d6342f0c5bad3b45c5e32f'
+    
+# Universal Robot Messages
+- git:
+    local-name: ur_msgs
+    uri: 'https://github.com/ros-industrial/ur_msgs.git'
+    version: '8455fa579497599a22e41388618d70aa62995693'
+
+# Robot Cartesian Controller
+- git:
+    local-name: cartesian_controllers
+    uri: 'https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git'
+    version: '643476c552039d7f7eacdb5c3c65fc82fcac84e5'
