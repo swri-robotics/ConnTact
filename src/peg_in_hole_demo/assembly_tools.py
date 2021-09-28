@@ -257,6 +257,7 @@ class AssemblyTools():
         """Sets activeTCP frame according to title of desired peg frame (tip, middle, etc.). This frame must be included in the YAML.
         :param tool_name: (string) Key in tool_data dictionary for desired frame.
         """
+        # TODO: Make this a loop-run state to slowly slerp from one TCP to another using https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
         if(tool_name in list(self.tool_data)):
             self.activeTCP = tool_name
             self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
