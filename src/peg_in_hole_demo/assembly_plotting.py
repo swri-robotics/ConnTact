@@ -2,16 +2,35 @@
 
 import rospy
 import numpy as np
+from colorama import Fore, Back, Style
 import matplotlib.pyplot as plt
-
+from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
+import tf2_ros
+import tf2_geometry_msgs
 
 class PlotAssemblyData():
 
     def __init__(self):
+        
+        self.average_wrench = Wrench()
+        self.avg_wrench_sub = rospy.Subscriber("/assembly_tools/avg_wrench", WrenchStamped, self.callback_update_wrench, queue_size=2)
+
+        self.average_speed = np.arange(3)
+        self.avg_speed_sub = rospy.Subscriber("/assembly_tools/avg_speed", Point, self.callback_update_speed, queue_size=2)
+
+        self.pos = Point()
+        self.rel_position_sub = rospy.Subscriber("/assembly_tools/rel_position", Point, self.callback_update_pos, queue_size=2)
+        
+        self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0))
+        
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
         #plotting parameters
+        # Need avg_speed, avg_wrench, position, state
+
         self.speedHistory = np.array(self.average_speed)
-        self.forceHistory = self._as_array(self._average_wrench.force)
-        self.posHistory = np.array([self.x_pos_offset*1000, self.y_pos_offset*1000, self.current_pose.transform.translation.z*1000])
+        self.forceHistory = self._as_array(self.average_wrench.force)
+        self.posHistory = np.array([self.pos.x*1000, self.pos.y*1000, self.pos.z*1000])
         self.plotTimes = [0]
         self.recordInterval = rospy.Duration(.1)
         self.plotInterval = rospy.Duration(.5)
@@ -19,6 +38,9 @@ class PlotAssemblyData():
         self.lastRecorded = rospy.Time(0)
         self.recordLength = 100
         self.surface_height = None
+
+        rospy.loginfo(Fore.GREEN+Back.MAGENTA+"Hello! I'm alive!"+Style.RESET_ALL)
+        quit()
     
     def _init_plot(self):
             #plt.axis([-50,50,0,10000])
@@ -34,14 +56,22 @@ class PlotAssemblyData():
         self.min_plot_window_size = 10
         self.pointOffset = 1
         self.barb_interval = 5
-        
+    def callback_update_wrench(self):
+        pass
+    
+    def callback_update_speed(self):
+        pass
+    
+    def callback_update_pos(self):
+        pass
+    
     def _update_plots(self):
         if(rospy.Time.now() > self.lastRecorded + self.recordInterval):
             self.lastRecorded = rospy.Time.now()
 
             #log all interesting data
             self.speedHistory = np.vstack((self.speedHistory, np.array(self.average_speed)*1000))
-            self.forceHistory = np.vstack((self.forceHistory, self._as_array(self._average_wrench.force)))
+            self.forceHistory = np.vstack((self.forceHistory, self._as_array(self.average_wrench.force)))
             self.posHistory = np.vstack((self.posHistory, self._as_array(self.current_pose.transform.translation)*1000))
             self.plotTimes.append((rospy.get_rostime() - self._start_time).to_sec())
             

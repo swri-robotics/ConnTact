@@ -356,6 +356,8 @@ class CornerSearch(AssemblyTools, Machine):
             " and torque \n" + str(self._average_wrench_world.torque) + Style.RESET_ALL)
         rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.average_speed) +Style.RESET_ALL)
 
+        self.publish_plotted_values()
+
     # def callback_update_wrench(self, data):
     #     self.current_wrench = data
     #     rospy.logwarn_once("Callback working! " + str(data))
