@@ -95,6 +95,7 @@ class AssemblyTools():
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
         self.wrench_vec  = self.get_command_wrench([0,0,0])
         self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
+        self.switch_state = False
 
         self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()

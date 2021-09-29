@@ -99,13 +99,13 @@ class CornerSearch(AssemblyTools, Machine):
         #TODO: Replace warnings and errors with colorized info according to https://stackoverflow.com/questions/287871/how-to-print-colored-text-to-the-terminal/3332860#3332860
         # TODO: Replace all transitions with dest "safety_retract_state" with a single one using 'source':'*'
         transitions = [
-            {'trigger':CHECK_FEEDBACK_TRIGGER    , 'source':IDLE_STATE          , 'dest':CHECK_FEEDBACK_STATE, 'after': 'check_load_cell_feedback'},
-            {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':CHECK_FEEDBACK_STATE, 'dest':APPROACH_STATE      , 'after': 'finding_surface'         },
-            {'trigger':FIND_HOLE_TRIGGER         , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE     , 'after': 'finding_hole'            },
-            {'trigger':INSERT_PEG_TRIGGER        , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE , 'after': 'inserting_peg'           },
-            {'trigger':ASSEMBLY_COMPLETED_TRIGGER, 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE    , 'after': 'completed_insertion'     },
-            {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'          , 'dest':SAFETY_RETRACT_STATE, 'after': 'safety_retraction', 'unless':'is_already_retracting' },
-            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':CHECK_FEEDBACK_STATE, 'after': 'check_load_cell_feedback'},
+            {'trigger':CHECK_FEEDBACK_TRIGGER    , 'source':IDLE_STATE          , 'dest':CHECK_FEEDBACK_STATE   },
+            {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':CHECK_FEEDBACK_STATE, 'dest':APPROACH_STATE         },
+            {'trigger':FIND_HOLE_TRIGGER         , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
+            {'trigger':INSERT_PEG_TRIGGER        , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
+            {'trigger':ASSEMBLY_COMPLETED_TRIGGER, 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
+            {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
+            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':CHECK_FEEDBACK_STATE   },
             {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_loop'}
 
         ]
@@ -148,10 +148,9 @@ class CornerSearch(AssemblyTools, Machine):
         self._log_state_transition()
 
     def _log_state_transition(self):
-        rospy.loginfo_throttle(.1, Fore.BLACK + Back.WHITE +"State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) + Style.RESET_ALL )
+        rospy.loginfo(Fore.BLACK + Back.WHITE +"State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) + Style.RESET_ALL )
     def reset_on_state_enter(self):
         self.collision_confidence = 0
-        self.highForceWarning = False
 
     def update_commands(self):
         rospy.logerr_once("Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
@@ -178,12 +177,11 @@ class CornerSearch(AssemblyTools, Machine):
 
 
     def check_load_cell_feedback(self):
-        switch_state = False
+        # self.switch_state = False
         #Take an average of static sensor reading to check that it's stable.
-        
+        # rospy.logwarn_once('In check_load_cell_feedback. self.switch_state is:' + str(self.switch_state) )
 
-        # rospy.logwarn_once('In check_load_cell_feedback. switch_state is:' + str(switch_state) )
-        self.next_trigger, switch_state = self.post_action(RUN_LOOP_TRIGGER)
+
         if (self.curr_time_numpy > 2):
             self._bias_wrench = self._average_wrench_gripper
             rospy.logerr("Measured bias wrench: " + str(self._bias_wrench))
@@ -191,27 +189,27 @@ class CornerSearch(AssemblyTools, Machine):
             self.force_cap_check(*self.cap_check_forces)
             if(not self.highForceWarning):
                 rospy.logerr("Starting linear search.")
-                self.next_trigger, switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
+                self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
+                
+                
             else:
                 rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
-                self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+                self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
 
 
     def finding_surface(self):
         #seek in Z direction until we stop moving for about 1 second. 
         # Also requires "seeking_force" to be compensated pretty exactly by a static surface.
         #Take an average of static sensor reading to check that it's stable.
-        switch_state = False
-        self.next_trigger, switch_state = self.post_action(RUN_LOOP_TRIGGER)
 
         seeking_force = 5
         self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
 
-        rospy.logwarn_once('In the finding_surface. switch_state is:' + str(switch_state))
+        rospy.logwarn_once('In the finding_surface. self.switch_state is:' + str(self.switch_state))
 
         if(not self.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
         elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
             and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [10,10,seeking_force*10], [-10,-10,seeking_force*-10])):
@@ -223,7 +221,7 @@ class CornerSearch(AssemblyTools, Machine):
                 rospy.logerr("Flat surface detected! Moving to spiral search!")
                 #Measure flat surface height:
                 self.surface_height = self.current_pose.transform.translation.z
-                self.next_trigger, switch_state = self.post_action(FIND_HOLE_TRIGGER) 
+                self.next_trigger, self.switch_state = self.post_action(FIND_HOLE_TRIGGER) 
                 self.collision_confidence = 0.01
         else:
             self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .001]))
@@ -235,15 +233,14 @@ class CornerSearch(AssemblyTools, Machine):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
         #This triggers the hole position estimate to be updated to limit crazy
         #forces and oscillations. Also reduces spiral size.
-        switch_state = False
-        self.next_trigger, switch_state = self.post_action(RUN_LOOP_TRIGGER)       
+       
 
         seeking_force = 7.0
         self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.spiral_search_basic_compliance_control()
 
         if(not self.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
         elif( self.current_pose.transform.translation.z <= self.surface_height - .0004):
             #If we've descended at least 5mm below the flat surface detected, consider it a hole.
@@ -256,7 +253,7 @@ class CornerSearch(AssemblyTools, Machine):
                     self._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
                     #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
                     rospy.logerr_throttle(1.0, "Hole found, peg inserting...")
-                    self.next_trigger, switch_state = self.post_action(INSERT_PEG_TRIGGER) 
+                    self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER) 
         else:
             self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
             if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
@@ -268,8 +265,6 @@ class CornerSearch(AssemblyTools, Machine):
     def inserting_peg(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
         #horizontally. We keep going until vertical speed is very near to zero.
-        switch_state = False
-        self.next_trigger, switch_state = self.post_action(RUN_LOOP_TRIGGER)
 
 
         seeking_force = 5.0
@@ -277,7 +272,7 @@ class CornerSearch(AssemblyTools, Machine):
         self.pose_vec = self.full_compliance_position()
 
         if(not self.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
         elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
             #and not self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [6,6,80], [-6,-6,-80])
@@ -289,7 +284,7 @@ class CornerSearch(AssemblyTools, Machine):
             if(self.collision_confidence > .90):
                     #Stopped moving vertically and in contact with something that counters push force
                     rospy.logerr_throttle(1.0, "Hole found, peg inserted! Done!")
-                    self.next_trigger, switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
+                    self.next_trigger, self.switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
         else:
             #rospy.logwarn_throttle(1, "NOT a flat surface. Time: " + str((rospy.Time.now()-marked_time).to_sec()))
             self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
@@ -301,8 +296,6 @@ class CornerSearch(AssemblyTools, Machine):
 
     def completed_insertion(self):
         #Inserted properly.
-        switch_state = False
-        self.next_trigger, switch_state = self.post_action(RUN_LOOP_TRIGGER)
      
         rospy.logwarn_throttle(1, "Hole found, peg inserted! Done!")
         if(self.current_pose.transform.translation.z > self.restart_height+.07):
@@ -319,8 +312,6 @@ class CornerSearch(AssemblyTools, Machine):
     def safety_retraction(self):
         #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
 
-        switch_state = False
-        self.next_trigger, switch_state = self.post_action(RUN_LOOP_TRIGGER)
 
         if(self.current_pose.transform.translation.z > self.restart_height+.05):
             #High enough, won't pull itself upward.
@@ -341,7 +332,7 @@ class CornerSearch(AssemblyTools, Machine):
             if(self.collision_confidence > 1):
                     #Restart Search
                     rospy.loginfo_throttle(1.0, "Restarting test!")
-                    self.next_trigger, switch_state = self.post_action(RESTART_TEST_TRIGGER) 
+                    self.next_trigger, self.switch_state = self.post_action(RESTART_TEST_TRIGGER) 
         else:
             self.collision_confidence = np.max( np.array([self.collision_confidence * 90/self._rate_selected, .01]))
             if(self.current_pose.transform.translation.z > self.restart_height):
@@ -356,8 +347,8 @@ class CornerSearch(AssemblyTools, Machine):
         self.curr_time = rospy.get_rostime() - self._start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
         marked_state = 1; #returns to this state after a soft restart in state 99
-        self.wrench_vec  = self.get_command_wrench([0,0,-2])
-        self.pose_vec = self.full_compliance_position()
+        # self.wrench_vec  = self.get_command_wrench([0,0,-2])
+        # self.pose_vec = self.full_compliance_position()
         self.update_avg_speed()
         self.update_average_wrench()
         # self._update_plots()
@@ -373,16 +364,29 @@ class CornerSearch(AssemblyTools, Machine):
 
         self.collision_confidence = 0
         
-        if not rospy.is_shutdown():
-            self.all_states_calc()
-            self.trigger(CHECK_FEEDBACK_TRIGGER)
-            self.update_commands()
-            self._rate.sleep()
+        # if not rospy.is_shutdown():
+        #     self.all_states_calc()
+        #     self.trigger(CHECK_FEEDBACK_TRIGGER)
+        #     self.update_commands()
+        #     self._rate.sleep()
+        #self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
+        
+        self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
+
+        rospy.loginfo(Fore.BLUE+Back.LIGHTWHITE_EX+"Starting main algorithm loop in state "+self.state + " with queued transition " + self.next_trigger + Style.RESET_ALL)
 
         while not rospy.is_shutdown() and self.state != EXIT_STATE:
             # Main program loop. Refresh values, run process trigger (either loop-back to perform state actions or transition to new state), then output controller commands and wait for next loop time.
             self.all_states_calc()
+            # rospy.loginfo(Fore.BLACK + Back.GREEN + "Next transition is " + self.next_trigger + " and switch state is " + str(self.switch_state) +Style.RESET_ALL)
+            if(not self.switch_state):
+                self.next_trigger = RUN_LOOP_TRIGGER
+            else:
+                self.switch_state = False
             self.trigger(self.next_trigger)
+
+            # self.next_trigger, self.switch_state = self.post_action(RUN_LOOP_TRIGGER)
+
             self.update_commands()
             self._rate.sleep()
                     
