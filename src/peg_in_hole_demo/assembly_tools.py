@@ -107,7 +107,7 @@ class AssemblyTools():
  
         self.highForceWarning = False
         self.surface_height = 0.0
-        self.restart_height = -.3
+        self.restart_height = -.1
         self.collision_confidence = 0
 
         #Simple Moving Average Parameters
@@ -695,10 +695,10 @@ class AssemblyTools():
         radius = np.linalg.norm(self.as_array(self.tool_data[self.activeTCP]['transform'].transform.translation))
         #Set a minimum radius to always permit some torque
         radius = max(3, radius)
-        rospy.logerr_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))
+        rospy.loginfo_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))
         warning_torque=[warning_transverse_force[a]*radius for a in range(3)]
         danger_torque=[danger_transverse_force[b]*radius for b in range(3)]
-        rospy.logerr_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
+        rospy.loginfo_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
 
         if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), danger_force)
             and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), danger_torque))):
