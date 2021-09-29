@@ -7,6 +7,7 @@ import rospy
 # import tf
 import numpy as np
 import matplotlib.pyplot as plt
+from colorama import Fore, Back, Style
 from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from rospy.core import configure_logging
@@ -94,6 +95,7 @@ class AssemblyTools():
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
         self.wrench_vec  = self.get_command_wrench([0,0,0])
         self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
+        self.switch_state = False
 
         self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()
@@ -106,7 +108,7 @@ class AssemblyTools():
  
         self.highForceWarning = False
         self.surface_height = 0.0
-        self.restart_height = .1
+        self.restart_height = -.1
         self.collision_confidence = 0
 
         #Simple Moving Average Parameters
@@ -208,7 +210,7 @@ class AssemblyTools():
     
     def send_reference_TFs(self):
         if(self.reference_frames['tcp'].header.frame_id != ''):
-            print("Broadcasting tfs: " + str(self.reference_frames))
+            # print("Broadcasting tfs: " + str(self.reference_frames))
             self._rate.sleep()
             self.broadcaster.sendTransform(list(self.reference_frames.values()))
         else:
@@ -257,6 +259,7 @@ class AssemblyTools():
         """Sets activeTCP frame according to title of desired peg frame (tip, middle, etc.). This frame must be included in the YAML.
         :param tool_name: (string) Key in tool_data dictionary for desired frame.
         """
+        # TODO: Make this a loop-run state to slowly slerp from one TCP to another using https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
         if(tool_name in list(self.tool_data)):
             self.activeTCP = tool_name
             self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
@@ -471,6 +474,8 @@ class AssemblyTools():
         goal_pose.header.stamp = rospy.get_rostime()
         goal_pose.header.frame_id = "base_link"
         
+
+
         if(self.activeTCP != "tool0"):
             #Convert pose in TCP coordinates to assign wrist "tool0" position for controller
 
@@ -689,10 +694,12 @@ class AssemblyTools():
         """
         #Calculate acceptable torque from transverse forces
         radius = np.linalg.norm(self.as_array(self.tool_data[self.activeTCP]['transform'].transform.translation))
-        rospy.logerr_once("Radius is coming out to " + str(radius))
-        warning_torque=[warning_force[a]*radius for a in range(3)]
-        danger_torque=[danger_force[b]*radius for b in range(3)]
-        rospy.logerr_once("So forces are limited to  " + str(warning_torque) + str(danger_torque))
+        #Set a minimum radius to always permit some torque
+        radius = max(3, radius)
+        rospy.loginfo_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))
+        warning_torque=[warning_transverse_force[a]*radius for a in range(3)]
+        danger_torque=[danger_transverse_force[b]*radius for b in range(3)]
+        rospy.loginfo_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
 
         if(not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), danger_force)
             and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), danger_torque))):
