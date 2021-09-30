@@ -39,7 +39,7 @@ class PlotAssemblyData():
         self.lastRecorded = rospy.Time(0)
         self.recordLength = 100
         self.surface_height = None
-        self._start_time = rospy.get_rostime()
+        
 
         rospy.loginfo(Fore.GREEN+Back.MAGENTA+"Plotter node active."+Style.RESET_ALL)
     
@@ -74,6 +74,7 @@ class PlotAssemblyData():
         self.forceHistory = self.point_to_array(self.average_wrench.force)
         # 3xN array, vertically stacked positions
         self.posHistory = self.pos*1000
+        self._start_time = rospy.get_rostime()
         self.plotTimes = [self._start_time.to_sec()]
         plt.ion()
         # plt.show()
@@ -81,14 +82,15 @@ class PlotAssemblyData():
 
         self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
         self.fig.suptitle('Algorithm Path Plots')
-        plt.subplots_adjust(left=.1, bottom=.2, right=.95, top=.8, wspace=.15, hspace=.1)
+        plt.subplots_adjust(left=.125, bottom=.2, right=.975, top=.8, wspace=.175, hspace=.1)
 
         self.min_plot_window_offset = 2
-        self.min_plot_window_size = 10
+        self.min_plot_window_size = 15
         self.pointOffset = 1
         self.barb_interval = 5
     
     def update_plots(self):
+        #Record data to the buffer
         if(rospy.Time.now() > self.lastRecorded + self.recordInterval):
             self.lastRecorded = rospy.Time.now()
 
@@ -106,6 +108,7 @@ class PlotAssemblyData():
                 self.plotTimes = self.plotTimes[1:-1]
                 self.pointOffset += 1
 
+        #Actually plot the data; this is computation-heavy so we minimize the hz
         if(rospy.Time.now() > self.lastPlotted + self.plotInterval):
             self.lastPlotted = rospy.Time.now()
 
@@ -113,9 +116,9 @@ class PlotAssemblyData():
             self.sideView.clear()
 
             self.planView.set(xlabel='X Position',ylabel='Y Position')
-            self.planView.set_title('Speed and Position and Force')
+            self.planView.set_title('XY Position and Force')
             self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
-            self.sideView.set_title('Vertical position and force')
+            self.sideView.set_title('Vertical Position and Force')
 
             
 
@@ -130,7 +133,7 @@ class PlotAssemblyData():
                 barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
             #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
-            self.sideView.plot(self.plotTimes, self.forceHistory[:,2], 'k', self.plotTimes, self.posHistory[:,2], 'b')
+            self.sideView.plot(self.plotTimes[:], self.forceHistory[:,2], 'k', self.plotTimes[:], self.posHistory[:,2], 'b')
 
             xlims = [np.min(self.posHistory[:,0]) - self.min_plot_window_offset, np.max(self.posHistory[:,0]) + self.min_plot_window_offset]
             if xlims[1] - xlims[0] < self.min_plot_window_size:
@@ -145,27 +148,28 @@ class PlotAssemblyData():
             self.planView.set_xlim(xlims)
             self.planView.set_ylim(ylims)
             
-            # left, right = self.planView.get_xlim()
-            # bottom, top = self.planView.get_ylim()
-            # rospy.logerr("Thingy is " + str(.5*(top+bottom)) +" "+ str(.5*(right+left)))
+            self.planView.annotate("State is " + self.status['state'], xy=(.05, .03), xycoords='figure fraction',size=10, ha="left", va="bottom",
+            bbox=dict(boxstyle="round4",
+            ec=(1., 0.5, 0.5),
+            fc=(1., 0.8, 0.8)
+            )
+            )
 
-            # self.planView.text(.5*(right+left), .5*(top+bottom), "State is ", size=10, rotation=30#, #a="center", va="bottom"#,
-            # # bbox=dict(boxstyle="round",
-            # # ec=(1., 0.5, 0.5),
-            # # fc=(1., 0.8, 0.8)
-            # # )
-            # )
-            self.planView.annotate("State is " + self.status['state'], xy=(5, 5), xycoords='figure points',size=10, #ha="center", va="bottom",
-            bbox=dict(boxstyle="round",
+            self.planView.annotate("TCP: " + self.status['tcp_name'], xy=(.95, .03), xycoords='figure fraction',size=10, ha="right", va="bottom",
+            bbox=dict(boxstyle="round4",
             ec=(1., 0.5, 0.5),
             fc=(1., 0.8, 0.8)
             )
             )
-            self.planView.annotate("TCP: " + self.status['tcp_name'], xy=(5, 23), xycoords='figure points',size=8, #ha="center", va="bottom",
-            bbox=dict(boxstyle="round",
-            ec=(1., 0.5, 0.5),
-            fc=(1., 0.8, 0.8)
+
+            force_message = "Force x: " + str(np.round(self.average_wrench.force.x,2)) + "\nForce y: " + str(np.round(self.average_wrench.force.y,2))
+
+            self.planView.annotate(force_message, xy=(3, 3), xycoords='axes points',size=8, ha="left", va="bottom",
             )
+
+            vert_message = "Force z: " + str(np.round(self.average_wrench.force.z,2)) + "\nPosition z :" + str(np.round(self.pos[2],2))
+
+            self.sideView.annotate(vert_message, xy=(3, 3), xycoords='axes points',size=8, ha="left", va="bottom",
             )
             
             self.fig.canvas.draw()
