@@ -2,6 +2,7 @@
 
 import rospy
 import numpy as np
+from std_msgs.msg import String
 from colorama import Fore, Back, Style
 import matplotlib.pyplot as plt
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
@@ -15,23 +16,28 @@ class PlotAssemblyData():
         self.average_wrench = Wrench()
         self.avg_wrench_sub = rospy.Subscriber("/assembly_tools/avg_wrench", WrenchStamped, self.callback_update_wrench, queue_size=2)
 
-        self.average_speed = np.arange(3)
+        self.average_speed = np.array([0,0,0])
         self.avg_speed_sub = rospy.Subscriber("/assembly_tools/avg_speed", Point, self.callback_update_speed, queue_size=2)
 
-        self.pos = Point()
+        self.pos = np.array([0,0,0])
         self.rel_position_sub = rospy.Subscriber("/assembly_tools/rel_position", Point, self.callback_update_pos, queue_size=2)
+
+        self.status = "{('state', 'state_idle'), ('tcp', 'tool0')}"
+        self.status_sub = rospy.Subscriber("/assembly_tools/status", String, self.callback_update_status, queue_size=2)
         
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0))
         
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
 
-        #plotting parameters
-        # Need avg_speed, avg_wrench, position, state
-
+        # Data containers
         self.speedHistory = np.array(self.average_speed)
-        self.forceHistory = self._as_array(self.average_wrench.force)
-        self.posHistory = np.array([self.pos.x*1000, self.pos.y*1000, self.pos.z*1000])
+
+        self.forceHistory = self.point_to_array(self.average_wrench.force)
+        # 3xN array, vertically stacked positions
+        self.posHistory = self.pos*1000
         self.plotTimes = [0]
+
+        # Config variables
         self.recordInterval = rospy.Duration(.1)
         self.plotInterval = rospy.Duration(.5)
         self.lastPlotted = rospy.Time(0)
@@ -39,10 +45,9 @@ class PlotAssemblyData():
         self.recordLength = 100
         self.surface_height = None
 
-        rospy.loginfo(Fore.GREEN+Back.MAGENTA+"Hello! I'm alive!"+Style.RESET_ALL)
-        quit()
+        rospy.loginfo(Fore.GREEN+Back.MAGENTA+"Plotter node active."+Style.RESET_ALL)
     
-    def _init_plot(self):
+    def init_plot(self):
             #plt.axis([-50,50,0,10000])
         plt.ion()
         # plt.show()
@@ -56,16 +61,26 @@ class PlotAssemblyData():
         self.min_plot_window_size = 10
         self.pointOffset = 1
         self.barb_interval = 5
-    def callback_update_wrench(self):
-        pass
     
-    def callback_update_speed(self):
-        pass
+    def callback_update_wrench(self, data: Wrench):
+        self.average_wrench = data
     
-    def callback_update_pos(self):
-        pass
+    def callback_update_speed(self, data: Point):
+        self.average_speed = self.point_to_array(data)
     
-    def _update_plots(self):
+    def callback_update_pos(self, data: Point):
+        self.pos = self.point_to_array(data)
+    
+    def callback_update_status(self, data):
+        self.status = dict(data)
+        # If surface has been found we add a line to the plot:
+        if('surface_height' in self.status and self.surface_height == None):
+            self.surface_height = self.status['surface_height']
+    
+    def point_to_array(self, point):
+        return np.array([point.x, point.y, point.z])
+
+    def update_plots(self):
         if(rospy.Time.now() > self.lastRecorded + self.recordInterval):
             self.lastRecorded = rospy.Time.now()
 
@@ -91,7 +106,7 @@ class PlotAssemblyData():
             self.sideView.clear()
 
             self.planView.set(xlabel='X Position',ylabel='Y Position')
-            self.planView.set_title('Sped and Poseation and Forke')
+            self.planView.set_title('Speed and Position and Force')
             self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
             self.sideView.set_title('Vertical position and force')
 
@@ -124,8 +139,10 @@ class PlotAssemblyData():
                 self.sideView.axhline(y=self.surface_height*1000, color='r', linestyle='-')
 
             self.fig.canvas.draw()
-            # plt.pause(0.001)
-            #plt.show()
 
-            #x velocity
-            #plt.scatter(self.speedHistory[:][0], )
+
+    def main(self):
+        self.init_plot()
+        while (not rospy.is_shutdown()):
+            self.update_plots()
+            rospy.sleep(rospy.Rate(50))

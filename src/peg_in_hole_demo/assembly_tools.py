@@ -51,10 +51,11 @@ class AssemblyTools():
         self._adj_wrench_pub = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
 
         #for plotting node
-        self.avg_wrench_pub = rospy.Publisher("/assembly_tools/avg_wrench", WrenchStamped, queue_size=5)
+        self.avg_wrench_pub = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
         self.avg_speed_pub = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
         self.rel_position_pub = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
-        self.status_pub = rospy.Publisher("/assembly_tools/rel_position", String, queue_size=5)
+
+        self.status_pub = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
 
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
@@ -643,17 +644,24 @@ class AssemblyTools():
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
     
     def publish_plotted_values(self):
-        """Exposes critical data for plotting node to process.
+        """Publishes critical data for plotting node to process.
         """
         self.avg_wrench_pub.publish(self._average_wrench_world)
-        #  = rospy.Publisher("/assembly_tools/avg_wrench", WrenchStamped, queue_size=5)
+
+
         self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1],self.average_speed[2]))
-        #= rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
+
+
         self.rel_position_pub.publish(self.current_pose.transform.translation)
-        # rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
+
+
         status_dict = dict(('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) ))
+        if(self.surface_height != 0.0):
+            # If we have located the work surface
+            status_dict['surface_height']=self.surface_height
         self.status_pub.publish(str(status_dict))
-        # = rospy.Publisher("/assembly_tools/rel_position", String, queue_size=5)
+
+
 
     def as_array(self, vec):
         """Takes a Point and returns a Numpy array.
