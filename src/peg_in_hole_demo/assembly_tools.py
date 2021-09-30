@@ -655,10 +655,10 @@ class AssemblyTools():
         self.rel_position_pub.publish(self.current_pose.transform.translation)
 
 
-        status_dict = dict(('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) ))
+        status_dict = dict({('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) )})
         if(self.surface_height != 0.0):
             # If we have located the work surface
-            status_dict['surface_height']=self.surface_height
+            status_dict['surface_height']=str(self.surface_height)
         self.status_pub.publish(str(status_dict))
 
 
