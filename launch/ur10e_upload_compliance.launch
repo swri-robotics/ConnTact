@@ -21,7 +21,7 @@
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find peg_in_hole_demo)/config/basic_config_example.rviz" required="true" />
   
   <node type="plotting_node" name="assembly_plotter" 
-    pkg="peg_in_hole_demo" output="screen" required="true" />
+    pkg="peg_in_hole_demo" output="screen" required="false" />
 
   <node type="$(arg algorithm_selected)" name="algorithm_node" 
     pkg="peg_in_hole_demo" output="screen" required="true" />

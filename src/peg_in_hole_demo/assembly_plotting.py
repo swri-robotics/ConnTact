@@ -59,7 +59,6 @@ class PlotAssemblyData():
         # If surface has been found we add a line to the plot:
         if('surface_height' in self.status and self.surface_height == None):
             self.surface_height = self.status['surface_height']
-        rospy.logwarn_throttle(1, "Status is " + str(self.status))
 
     def point_to_array(self, point):
         return np.array([point.x, point.y, point.z])
@@ -75,19 +74,24 @@ class PlotAssemblyData():
         # 3xN array, vertically stacked positions
         self.posHistory = self.pos*1000
         self._start_time = rospy.get_rostime()
-        self.plotTimes = [self._start_time.to_sec()]
+        self.plotTimes = [0.0]
         plt.ion()
         # plt.show()
         # plt.draw()
 
-        self.fig, (self.planView, self.sideView) = plt.subplots(1, 2)
+        self.fig, (self.planView, self.sideView) = plt.subplots(1, 2, figsize=(8,6))
+        self.fig.figsize = (7,4)
+        self.sideViewTwin = self.sideView.twinx()
         self.fig.suptitle('Algorithm Path Plots')
-        plt.subplots_adjust(left=.125, bottom=.2, right=.975, top=.8, wspace=.175, hspace=.1)
+        plt.subplots_adjust(left=.125, bottom=.2, right=.9, top=.8, wspace=.175, hspace=.1)
 
-        self.min_plot_window_offset = 2
-        self.min_plot_window_size = 15
+        # self.min_plot_window_offset = 2
+        self.min_plot_window_size = 10
+        self.min_force_window_size = 2
+        self.min_z_pos_window_size = 20
         self.pointOffset = 1
         self.barb_interval = 5
+        # self.fig.tight_layout()
     
     def update_plots(self):
         #Record data to the buffer
@@ -102,11 +106,12 @@ class PlotAssemblyData():
             
             #limit list lengths
             if(len(self.speedHistory)>self.recordLength):
-                self.speedHistory = self.speedHistory[1:-1]
-                self.forceHistory = self.forceHistory[1:-1]
-                self.posHistory = self.posHistory[1:-1]
-                self.plotTimes = self.plotTimes[1:-1]
+                self.speedHistory = self.speedHistory[1:self.recordLength-1]
+                self.forceHistory = self.forceHistory[1:self.recordLength-1]
+                self.posHistory = self.posHistory[1:self.recordLength-1]
+                self.plotTimes = self.plotTimes[1:self.recordLength-1]
                 self.pointOffset += 1
+                
 
         #Actually plot the data; this is computation-heavy so we minimize the hz
         if(rospy.Time.now() > self.lastPlotted + self.plotInterval):
@@ -117,37 +122,50 @@ class PlotAssemblyData():
 
             self.planView.set(xlabel='X Position',ylabel='Y Position')
             self.planView.set_title('XY Position and Force')
-            self.sideView.set(xlabel='Time (s)',ylabel='Position (mm) and Force (N)')
+            self.sideView.set(xlabel='Time (s)',ylabel='Position (mm)')
             self.sideView.set_title('Vertical Position and Force')
-
+            self.sideViewTwin.set_ylabel('Force (N)')
+            self.planView.legend(["Force", "Position"])
+            self.sideView.legend()
+            self.sideViewTwin.legend()
             
 
-            self.planView.plot(self.posHistory[:,0], self.posHistory[:,1], 'r')
+            
+            # self.sideView.plot(self.plotTimes[:], self.forceHistory[:,2], 'k', self.plotTimes[:], self.posHistory[:,2], 'b')
+            self.sideViewTwin.plot(self.plotTimes[:], self.forceHistory[:,2], 'c')
+            self.sideView.plot(self.plotTimes[:], self.posHistory[:,2], 'k')
+            self.planView.plot(self.posHistory[:,0], self.posHistory[:,1], 'k')
 
             #self.planView.quiver(self.posHistory[0:-1:10,0], self.posHistory[0:-1:10,1], self.forceHistory[0:-1:10,0], self.forceHistory[0:-1:10,1], angles='xy', scale_units='xy', scale=.1, color='b')
             barb_increments = {"flag" :5, "full" : 1, "half" : 0.5}
 
             offset = self.barb_interval+1-(self.pointOffset % self.barb_interval)
-            self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory[offset:-1:self.barb_interval,1], 
+            self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory
+            [offset:-1:self.barb_interval,1], 
                 self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1],
                 barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
             #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
-            self.sideView.plot(self.plotTimes[:], self.forceHistory[:,2], 'k', self.plotTimes[:], self.posHistory[:,2], 'b')
 
-            xlims = [np.min(self.posHistory[:,0]) - self.min_plot_window_offset, np.max(self.posHistory[:,0]) + self.min_plot_window_offset]
-            if xlims[1] - xlims[0] < self.min_plot_window_size:
-                xlims[0] -= self.min_plot_window_size / 2
-                xlims[1] += self.min_plot_window_size / 2
+            xlims = [np.min(self.posHistory[:,0]) - self.min_plot_window_size, np.max(self.posHistory[:,0]) + self.min_plot_window_size]
+            ylims = [np.min(self.posHistory[:,1]) - self.min_plot_window_size, np.max(self.posHistory[:,1]) + self.min_plot_window_size]
 
-            ylims = [np.min(self.posHistory[:,1]) - self.min_plot_window_offset, np.max(self.posHistory[:,1]) + self.min_plot_window_offset]
-            if ylims[1] - ylims[0] < self.min_plot_window_size:
-                ylims[0] -= self.min_plot_window_size / 2
-                ylims[1] += self.min_plot_window_size / 2
-            
             self.planView.set_xlim(xlims)
             self.planView.set_ylim(ylims)
-            
+
+            self.sideViewTwin.set_ylim((np.min(self.forceHistory[:,2])-self.min_force_window_size, np.max(self.forceHistory[:,2])+self.min_force_window_size))
+            self.sideView.set_ylim((np.min(self.posHistory[:,2])-self.min_z_pos_window_size, np.max(self.posHistory[:,2])+self.min_z_pos_window_size))
+            self.sideView.set_xlim((self.plotTimes[0],self.plotTimes[-1]))
+
+            # for ax in [self.sideView, self.sideViewTwin]:
+            #     bottom, top = ax.get_ylim()
+            #     if top < 1.0:
+            #         ax.set_ylim(top=1)
+            #     if bottom > -1.0:
+            #         ax.set_ylim(bottom=-1)
+
+
+
             self.planView.annotate("State is " + self.status['state'], xy=(.05, .03), xycoords='figure fraction',size=10, ha="left", va="bottom",
             bbox=dict(boxstyle="round4",
             ec=(1., 0.5, 0.5),
@@ -162,6 +180,7 @@ class PlotAssemblyData():
             )
             )
 
+            #Add some informative annotations
             force_message = "Force x: " + str(np.round(self.average_wrench.force.x,2)) + "\nForce y: " + str(np.round(self.average_wrench.force.y,2))
 
             self.planView.annotate(force_message, xy=(3, 3), xycoords='axes points',size=8, ha="left", va="bottom",

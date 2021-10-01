@@ -294,12 +294,12 @@ class CornerSearch(AssemblyTools, Machine):
         #Inserted properly.
      
         rospy.loginfo_throttle(1, Fore.RED + "Hole found, peg inserted! Done!" +Style.RESET_ALL)
-        if(self.current_pose.transform.translation.z > self.restart_height+.07):
+        if(self.current_pose.transform.translation.z > self.restart_height+.15):
             #High enough, won't pull itself upward.
             seeking_force = -2.5
         else:
             #pull upward gently to move out of trouble hopefully.
-            seeking_force = -10
+            seeking_force = -15
         self.force_cap_check(*self.cap_check_forces)
         self.pose_vec = self.full_compliance_position()
 
