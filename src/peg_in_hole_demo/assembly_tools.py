@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from colorama import Fore, Back, Style
 from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
+from std_msgs.msg import String
 from rospy.core import configure_logging
 
 from sensor_msgs.msg import JointState
@@ -47,8 +48,14 @@ class AssemblyTools():
     def __init__(self, ROS_rate, start_time):
         self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
-        # self._target_pub    = rospy.Publisher('target_hole', TransformStamped, queue_size=2, latch=True)
         self._adj_wrench_pub = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
+
+        #for plotting node
+        self.avg_wrench_pub = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
+        self.avg_speed_pub = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
+        self.rel_position_pub = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
+
+        self.status_pub = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
 
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
@@ -119,8 +126,6 @@ class AssemblyTools():
         # self.avg_it = 0#iterator for allocating the first window in the moving average calculation
         # self._data_buffer = np.zeros(self._buffer_window)
         # self._moving_avg_data = [] #Empty to start
-
-   
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
@@ -266,7 +271,6 @@ class AssemblyTools():
             self.send_reference_TFs()
         else:
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
-
 
     def spiral_search_basic_compliance_control(self):
         """Generates position, orientation offset vectors which describe a plane spiral about z; 
@@ -639,6 +643,26 @@ class AssemblyTools():
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
     
+    def publish_plotted_values(self):
+        """Publishes critical data for plotting node to process.
+        """
+        self.avg_wrench_pub.publish(self._average_wrench_world)
+
+
+        self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1],self.average_speed[2]))
+
+
+        self.rel_position_pub.publish(self.current_pose.transform.translation)
+
+
+        status_dict = dict({('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) )})
+        if(self.surface_height != 0.0):
+            # If we have located the work surface
+            status_dict['surface_height']=str(self.surface_height)
+        self.status_pub.publish(str(status_dict))
+
+
+
     def as_array(self, vec):
         """Takes a Point and returns a Numpy array.
         :param vec: (geometry_msgs.Point) Vector in serialized ROS format.
