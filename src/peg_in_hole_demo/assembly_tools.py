@@ -72,7 +72,7 @@ class AssemblyTools():
         #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
         self.target_peg = 'peg_10mm'
         self.target_hole = 'hole_10mm'
-        self.activeTCP = 'gripper_tip'
+        self.activeTCP = 'tip'
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
         # self.activeTCP_Title = self.target_peg
 
