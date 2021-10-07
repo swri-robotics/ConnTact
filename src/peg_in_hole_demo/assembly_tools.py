@@ -554,30 +554,10 @@ class AssemblyTools():
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
         :return wrench_transformed: (np.Array) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
-        Ad_T = create_adjoint_representation(T_ab)
+        Ad_T = AssemblyTools.create_adjoint_representation(T_ab)
         wrench_transformed = np.matmul(Ad_T.T, wrench)
         return wrench_transformed 
     
-
-    def cb_ur10_ft_data(self, data: WrenchStamped):
-        #Read wrench data from load cell relative to tool0 frame (casted to Python lists)
-        force_tool0 = self.as_array(data.wrench.force).tolist()
-        torque_tool0 = self.as_array(data.wrench.torque).tolist()
-        wrench_tool0 = torque_tool0 + force_tool0 #concatenate to create a wrench
-
-        #transform to wrench_tool0 to be relative to tool0_controller_frame (assume 0.020 m z-translation in teach pendant)
-        T = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0.20], [0, 0, 0, 1],])#Homogeneous Transform
-        Ad_T = homogeneous_to_adjoint(T)
-        # print(Ad_T.T)
-        # print('-----------------------------')
-        # print(np.array(wrench_tool0))
-        # time.sleep(10)
-        wrench_for_cartesian_controller = np.matmul(Ad_T.T, np.array(wrench_tool0))
-
-        #Create WrenchStamped that will be published to cartesian_controllers
-        #Must flip the index since spatial mathematics requires wrench to be np.array([torque, force])
-        self._wrench_tool0_controller = self.create_wrench(wrench_for_cartesian_controller[3:6].tolist(), wrench_for_cartesian_controller[0:3].tolist())
-
 
     @staticmethod
     def matrix_to_tf(input, base_frame, child_frame):
