@@ -46,7 +46,7 @@ IDLE_STATE           = 'state_idle'
 CHECK_FEEDBACK_STATE = 'state_check_load_cell_feedback'
 APPROACH_STATE       = 'state_finding_surface'
 FIND_HOLE_STATE      = 'state_finding_hole'
-INSERTING_PEG_STATE  = 'state_inserting_peg'
+INSERTING_PEG_STATE  = 'state_inserting_along_axis'
 COMPLETION_STATE     = 'state_completed_insertion'
 EXIT_STATE           = 'state_exit'
 SAFETY_RETRACT_STATE = 'state_safety_retraction' 
@@ -118,7 +118,9 @@ class CornerSearch(AssemblyTools, Machine):
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
         # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search 
-        self.tcp_selected = 'tip'
+        # self.tcp_selected = 'tip'
+        self.tcp_selected = 'corner'
+
 
     def is_already_retracting(self):
         return self.is_state_safety_retraction()
@@ -137,7 +139,7 @@ class CornerSearch(AssemblyTools, Machine):
         self.reset_on_state_enter()
         self.select_tool(self.tcp_selected)
         self._log_state_transition()
-    def on_enter_state_inserting_peg(self):
+    def on_enter_state_inserting_along_axis(self):
         self.reset_on_state_enter()
         self._log_state_transition()
     def on_enter_state_completed_insertion(self):
@@ -189,7 +191,6 @@ class CornerSearch(AssemblyTools, Machine):
                 rospy.logerr("Starting linear search.")
                 self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
                 
-                
             else:
                 rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
                 self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
@@ -203,7 +204,6 @@ class CornerSearch(AssemblyTools, Machine):
         seeking_force = 5
         self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
-
 
         if(not self.force_cap_check(*self.cap_check_forces)):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
@@ -259,7 +259,7 @@ class CornerSearch(AssemblyTools, Machine):
 
             
 
-    def inserting_peg(self):
+    def inserting_along_axis(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
         #horizontally. We keep going until vertical speed is very near to zero.
 
@@ -294,13 +294,16 @@ class CornerSearch(AssemblyTools, Machine):
         #Inserted properly.
      
         rospy.loginfo_throttle(1, Fore.RED + "Hole found, peg inserted! Done!" +Style.RESET_ALL)
-        if(self.current_pose.transform.translation.z > self.restart_height+.15):
+        if(self.current_pose.transform.translation.z > self.restart_height+.02):
             #High enough, won't pull itself upward.
             seeking_force = -2.5
+            rospy.loginfo_once(Back.GREEN + Fore.WHITE + Style.BRIGHT + "Completed Task!" + Style.RESET_ALL)
+            quit()
         else:
             #pull upward gently to move out of trouble hopefully.
-            seeking_force = -15
+            seeking_force = -20
         self.force_cap_check(*self.cap_check_forces)
+        self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.full_compliance_position()
 
             
@@ -314,7 +317,7 @@ class CornerSearch(AssemblyTools, Machine):
             seeking_force = -3.5
         else:
             #pull upward gently to move out of trouble.
-            seeking_force = -7
+            seeking_force = -10
         self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.full_compliance_position()
 
@@ -357,13 +360,6 @@ class CornerSearch(AssemblyTools, Machine):
     def _algorithm_compliance_control(self):
 
         self.collision_confidence = 0
-        
-        # if not rospy.is_shutdown():
-        #     self.all_states_calc()
-        #     self.trigger(CHECK_FEEDBACK_TRIGGER)
-        #     self.update_commands()
-        #     self._rate.sleep()
-        #self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
         
         self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
 

@@ -648,12 +648,9 @@ class AssemblyTools():
         """
         self.avg_wrench_pub.publish(self._average_wrench_world)
 
-
         self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1],self.average_speed[2]))
 
-
         self.rel_position_pub.publish(self.current_pose.transform.translation)
-
 
         status_dict = dict({('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) )})
         if(self.surface_height != 0.0):
