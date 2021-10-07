@@ -24,6 +24,7 @@ import tf.transformations as trfm
 
 from threading import Lock
 
+from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
 #State names    
 IDLE_STATE           = 'idle'
@@ -528,7 +529,56 @@ class AssemblyTools():
         output.pose.position.y = input[1][3]
         output.pose.position.z = input[2][3]
         return output
+
+    @staticmethod
+    def create_adjoint_representation(T_ab=None, R_ab=None, P_ab=None):
+        """Convert homogeneous transform (T_ab) or a combination rotation matrix (R_ab) and pose (P_ab) 
+        into the adjoint representation. This can be used to transform wrenches (e.g., force and torque) between frames.
+        If T_ab is provided, R_ab and P_ab will be ignored.
+        :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
+        :param R_ab: (np.Array) 3x3 rotation matrix representing frame 'b' relative to frame 'a'
+        :param P_ab: (np.Array) 3x1 pose representing frame 'b' relative to frame 'a'
+        :return Ad_T: (np.Array) 6x6 adjoint representation of the transformation
+        """
+        #Accomodation for input R_ab and P_ab
+        if (T_ab == None):
+            T_ab = RpToTrans(R_ab, P_ab)
+
+        Ad_T = homogeneous_to_adjoint(T_ab)
+        return Ad_T
+
+    @staticmethod
+    def transform_wrench(T_ab, wrench)
+        """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
+        :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
+        :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
+        :return wrench_transformed: (np.Array) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
+        """
+        Ad_T = create_adjoint_representation(T_ab)
+        wrench_transformed = np.matmul(Ad_T.T, wrench)
+        return wrench_transformed 
     
+
+    def cb_ur10_ft_data(self, data: WrenchStamped):
+        #Read wrench data from load cell relative to tool0 frame (casted to Python lists)
+        force_tool0 = self.as_array(data.wrench.force).tolist()
+        torque_tool0 = self.as_array(data.wrench.torque).tolist()
+        wrench_tool0 = torque_tool0 + force_tool0 #concatenate to create a wrench
+
+        #transform to wrench_tool0 to be relative to tool0_controller_frame (assume 0.020 m z-translation in teach pendant)
+        T = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0.20], [0, 0, 0, 1],])#Homogeneous Transform
+        Ad_T = homogeneous_to_adjoint(T)
+        # print(Ad_T.T)
+        # print('-----------------------------')
+        # print(np.array(wrench_tool0))
+        # time.sleep(10)
+        wrench_for_cartesian_controller = np.matmul(Ad_T.T, np.array(wrench_tool0))
+
+        #Create WrenchStamped that will be published to cartesian_controllers
+        #Must flip the index since spatial mathematics requires wrench to be np.array([torque, force])
+        self._wrench_tool0_controller = self.create_wrench(wrench_for_cartesian_controller[3:6].tolist(), wrench_for_cartesian_controller[0:3].tolist())
+
+
     @staticmethod
     def matrix_to_tf(input, base_frame, child_frame):
         """Converts matrix back into a TF.
