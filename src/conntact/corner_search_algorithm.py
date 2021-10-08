@@ -33,7 +33,7 @@ import tf2_geometry_msgs
 
 from threading import Lock
 
-from peg_in_hole_demo.assembly_algorithm_blocks import AlgorithmBlocks
+from conntact.assembly_algorithm_blocks import AlgorithmBlocks
 
 from transitions import Machine
 

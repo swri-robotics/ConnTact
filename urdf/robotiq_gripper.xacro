@@ -17,7 +17,7 @@
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="package://peg_in_hole_demo/meshes/robotiq_arg2f_base_link.stl" />
+          <mesh filename="package://conntact/meshes/robotiq_arg2f_base_link.stl" />
         </geometry>
         <material name="">
           <color rgba="0.1 0.1 0.1 1" />
@@ -26,7 +26,7 @@
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="package://peg_in_hole_demo/meshes/robotiq_arg2f_base_link.stl" />
+          <mesh filename="package://conntact/meshes/robotiq_arg2f_base_link.stl" />
         </geometry>
       </collision>
       <visual>

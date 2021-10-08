@@ -15,7 +15,7 @@
         "/home/composites/repos/nist_agility/nist_agility/src/cartesian_controllers/cartesian_motion_controller/include/**",
         "/home/composites/repos/nist_agility/nist_agility/src/Universal_Robots_ROS_Driver/controller_stopper/include/**",
         "/home/composites/repos/nist_agility/nist_agility/src/cartesian_controllers/joint_to_cartesian_controller/include/**",
-        "/home/composites/repos/nist_agility/nist_agility/src/peg_in_hole_demo/include/**",
+        "/home/composites/repos/nist_agility/nist_agility/src/conntact/include/**",
         "/home/composites/repos/nist_agility/nist_agility/src/robotiq/robotiq_2f_gripper_action_server/include/**",
         "/home/composites/repos/nist_agility/nist_agility/src/robotiq/robotiq_2f_gripper_control/include/**",
         "/home/composites/repos/nist_agility/nist_agility/src/robotiq/robotiq_ethercat/include/**",

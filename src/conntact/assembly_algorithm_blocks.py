@@ -34,7 +34,7 @@ import tf2_geometry_msgs
 
 from threading import Lock
 
-from peg_in_hole_demo.assembly_tools import AssemblyTools
+from conntact.assembly_tools import AssemblyTools
 
 from transitions import Machine
 

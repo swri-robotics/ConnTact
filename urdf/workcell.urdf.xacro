@@ -4,7 +4,7 @@
   <xacro:property name="ur_prefix" value="" />
 
   <!-- Xacro for the table -->
-  <xacro:include filename="$(find peg_in_hole_demo)/urdf/assembly_table.xacro"/>
+  <xacro:include filename="$(find conntact)/urdf/assembly_table.xacro"/>
 
   <!-- Xacros from the Siemens Gear Assembly Challenge -->
 <!--  <xacro:include filename="$(find assembly_ros)/support/urdf/siemens_base_plate.xacro"/>
@@ -12,7 +12,7 @@
   <xacro:include filename="$(find assembly_ros)/support/urdf/siemens_big_shaft.xacro"/>-->
 
 <!-- Xacros from the NIST Task Board #1-->
-  <xacro:include filename="$(find peg_in_hole_demo)/urdf/laser_cut_base_plate.xacro"/>
+  <xacro:include filename="$(find conntact)/urdf/laser_cut_base_plate.xacro"/>
 
   <!-- OLD FROM AUTOASSEMBLY Xacro for UR10e -->
 <!--  <xacro:include filename="$(find ur_e_description)/urdf/ur10e.urdf.xacro"/>-->
@@ -20,7 +20,7 @@
   <xacro:include filename="$(find ur_description)/urdf/ur10e.xacro"/>
 
   <!-- Xacro for gripper -->
-  <xacro:include filename="$(find peg_in_hole_demo)/urdf/robotiq_gripper.xacro"/>
+  <xacro:include filename="$(find conntact)/urdf/robotiq_gripper.xacro"/>
 
 <!--  TODo: My Addition-->
   <xacro:robotiq_gripper parent="tool0"/>

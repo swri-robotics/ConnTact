@@ -3,7 +3,7 @@
 <launch>
   <!--  todo:Change this to happen in source code instead-->
   <arg name="algorithm_selected" default="spiral_search_node" doc="Select the algorythm to be used: SpiralSearch or CornerSearch"/>
-  <rosparam file="$(find peg_in_hole_demo)/config/peg_in_hole_params.yaml" />
+  <rosparam file="$(find conntact)/config/peg_in_hole_params.yaml" />
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
 
   <include file="$(find ur_robot_driver)/launch/ur10e_bringup.launch" >
@@ -12,26 +12,26 @@
 
     <arg name="controllers" default="joint_state_controller force_torque_sensor_controller cartesian_compliance_controller" doc="Controllers that are activated by default."/>
 
-    <arg name="controller_config_file" default="$(find peg_in_hole_demo)/config/ur10e_controllers.yaml" doc="Config file for defining the ROS-Control controllers for assembly application" />
+    <arg name="controller_config_file" default="$(find conntact)/config/ur10e_controllers.yaml" doc="Config file for defining the ROS-Control controllers for assembly application" />
 
   </include>
 
-  <param name="robot_description" command="$(find xacro)/xacro '$(find peg_in_hole_demo)/urdf/workcell.urdf.xacro'" />
+  <param name="robot_description" command="$(find xacro)/xacro '$(find conntact)/urdf/workcell.urdf.xacro'" />
 
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find peg_in_hole_demo)/config/basic_config_example.rviz" required="true" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find conntact)/config/basic_config_example.rviz" required="true" />
   
   <node type="plotting_node" name="assembly_plotter" 
-    pkg="peg_in_hole_demo" output="screen" required="false" />
+    pkg="conntact" output="screen" required="false" />
 
   <node type="$(arg algorithm_selected)" name="algorithm_node" 
-    pkg="peg_in_hole_demo" output="screen" required="true" />
+    pkg="conntact" output="screen" required="true" />
   <!--node if="$(arg algorithm_selected)" type="spiral_search_node" name="spiral_search_node" 
-    pkg="peg_in_hole_demo" output="screen" required="true" />
+    pkg="conntact" output="screen" required="true" />
   <node unless="$(arg algorythm_selected)" type="corner_search_node" name="corner_search_node" 
-    pkg="peg_in_hole_demo" output="screen" required="true" /-->
+    pkg="conntact" output="screen" required="true" /-->
   <!--node unless="$(arg algorythm_selected)" name="joint_state" 
     pkg="fanuc_driver" type="robot_state" /-->
-  <!--node type="spiral_search_node" name="spiral_search_node" pkg="peg_in_hole_demo" output="screen" required="true" /-->
+  <!--node type="spiral_search_node" name="spiral_search_node" pkg="conntact" output="screen" required="true" /-->
 
 </launch>
 

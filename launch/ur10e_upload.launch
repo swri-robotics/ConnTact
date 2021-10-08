@@ -10,15 +10,15 @@
 
     <arg name="controllers" default="joint_state_controller force_torque_sensor_controller cartesian_force_controller" doc="Controllers that are activated by default."/>
 
-    <arg name="controller_config_file" default="$(find peg_in_hole_demo)/config/ur10e_controllers.yaml" doc="Config file for defining the ROS-Control controllers for assembly application" />
+    <arg name="controller_config_file" default="$(find conntact)/config/ur10e_controllers.yaml" doc="Config file for defining the ROS-Control controllers for assembly application" />
 
   </include>
 
-  <param name="robot_description" command="$(find xacro)/xacro '$(find peg_in_hole_demo)/urdf/workcell.urdf.xacro'" />
+  <param name="robot_description" command="$(find xacro)/xacro '$(find conntact)/urdf/workcell.urdf.xacro'" />
 
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find peg_in_hole_demo)/config/basic_config_example.rviz" required="true" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find conntact)/config/basic_config_example.rviz" required="true" />
 
-  <node type="demo_assembly_application.py" name="demo_assembly_application" pkg="peg_in_hole_demo" output="screen" required="true" />
+  <node type="demo_assembly_application.py" name="demo_assembly_application" pkg="conntact" output="screen" required="true" />
 
 </launch>
 
