@@ -72,7 +72,7 @@ class AssemblyTools():
         #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
         self.target_peg = 'peg_10mm'
         self.target_hole = 'hole_10mm'
-        self.activeTCP = 'gripper_tip'
+        self.activeTCP = 'tip'
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
         # self.activeTCP_Title = self.target_peg
 
@@ -379,32 +379,12 @@ class AssemblyTools():
         # result_wrench = self.create_wrench([7,0,0], [0,0,0])
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
         self._wrench_pub.publish(result_wrench)
+        
         guy = self.create_wrench([0,0,0], [0,0,0])
         guy.wrench = self._average_wrench_world
+
         guy.header.frame_id = "target_hole_position"
         self._adj_wrench_pub.publish(guy)    
-
-    @staticmethod
-    def reorient_wrench(wrench, transform):
-        """Rotates a wrench to move from one frame to another while maintaining orientation relative to the world.
-        :param wrench: (geometry_msgs.Wrench) Wrench to rotate
-        :param transform: (geometry_msgs.TransformStamped) Transform from original frame to new frame.
-        :return: (Wrench) Reoriented wrench
-        """
-
-        force = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, wrench.force)
-        torque = AssemblyTools.rotate_vec_by_quat(transform.transform.rotation, wrench.torque)
-        newWrench = Wrench()
-
-        # force = AssemblyTools.rotate_vec_by_matrix(transform.transform.rotation, wrench.force)
-        # torque = AssemblyTools.rotate_vec_by_matrix(transform.transform.rotation, wrench.torque)
-
-        # rospy.logwarn_throttle(2, "For comparison, here's the vec rot by quat: " 
-        #     + str(AssemblyTools.rotate_vec_by_quaFt(transform.transform.rotation, newData.wrench.force)))
-
-        newWrench.force = Point(force[0],force[1],force[2])
-        newWrench.torque = Point(torque[0],torque[1],torque[2])
-        return newWrench
 
     @staticmethod
     def list_from_quat(quat):
@@ -413,45 +393,6 @@ class AssemblyTools():
     @staticmethod
     def list_from_point(point):
         return [point.x, point.y, point.z]
-
-    @staticmethod
-    def rotate_vec_by_quat(quat, vec):
-        # q1 = [quat.x, quat.y, quat.z, quat.w]
-        # q2 = [vec.x, vec.y, vec.z, 0.0]
-
-        q1 = [quat.x, quat.y, quat.z, quat.w]
-        q2 = [vec.x, vec.y, vec.z, 0.0]
-        # v1 = trfm.transformations.unit_vector(v1)
-        # b = trfm.quaternion_multiply(
-        #     trfm.quaternion_multiply(q1, q2), 
-        #     trfm.quaternion_conjugate(q1)
-        # )
-        a = trfm.quaternion_multiply(q1, q2)
-        b = trfm.quaternion_multiply(a, trfm.quaternion_conjugate(q1))
-        return [b[0],b[1],b[2]]
-    
-    @staticmethod
-    def rotate_vec_by_matrix(quat, inputVec):
-        """ Applies a rotation from a transformation matrix to a 3d vector 
-        :param inputVec: (geometry_msgs.Point) Vector to be processed
-        :param inputMat: (np.Array) 4x4 homogeneous tranformation matrix.
-        """        
-        # arrayVec = np.array([[inputVec.x],[inputVec.y],[inputVec.z]])
-
-        # v1 = tf.transformations.unit_vector(v1)
-        # q2 = list(v1)
-        # q2.append(0.0)
-        # return tf.transformations.quaternion_multiply(
-        #     tf.transformations.quaternion_multiply(q1, q2), 
-        #     tf.transformations.quaternion_conjugate(q1)
-        # )[:3]
-        mat = AssemblyTools.to_homogeneous(quat, Point(0,0,0))
-
-        arrayVec = np.array([inputVec.x,inputVec.y,inputVec.z])
-        out = np.matmul(mat[0:3,0:3], arrayVec)
-        
-        
-        return list(out)
 
     # def _publish_pose(self, position, orientation):
     def publish_pose(self, pose_stamped_vec):
@@ -541,43 +482,29 @@ class AssemblyTools():
         :return Ad_T: (np.Array) 6x6 adjoint representation of the transformation
         """
         #Accomodation for input R_ab and P_ab
-        if (T_ab == None):
+        if (type(T_ab) == type(None)):
             T_ab = RpToTrans(R_ab, P_ab)
 
         Ad_T = homogeneous_to_adjoint(T_ab)
         return Ad_T
 
     @staticmethod
-    def transform_wrench(T_ab, wrench)
+    def wrenchToArray(wrench: Wrench):
+        return np.array([wrench.torque.x, wrench.torque.y, wrench.torque.z, wrench.force.x, wrench.force.y, wrench.force.z])
+
+    def arrayToWrench(array: np.ndarray):
+        return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
+
+    @staticmethod
+    def transform_wrench(T_ab, wrench):
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
         :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
         :return wrench_transformed: (np.Array) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
-        Ad_T = create_adjoint_representation(T_ab)
+        Ad_T = AssemblyTools.create_adjoint_representation(T_ab)
         wrench_transformed = np.matmul(Ad_T.T, wrench)
-        return wrench_transformed 
-    
-
-    def cb_ur10_ft_data(self, data: WrenchStamped):
-        #Read wrench data from load cell relative to tool0 frame (casted to Python lists)
-        force_tool0 = self.as_array(data.wrench.force).tolist()
-        torque_tool0 = self.as_array(data.wrench.torque).tolist()
-        wrench_tool0 = torque_tool0 + force_tool0 #concatenate to create a wrench
-
-        #transform to wrench_tool0 to be relative to tool0_controller_frame (assume 0.020 m z-translation in teach pendant)
-        T = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0.20], [0, 0, 0, 1],])#Homogeneous Transform
-        Ad_T = homogeneous_to_adjoint(T)
-        # print(Ad_T.T)
-        # print('-----------------------------')
-        # print(np.array(wrench_tool0))
-        # time.sleep(10)
-        wrench_for_cartesian_controller = np.matmul(Ad_T.T, np.array(wrench_tool0))
-
-        #Create WrenchStamped that will be published to cartesian_controllers
-        #Must flip the index since spatial mathematics requires wrench to be np.array([torque, force])
-        self._wrench_tool0_controller = self.create_wrench(wrench_for_cartesian_controller[3:6].tolist(), wrench_for_cartesian_controller[0:3].tolist())
-
+        return AssemblyTools.arrayToWrench(wrench_transformed)
 
     @staticmethod
     def matrix_to_tf(input, base_frame, child_frame):
@@ -652,7 +579,10 @@ class AssemblyTools():
             # # TODO: Get projection on target hole 
             # newData.header.frame_id = "target_hole_position"
             transform = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
-            self._average_wrench_world = AssemblyTools.reorient_wrench(self._average_wrench_gripper, transform) #Wrench rel. to gripper
+            # self._average_wrench_world = AssemblyTools.reorient_wrench(self._average_wrench_gripper, transform) 
+            self._average_wrench_world = AssemblyTools.transform_wrench(self.to_homogeneous(transform.transform.rotation, Point(0,0,0)), AssemblyTools.wrenchToArray(self._average_wrench_gripper))
+            
+            #Wrench rel. to gripper
             # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
             # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
 
@@ -698,20 +628,15 @@ class AssemblyTools():
         """
         self.avg_wrench_pub.publish(self._average_wrench_world)
 
-
         self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1],self.average_speed[2]))
 
-
         self.rel_position_pub.publish(self.current_pose.transform.translation)
-
 
         status_dict = dict({('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) )})
         if(self.surface_height != 0.0):
             # If we have located the work surface
             status_dict['surface_height']=str(self.surface_height)
         self.status_pub.publish(str(status_dict))
-
-
 
     def as_array(self, vec):
         """Takes a Point and returns a Numpy array.

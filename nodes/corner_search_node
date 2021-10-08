@@ -1,10 +1,10 @@
 #! /usr/bin/env python3
-# import peg_in_hole_demo.spiral_search.main
-# import peg_in_hole_demo.spiral_search.main
+# import conntact.spiral_search.main
+# import conntact.spiral_search.main
 
 import rospy
 
-from peg_in_hole_demo.corner_search_algorithm import CornerSearch
+from conntact.corner_search_algorithm import CornerSearch
 
 if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")

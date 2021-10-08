@@ -7,8 +7,8 @@
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-<!--          <mesh filename="package://peg_in_hole_demo/meshes/GMC_Laser_Plate_Virtual.STL" scale="0.0254 0.0254 0.0254"/>-->
-          <mesh filename="package://peg_in_hole_demo/meshes/GMC_Laser_Plate_Virtual.STL" scale="1.0 1.0 1.0"/>
+<!--          <mesh filename="package://conntact/meshes/GMC_Laser_Plate_Virtual.STL" scale="0.0254 0.0254 0.0254"/>-->
+          <mesh filename="package://conntact/meshes/GMC_Laser_Plate_Virtual.STL" scale="1.0 1.0 1.0"/>
         </geometry>
         <material name="blue">
           <color rgba="0 0 1 1"/>
@@ -17,8 +17,8 @@
       <collision>
         <origin xyz="0 0 0"/>
         <geometry>
-<!--          <mesh filename="package://peg_in_hole_demo/meshes/GMC_Laser_Plate_Virtual.STL" scale="0.0254 0.0254 0.0254"/>-->
-          <mesh filename="package://peg_in_hole_demo/meshes/GMC_Laser_Plate_Virtual.STL" scale="1.0 1.0 1.0"/>
+<!--          <mesh filename="package://conntact/meshes/GMC_Laser_Plate_Virtual.STL" scale="0.0254 0.0254 0.0254"/>-->
+          <mesh filename="package://conntact/meshes/GMC_Laser_Plate_Virtual.STL" scale="1.0 1.0 1.0"/>
         </geometry>
       </collision>
     </link>
