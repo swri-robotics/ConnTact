@@ -65,9 +65,9 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 
 
-class AlgorithmBlocks(AssemblyTools, ROS_rate, start_time):
+class AlgorithmBlocks(AssemblyTools):
 
-    def __init__(self):
+    def __init__(self, ROS_rate, start_time):
         # self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
         # self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
         # self._target_pub    = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
@@ -115,7 +115,7 @@ class AlgorithmBlocks(AssemblyTools, ROS_rate, start_time):
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
         # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search 
-        # self.tcp_selected = 'tip'
+        self.tcp_selected = 'tip'
 
 
 
