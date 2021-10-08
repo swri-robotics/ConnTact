@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
-# import conntact.spiral_search.main
-# import conntact.spiral_search.main
+
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
 
 import rospy
 
@@ -12,4 +13,3 @@ if __name__ == '__main__':
     assembly_application = SpiralSearch()
 
     assembly_application.main()
-

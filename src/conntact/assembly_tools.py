@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
 
 # Imports for ros
 from inspect import EndOfBlock

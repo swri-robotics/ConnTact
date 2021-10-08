@@ -1,3 +1,6 @@
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
+
 from __future__ import absolute_import, division, print_function, unicode_literals
 from builtins import input
 __metaclass__ = type
