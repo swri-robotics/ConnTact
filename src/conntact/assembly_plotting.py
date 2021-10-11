@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
 
 # from _typeshed import NoneType
 import rospy
