@@ -317,15 +317,9 @@ class AssemblyTools():
 
         # rospy.loginfo_once("Callback working! " + str(data))
     
-    def post_action(self, trigger_name):
-        """Defines the next trigger which the state machine should execute.
-        """
-        return [trigger_name, True]
-
-    def subtract_vector3s(self, vec1, vec2):
-
-        newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
-        return newVector3
+    # def subtract_vector3s(self, vec1, vec2):
+    #     newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
+    #     return newVector3
 
     def get_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
@@ -470,18 +464,40 @@ class AssemblyTools():
 
     @staticmethod
     def wrenchToArray(wrench: Wrench):
+        """Restructures wrench object into numpy array with order needed by wrench reinterpretation math, namely, torque first then forces.
+        :param wrench: (geometry_msgs.Wrench) Input wrench.
+        :return: (np.Array) 1x6 numpy array 
+        """
         return np.array([wrench.torque.x, wrench.torque.y, wrench.torque.z, wrench.force.x, wrench.force.y, wrench.force.z])
-
+    
+    @staticmethod
     def arrayToWrench(array: np.ndarray):
+        """Restructures output 1x6 mathematical array representation of a wrench into a wrench object.
+        :param wrench: (np.Array) 1x6 numpy array 
+        :return: (geometry_msgs.Wrench) Return wrench.
+        """
+
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
-    def transform_wrench(T_ab, wrench):
+    def transform_wrench(transform: TransformStamped, wrench: Wrench):
+        """Transform a wrench object by the given transform object.
+        :param transform: (geometry_msgs.TransformStamped) Transform to apply
+        :param wrench: (geometry_msgs.Wrench) Wrench object to transform.
+        :return: (geometry.msgs.Wrench) changed wrench
+        """
+
+        return AssemblyTools.transform_wrench_by_matrix(AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation), AssemblyTools.wrenchToArray(wrench))
+
+
+    @staticmethod
+    def transform_wrench_by_matrix(T_ab, wrench):
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
         :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
         :return wrench_transformed: (np.Array) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
+
         Ad_T = AssemblyTools.create_adjoint_representation(T_ab)
         wrench_transformed = np.matmul(Ad_T.T, wrench)
         return AssemblyTools.arrayToWrench(wrench_transformed)
@@ -555,30 +571,28 @@ class AssemblyTools():
         if (self.curr_time >= rospy.Duration(1)):
             # Calculate a wrench value which is aligned to the target hole frame; publish it.
 
-            # newData = self.create_wrench([0,0,0],[0,0,0])
-            # # TODO: Get projection on target hole 
-            # newData.header.frame_id = "target_hole_position"
+            #Get current angle from gripper to hole:
             transform = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
-            # self._average_wrench_world = AssemblyTools.reorient_wrench(self._average_wrench_gripper, transform) 
-            self._average_wrench_world = AssemblyTools.transform_wrench(self.to_homogeneous(transform.transform.rotation, Point(0,0,0)), AssemblyTools.wrenchToArray(self._average_wrench_gripper))
-            
-            #Wrench rel. to gripper
-            # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
-            # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
+            #We want to rotate this only, not reinterpret F/T components:
+            transform.transform.translation = Point(0,0,0)
+            #Execute reorientation, store in world-oriented wrench data.
+            self._average_wrench_world = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper)
 
-        # rospy.logwarn_throttle(2, "Buffers is " + str(self.filters._data_buffer))
+            #Old form, delete when ready:
+            # self._average_wrench_world = AssemblyTools.transform_wrench(self.to_homogeneous(transform.transform.rotation, Point(0,0,0)), AssemblyTools.wrenchToArray(self._average_wrench_gripper))
 
-    def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
-        """Returns a simple linear interpolation between wrenches.
-        :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
-        :param scale1: (float) Weight of first input wrench
-        :param wrench2:(geometry_msgs.WrenchStamped) Second input wrench
-        :param scale2: (float) Weight of second input wrench
-        :return: (geometry_msgs.WrenchStamped)
-        """
-        newForce = (self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
-        newTorque = (self.as_array(wrench1.torque) * scale1 + self.as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
-        return self.create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
+    # Probably not needed, delete when certain: 
+    # def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
+    #     """Returns a simple linear interpolation between wrenches.
+    #     :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
+    #     :param scale1: (float) Weight of first input wrench
+    #     :param wrench2:(geometry_msgs.WrenchStamped) Second input wrench
+    #     :param scale2: (float) Weight of second input wrench
+    #     :return: (geometry_msgs.WrenchStamped)
+    #     """
+    #     newForce = (self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
+    #     newTorque = (self.as_array(wrench1.torque) * scale1 + self.as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
+    #     return self.create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
 
     def update_avg_speed(self):
         """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
@@ -611,7 +625,8 @@ class AssemblyTools():
         self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1],self.average_speed[2]))
 
         self.rel_position_pub.publish(self.current_pose.transform.translation)
-
+        
+        # Send a dictionary as plain text to expose some additional info
         status_dict = dict({('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) )})
         if(self.surface_height != 0.0):
             # If we have located the work surface

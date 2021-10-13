@@ -118,6 +118,10 @@ class AlgorithmBlocks(AssemblyTools):
         self.tcp_selected = 'tip'
 
 
+    def post_action(self, trigger_name):
+        """Defines the next trigger which the state machine should execute.
+        """
+        return [trigger_name, True]
 
     def is_already_retracting(self):
         return self.is_state_safety_retraction()
