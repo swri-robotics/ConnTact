@@ -2,8 +2,9 @@
 
 <launch>
   <!--  todo:Change this to happen in source code instead-->
-  <arg name="algorithm_selected" default="spiral_search_node" doc="Select the algorythm to be used: SpiralSearch or CornerSearch"/>
+  <arg name="algorithm_selected" default="spiral_search_node" doc="Select the algorithm to be used: SpiralSearch or CornerSearch"/>
   <rosparam file="$(find conntact)/config/peg_in_hole_params.yaml" />
+  <rosparam file="$(find conntact)/config/conntact_config.yaml" />
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
 
   <include file="$(find ur_robot_driver)/launch/ur10e_bringup.launch" >

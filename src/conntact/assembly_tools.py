@@ -48,111 +48,94 @@ SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 class AssemblyTools():
 
     def __init__(self, ROS_rate, start_time):
-        self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
-        self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
-        self._adj_wrench_pub = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
+        self._wrench_pub            = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
+        self._pose_pub              = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
+        self._adj_wrench_pub        = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
 
         #for plotting node
-        self.avg_wrench_pub = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
-        self.avg_speed_pub = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
-        self.rel_position_pub = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
+        self.avg_wrench_pub         = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
+        self.avg_speed_pub          = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
+        self.rel_position_pub       = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
 
-        self.status_pub = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
+        self.status_pub             = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
 
-        self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
+        self._ft_sensor_sub         = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
 
         #Needed to get current pose of the robot
-        self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-        self.broadcaster = tf2_ros.StaticTransformBroadcaster()
+        self.tf_buffer              = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
+        self.tf_listener            = tf2_ros.TransformListener(self.tf_buffer)
+        self.broadcaster            = tf2_ros.StaticTransformBroadcaster()
 
+        #Instantiate the dictionary of frames which are published to tf2. They have to be published in a single Broadcaster call to both be accessible.
+        self.reference_frames       = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
 
-        #job parameters moved in from the peg_in_hole_params.yaml file
-        #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
-        #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
-        self.target_peg = 'peg_10mm'
-        self.target_hole = 'hole_10mm'
-        self.activeTCP = 'tip'
-        self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
-        # self.activeTCP_Title = self.target_peg
+        self._rate_selected         = ROS_rate
+        self._rate                  = rospy.Rate(self._rate_selected) #setup for sleeping in hz
+        self._start_time            = start_time #for _spiral_search_basic_force_control and spiral_search_motion
+        self.curr_time              = rospy.get_rostime() - self._start_time
+        self.curr_time_numpy        = np.double(self.curr_time.to_sec())
+        self.highForceWarning       = False
+        self.collision_confidence   = 0
+        self._seq                   = 0
 
+        # Initialize filtering class
+        self.filters                = AssemblyFilters(5, self._rate_selected)
 
-        self._rate_selected = ROS_rate
-        self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
-        self._seq = 0
-        self._start_time = start_time #for _spiral_search_basic_force_control and spiral_search_basic_compliance_control
-        self.filters = AssemblyFilters(5, self._rate_selected)
+        #Establish useful transform matrix dictionary for later
+        self.tool_data              = dict()
 
-        #Spiral parameters
-        self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
-        self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
-        self._first_wrench = self.create_wrench([0,0,0], [0,0,0])
-        self._freq_c = np.double(0.15) #Hz frequency in spiral_search_basic_compliance_control
-        self._amp_c  = np.double(.002)  #meters amplitude in spiral_search_basic_compliance_control
-        self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
-        
-        # # Establish goal position -- TODO: Analyse whether redundant  
-
-        #generate helpful transform matrix for later
-        self.tool_data = dict()
         self.readYAML()
 
-
         #loop parameters
-        self.curr_time = rospy.get_rostime() - self._start_time
-        self.curr_time_numpy = np.double(self.curr_time.to_sec())
         self.wrench_vec  = self.get_command_wrench([0,0,0])
         self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
         self.switch_state = False
 
+        # initialize loop parameters
         self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()
-        self.current_wrench = self._first_wrench
-        self._average_wrench_gripper = self._first_wrench.wrench 
+        self.current_wrench = self.create_wrench([0,0,0], [0,0,0])
+        self._average_wrench_gripper = self.create_wrench([0,0,0], [0,0,0]).wrench 
         self._average_wrench_world = Wrench()
-        self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
-        #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
+        self._bias_wrench = self.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings. 
         self.average_speed = np.array([0.0,0.0,0.0])
  
-        self.highForceWarning = False
-        self.surface_height = 0.0
-        self.restart_height = -.1
-        self.collision_confidence = 0
-
-        #Simple Moving Average Parameters
-        self._buffer_window = self._rate_selected #self._rate_selected = 1/Hz since this variable is the rate of ROS commands
-        self._data_buffer = []
-        # self._moving_avg_data = np. #Empty to start. make larger than we need since np is contiguous memory. Will ignore NaN values.
-        # self._data_buffer = np.empty(self._buffer_window)
-        # self.avg_it = 0#iterator for allocating the first window in the moving average calculation
-        # self._data_buffer = np.zeros(self._buffer_window)
-        # self._moving_avg_data = [] #Empty to start
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
         """
         
+        #job parameters moved in from the peg_in_hole_params.yaml file
+        #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
+        #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
+        self.target_peg                 = rospy.get_param('/task/target_peg')
+        self.target_hole                = rospy.get_param('/task/target_hole')
+        self.activeTCP                  = rospy.get_param('/task/starting_tcp')
+
         self.read_board_positions()
         
         self.read_peg_hole_dimensions()
 
+        #Spiral parameters
+        self._spiral_params             = rospy.get_param('/algorithm/spiral_params')
+        
         #Calculate transform from TCP to peg corner        
-        self.peg_locations   = rospy.get_param('/objects/'+self.target_peg+'/grasping/pinch_grasping/locations')
+        self.peg_locations              = rospy.get_param('/objects/'+self.target_peg+'/grasping/pinch_grasping/locations')
         
         # Setup default zero-transform in case it needs to be referenced for consistency.
-        self.tool_data['gripper_tip'] = dict()
-        a = TransformStamped()
-        a.header.frame_id = "tool0"
-        a.child_frame_id = 'gripper_tip'
-        a.transform.rotation.w = 1
+        self.tool_data['gripper_tip']   = dict()
+        a                               = TransformStamped()
+        a.header.frame_id               = "tool0"
+        a.child_frame_id                = 'gripper_tip'
+        a.transform.rotation.w          = 1
         self.tool_data['gripper_tip']['transform']    = a
         self.tool_data['gripper_tip']['matrix']       = AssemblyTools.to_homogeneous(a.transform.rotation, a.transform.translation)
-        self.reference_frames['tcp'] = a
+        self.reference_frames['tcp']    = a
         
 
         for key in list(self.peg_locations):
-            # Read in each listed tool position; measure their TF and store in dictionary.
+            #Read in each listed tool position; measure their TF and store in dictionary.
             #Write the position of the peg's corner wrt the gripper tip as a reference-ready TF.
             pegTransform = AssemblyTools.get_tf_from_YAML(self.peg_locations[str(key)]['pose'], self.peg_locations[str(key)]['orientation'],
             "tool0_to_gripper_tip_link", "peg_"+str(key)+"_position")
@@ -170,6 +153,8 @@ class AssemblyTools():
         rospy.logerr("TCP position dictionary now contains: " + str(list(self.tool_data))+ ", selected tool publishing now: ")
         self.select_tool(self.activeTCP)
 
+        self.surface_height = rospy.get_param('/task/assumed_starting_height') #Starting height assumption
+        self.restart_height = rospy.get_param('/task/restart_height') #Height to restart
         # quit()
 
     def read_board_positions(self):
@@ -274,27 +259,21 @@ class AssemblyTools():
         else:
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
 
-    def spiral_search_basic_compliance_control(self):
+    def spiral_search_motion(self, frequency = .15, min_amplitude = .002, max_cycles = 62.83185):
         """Generates position, orientation offset vectors which describe a plane spiral about z; 
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
         """
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
-        curr_amp = self._amp_c + self.safe_clearance * np.mod(2.0 * np.pi * self._freq_c *curr_time_numpy, self._amp_limit_c);
+        curr_amp = min_amplitude + self.safe_clearance * np.mod(2.0 * np.pi * frequency *curr_time_numpy, max_cycles);
 
-        # x_pos_offset = 0.88 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        # y_pos_offset = 0.550 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
+
+        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
         
-        # self._amp_c = self._amp_c * (curr_time_numpy * 0.001 * curr_time_numpy+ 1)
-
-        x_pos = curr_amp * np.cos(2.0 * np.pi * self._freq_c *curr_time_numpy)
         x_pos = x_pos + self.x_pos_offset
-
-        y_pos = curr_amp * np.sin(2.0 * np.pi * self._freq_c *curr_time_numpy)
         y_pos = y_pos + self.y_pos_offset
-
-        # z_pos = 0.2 #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value 
         z_pos = self.current_pose.transform.translation.z #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value
 
         pose_position = [x_pos, y_pos, z_pos]
@@ -554,7 +533,7 @@ class AssemblyTools():
         # create wrench
         wrench.force.x, wrench.force.y, wrench.force.z = force
         wrench.torque.x, wrench.torque.y, wrench.torque.z = torque 
-
+        
         # create header
         wrench_stamped.header.seq = self._seq
 
