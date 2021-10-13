@@ -170,7 +170,7 @@ class AlgorithmBlocks(AssemblyTools):
             exec(method_name)
         except (NameError, AttributeError):
             rospy.logerr_throttle(2, "State name " + method_name + " does not match 'state_'+(state loop method name) in algorithm!")
-            pass
+            pass    
         except:
             print("Unexpected error when trying to locate state loop name:", sys.exc_info()[0])
             raise
@@ -232,7 +232,8 @@ class AlgorithmBlocks(AssemblyTools):
 
         seeking_force = 7.0
         self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.spiral_search_basic_compliance_control()
+        self.pose_vec = self.spiral_search_motion(self._spiral_params["frequency"], 
+            self._spiral_params["min_amplitude"], self._spiral_params["max_cycles"])
 
         if(not self.force_cap_check(*self.cap_check_forces)):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
