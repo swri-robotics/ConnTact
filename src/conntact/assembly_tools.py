@@ -82,8 +82,12 @@ class AssemblyTools():
         # Initialize filtering class
         self.filters                = AssemblyFilters(5, self._rate_selected)
 
-        #Establish useful transform matrix dictionary for later
         self.tool_data              = dict()
+        """ Dictionary of transform/ matrix transformation dictionary which contains each TCP configuration loaded from the YAML. It is automatically populated in readYAML(). Access info by invoking: 
+
+        self.tool_data[*tool name*]["transform"] = (geometry_msgs.TransformStamped) Transform from tool0 (robot wrist flange) to tcp location.
+        self.tool_data[*tool name*]["matrix"] = (np.array()) 4x4 homogeneous transformation matrix of same transform.
+        """
 
         self.readYAML()
 
@@ -143,12 +147,10 @@ class AssemblyTools():
             self.send_reference_TFs()
             self._rate.sleep()
             a = self.tf_buffer.lookup_transform("tool0", "peg_"+str(key)+"_position", rospy.Time(0), rospy.Duration(1.0))
-            # a = self.tf_buffer.lookup_transform("tool0", 'peg_corner_position', rospy.Time(0), rospy.Duration(100.0))
             self.tool_data[str(key)]=dict()
             self.tool_data[str(key)]['transform']   = a
             self.tool_data[str(key)]['matrix']      = AssemblyTools.to_homogeneous(a.transform.rotation, a.transform.translation)
             rospy.logerr("Added TCP entry for " + str(key))
-            # rospy.logwarn(self.target_peg + " gives a homog matrix of " + str(self.tool_data[str(key)]['matrix']))
             
         rospy.logerr("TCP position dictionary now contains: " + str(list(self.tool_data))+ ", selected tool publishing now: ")
         self.select_tool(self.activeTCP)
@@ -353,12 +355,7 @@ class AssemblyTools():
         # result_wrench = self.create_wrench([7,0,0], [0,0,0])
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
         self._wrench_pub.publish(result_wrench)
-        
-        guy = self.create_wrench([0,0,0], [0,0,0])
-        guy.wrench = self._average_wrench_world
 
-        guy.header.frame_id = "target_hole_position"
-        self._adj_wrench_pub.publish(guy)    
 
     @staticmethod
     def list_from_quat(quat):
@@ -480,14 +477,19 @@ class AssemblyTools():
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
-    def transform_wrench(transform: TransformStamped, wrench: Wrench):
+    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert=False):
         """Transform a wrench object by the given transform object.
         :param transform: (geometry_msgs.TransformStamped) Transform to apply
         :param wrench: (geometry_msgs.Wrench) Wrench object to transform.
+        :param invert: (bool) Whether to interpret the tansformation's inverse, i.e. transform "from child to parent" instead of "from parent to child"
         :return: (geometry.msgs.Wrench) changed wrench
         """
 
-        return AssemblyTools.transform_wrench_by_matrix(AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation), AssemblyTools.wrenchToArray(wrench))
+        matrix = AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation)
+        if(invert):
+            matrix = trfm.inverse_matrix(matrix)
+
+        return AssemblyTools.transform_wrench_by_matrix(matrix, AssemblyTools.wrenchToArray(wrench))
 
 
     @staticmethod
@@ -565,9 +567,11 @@ class AssemblyTools():
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
 
-        # self._average_wrench_gripper = self.weighted_average_wrenches(self._average_wrench_gripper, 9, self.current_wrench.wrench, 1)
+        
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
         
+        # self._average_wrench_gripper = AssemblyTools.transform_wrench(self.tool_data[self.activeTCP]["transform"], self.current_wrench.wrench)
+
         if (self.curr_time >= rospy.Duration(1)):
             # Calculate a wrench value which is aligned to the target hole frame; publish it.
 
@@ -575,8 +579,23 @@ class AssemblyTools():
             transform = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
             #We want to rotate this only, not reinterpret F/T components:
             transform.transform.translation = Point(0,0,0)
-            #Execute reorientation, store in world-oriented wrench data.
-            self._average_wrench_world = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper)
+            #Execute reorientation, store in world-oriented wrench data. 
+            self._average_wrench_world = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper) #This works
+
+            # b = AssemblyTools.transform_wrench(self.tool_data[self.activeTCP]["transform"], self._average_wrench_gripper, invert=True)
+
+            # b = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper, invert=True)
+            # self._average_wrench_world = AssemblyTools.transform_wrench(transform, b)
+
+            # self._average_wrench_world = b
+                        
+            #Output the wrench for debug visualization
+            guy = self.create_wrench([0,0,0], [0,0,0])
+            guy.wrench = self._average_wrench_world
+
+            # guy.header.frame_id = "tool0"
+            guy.header.frame_id = "target_hole_position"
+            self._adj_wrench_pub.publish(guy)    
 
             #Old form, delete when ready:
             # self._average_wrench_world = AssemblyTools.transform_wrench(self.to_homogeneous(transform.transform.rotation, Point(0,0,0)), AssemblyTools.wrenchToArray(self._average_wrench_gripper))
