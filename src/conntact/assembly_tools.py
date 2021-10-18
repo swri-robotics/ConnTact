@@ -488,7 +488,7 @@ class AssemblyTools():
         matrix = AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation)
 
         if(log):
-            rospy.loginfo_throttle(2, Fore.RED + " Transform passed in is " + str(transform) + " and matrix passed in is " + str(matrix) + Style.RESET_ALL)
+            rospy.loginfo_throttle(2, Fore.RED + " Transform passed in is " + str(transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL)
         
         if(invert):
             matrix = trfm.inverse_matrix(matrix)
@@ -580,30 +580,24 @@ class AssemblyTools():
             # Calculate a wrench value which is aligned to the target hole frame; publish it.
 
             #Get current angle from gripper to hole:
-            transform = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
-            #We want to rotate this only, not reinterpret F/T components:
-            transform.transform.translation = Point(0,0,0)
-            #Execute reorientation, store in world-oriented wrench data. 
-            # self._average_wrench_world = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper) #This works
-
-            b = AssemblyTools.transform_wrench(self.tool_data[self.activeTCP]["transform"], self._average_wrench_gripper, invert=False, log=True)
-            self._average_wrench_world = b
+            transform_world_rotation:TransformStamped = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
+            #We want to rotate this only, not reinterpret F/T components.
+            #We reinterpret based on the position of the TCP (but ignore the relative rotation):                       
+            transform_world_rotation.transform.translation = self.tool_data[self.activeTCP]["transform"].transform.translation
             
-            # b = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper, invert=True)
-            # self._average_wrench_world = AssemblyTools.transform_wrench(transform, b)
+            #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
+            self._average_wrench_world = AssemblyTools.transform_wrench(transform_world_rotation, self._average_wrench_gripper) #This works
 
-            # self._average_wrench_world = b
                         
             #Output the wrench for debug visualization
             guy = self.create_wrench([0,0,0], [0,0,0])
             guy.wrench = self._average_wrench_world
 
-            guy.header.frame_id = "tool0"
-            # guy.header.frame_id = "target_hole_position"
+            # guy.header.frame_id = "tool0"
+            guy.header.frame_id = "target_hole_position"
             self._adj_wrench_pub.publish(guy)    
 
-            #Old form, delete when ready:
-            # self._average_wrench_world = AssemblyTools.transform_wrench(self.to_homogeneous(transform.transform.rotation, Point(0,0,0)), AssemblyTools.wrenchToArray(self._average_wrench_gripper))
+
 
     # Probably not needed, delete when certain: 
     # def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
