@@ -477,7 +477,7 @@ class AssemblyTools():
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
-    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert=False):
+    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert=False, log=False):
         """Transform a wrench object by the given transform object.
         :param transform: (geometry_msgs.TransformStamped) Transform to apply
         :param wrench: (geometry_msgs.Wrench) Wrench object to transform.
@@ -486,6 +486,10 @@ class AssemblyTools():
         """
 
         matrix = AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation)
+
+        if(log):
+            rospy.loginfo_throttle(2, Fore.RED + " Transform passed in is " + str(transform) + " and matrix passed in is " + str(matrix) + Style.RESET_ALL)
+        
         if(invert):
             matrix = trfm.inverse_matrix(matrix)
 
@@ -580,10 +584,11 @@ class AssemblyTools():
             #We want to rotate this only, not reinterpret F/T components:
             transform.transform.translation = Point(0,0,0)
             #Execute reorientation, store in world-oriented wrench data. 
-            self._average_wrench_world = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper) #This works
+            # self._average_wrench_world = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper) #This works
 
-            # b = AssemblyTools.transform_wrench(self.tool_data[self.activeTCP]["transform"], self._average_wrench_gripper, invert=True)
-
+            b = AssemblyTools.transform_wrench(self.tool_data[self.activeTCP]["transform"], self._average_wrench_gripper, invert=False, log=True)
+            self._average_wrench_world = b
+            
             # b = AssemblyTools.transform_wrench(transform, self._average_wrench_gripper, invert=True)
             # self._average_wrench_world = AssemblyTools.transform_wrench(transform, b)
 
@@ -593,8 +598,8 @@ class AssemblyTools():
             guy = self.create_wrench([0,0,0], [0,0,0])
             guy.wrench = self._average_wrench_world
 
-            # guy.header.frame_id = "tool0"
-            guy.header.frame_id = "target_hole_position"
+            guy.header.frame_id = "tool0"
+            # guy.header.frame_id = "target_hole_position"
             self._adj_wrench_pub.publish(guy)    
 
             #Old form, delete when ready:

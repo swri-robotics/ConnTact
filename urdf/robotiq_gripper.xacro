@@ -65,7 +65,7 @@
     <joint name="${parent}_gripper_TCP_joint" type="fixed">
         <parent link="tool0" />
         <child link="${parent}_to_gripper_tip_link" />
-        <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.1700" />
+        <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.0750" />
     </joint>
 
   </xacro:macro>
