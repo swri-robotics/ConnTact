@@ -348,6 +348,8 @@ class AssemblyTools():
 
     def publish_wrench(self, input_vec):
         """Publish the commanded wrench to the command topic.
+        :param vec: (list of Floats) XYZ force commands
+        :param vec: (list of Floats) XYC commanded torque.
         """
         # self.check_controller(self.force_controller)
         # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
@@ -582,13 +584,15 @@ class AssemblyTools():
             #Get current angle from gripper to hole:
             transform_world_rotation:TransformStamped = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
             #We want to rotate this only, not reinterpret F/T components.
-            #We reinterpret based on the position of the TCP (but ignore the relative rotation):                       
-            transform_world_rotation.transform.translation = self.tool_data[self.activeTCP]["transform"].transform.translation
+            #We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.                       
+            offset =Point(self.tool_data[self.activeTCP]["transform"].transform.translation.x, self.tool_data[self.activeTCP]["transform"].transform.translation.y, self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05)
+
             
+            transform_world_rotation.transform.translation = offset
+
             #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
             self._average_wrench_world = AssemblyTools.transform_wrench(transform_world_rotation, self._average_wrench_gripper) #This works
 
-                        
             #Output the wrench for debug visualization
             guy = self.create_wrench([0,0,0], [0,0,0])
             guy.wrench = self._average_wrench_world

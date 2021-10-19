@@ -33,16 +33,16 @@
         <geometry>
           <cylinder radius="0.015" length="0.175"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="0 0 0.0875" />
+        <origin rpy="0 0 0" xyz="0 0 0.0575" />
         <material name="">
           <color rgba="0.1 0.1 0.1 1" />
         </material>
       </visual>
       <collision>
         <geometry>
-          <cylinder radius="0.015" length="0.175"/>
+          <cylinder radius="0.015" length="0.155"/>
         </geometry>
-        <origin rpy="0 0 0" xyz="0 0 0.0875" />
+        <origin rpy="0 0 0" xyz="0 0 0.0575" />
         <material name="">
           <color rgba="0.1 0.1 0.1 1" />
         </material>
@@ -65,7 +65,7 @@
     <joint name="${parent}_gripper_TCP_joint" type="fixed">
         <parent link="tool0" />
         <child link="${parent}_to_gripper_tip_link" />
-        <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.0750" />
+        <origin rpy="0.0 0.0 0" xyz="0.00 0.00 0.115" />
     </joint>
 
   </xacro:macro>
