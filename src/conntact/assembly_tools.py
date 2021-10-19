@@ -356,6 +356,16 @@ class AssemblyTools():
         # result_wrench = self.create_wrench(result[:3], result[3:])
         # result_wrench = self.create_wrench([7,0,0], [0,0,0])
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
+
+        transform_world_to_gripper:TransformStamped = self.tf_buffer.lookup_transform('target_hole_position', 'tool0', rospy.Time(0), rospy.Duration(1.25))
+
+        offset =Point( -1*self.tool_data[self.activeTCP]["transform"].transform.translation.x, -1*self.tool_data[self.activeTCP]["transform"].transform.translation.y, -1*(self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05))
+
+        transform_world_to_gripper.transform.translation = offset
+
+        #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
+        result_wrench.wrench = AssemblyTools.transform_wrench(transform_world_to_gripper, result_wrench.wrench, log=True) #This works
+
         self._wrench_pub.publish(result_wrench)
 
 
@@ -575,31 +585,25 @@ class AssemblyTools():
 
         
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
-        
-        # self._average_wrench_gripper = AssemblyTools.transform_wrench(self.tool_data[self.activeTCP]["transform"], self.current_wrench.wrench)
 
-        if (self.curr_time >= rospy.Duration(1)):
-            # Calculate a wrench value which is aligned to the target hole frame; publish it.
-
-            #Get current angle from gripper to hole:
-            transform_world_rotation:TransformStamped = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
-            #We want to rotate this only, not reinterpret F/T components.
-            #We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.                       
-            offset =Point(self.tool_data[self.activeTCP]["transform"].transform.translation.x, self.tool_data[self.activeTCP]["transform"].transform.translation.y, self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05)
+        #Get current angle from gripper to hole:
+        transform_world_rotation:TransformStamped = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(1.25))
+        #We want to rotate this only, not reinterpret F/T components.
+        #We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.                       
+        offset =Point(self.tool_data[self.activeTCP]["transform"].transform.translation.x, self.tool_data[self.activeTCP]["transform"].transform.translation.y, self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05)
 
             
-            transform_world_rotation.transform.translation = offset
+        transform_world_rotation.transform.translation = offset
 
-            #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
-            self._average_wrench_world = AssemblyTools.transform_wrench(transform_world_rotation, self._average_wrench_gripper) #This works
+        #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
+        self._average_wrench_world = AssemblyTools.transform_wrench(transform_world_rotation, self._average_wrench_gripper) #This works
 
-            #Output the wrench for debug visualization
-            guy = self.create_wrench([0,0,0], [0,0,0])
-            guy.wrench = self._average_wrench_world
-
-            # guy.header.frame_id = "tool0"
-            guy.header.frame_id = "target_hole_position"
-            self._adj_wrench_pub.publish(guy)    
+        #Output the wrench for debug visualization
+        guy = self.create_wrench([0,0,0], [0,0,0])
+        guy.wrench = self._average_wrench_world
+        # guy.header.frame_id = "tool0"
+        guy.header.frame_id = "target_hole_position"
+        self._adj_wrench_pub.publish(guy)    
 
 
 
