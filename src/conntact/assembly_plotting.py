@@ -141,16 +141,34 @@ class PlotAssemblyData():
             barb_increments = {"flag" :5, "full" : 1, "half" : 0.5}
 
             offset = self.barb_interval+1-(self.pointOffset % self.barb_interval)
-            self.planView.barbs(self.posHistory[offset:-1:self.barb_interval,0], self.posHistory
-            [offset:-1:self.barb_interval,1], 
-                self.forceHistory[offset:-1:self.barb_interval,0], self.forceHistory[offset:-1:self.barb_interval,1],
-                barb_increments=barb_increments, length = 6, color=(0.2, 0.8, 0.8))
-            #TODO - Fix barb directions. I think they're pointing the wrong way, just watching them in freedrive mode.
 
-
+            #determine how much of forceHistory to actually plot; caps the record length to actually show
+            # barb_number = int(min([self.recordLength / 2, self.forceHistory.shape[0]]))
+            # rospy.loginfo("barb number is " + str(barb_number) + " when list length is " + str(self.forceHistory.shape[0]))
+            #Create a color differentiation from new to old barbs.
+            colorList = [(.2, n, n*n) for n in np.linspace(.1,1,(self.recordLength/self.barb_interval))]
+            
+            #Set up plan view; decide the width limits
             xlims = [np.min(self.posHistory[:,0]) - self.min_plot_window_size, np.max(self.posHistory[:,0]) + self.min_plot_window_size]
             ylims = [np.min(self.posHistory[:,1]) - self.min_plot_window_size, np.max(self.posHistory[:,1]) + self.min_plot_window_size]
 
+            current_force_barb_position = (.25* xlims[0] + .75*xlims[1], .25* ylims[0] + .75*ylims[1],)
+
+            self.planView.barbs(
+                self.posHistory[offset:-1:self.barb_interval,0], 
+                self.posHistory[offset:-1:self.barb_interval,1], 
+                self.forceHistory[offset:-1:self.barb_interval,0], 
+                self.forceHistory[offset:-1:self.barb_interval,1],
+                barb_increments=barb_increments, length = 6, color=colorList)
+
+            self.planView.barbs(
+                current_force_barb_position[0], 
+                current_force_barb_position[1], 
+                self.forceHistory[-1,0], 
+                self.forceHistory[-1,1],
+                barb_increments=barb_increments, length = 7, color=(0,.2,.8))
+
+            #Apply view parameters
             self.planView.set_xlim(xlims)
             self.planView.set_ylim(ylims)
 

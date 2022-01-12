@@ -23,9 +23,9 @@ objects: #List objects and their required description
                         #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
                         grasp_pressure: 50 #Percent maximum force
                     corner:
-                        pose: [-3.5, -3.5, 50] #location relative to peg/hole local_part_pose being grasped
+                        pose: [-3.5, -3.5, 100] #location relative to peg/hole local_part_pose being grasped
                         #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
-                        orientation: [35.26, -30, -9.74] #orientation relative to tcp
+                        orientation: [35.26, -30, -9.74] #orientation relative to tcp is 45 degrees in 2 rpy axes
                         #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
                         grasp_pressure: 50 #Percent maximum force
                         #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
@@ -190,7 +190,7 @@ objects: #List objects and their required description
         material: "stainless steel"
 environment_state:
     task_frame:
-        position: [266, -137, -455]
+        position: [-639, 282, -337]
         orientation: [0, 0, 0]
     kitting_frame:
         position: [640, 544, -502]
@@ -200,3 +200,9 @@ assembled_state: #List the desired assembled state
         position: [1, 2, 3] #Trasformation from peg.local_part_pose relative to chosen Newtonian inertial frame
     hole: 
         position: [1, 2, 3] #Transformation from hole.local_part_pose relative to chosen Newtonian inertial frame
+task:
+    target_peg: "peg_10mm"
+    target_hole: "hole_10mm"
+    starting_tcp: "tip"
+    assumed_starting_height: 0.0
+    restart_height: -0.1

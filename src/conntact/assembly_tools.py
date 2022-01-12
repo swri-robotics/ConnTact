@@ -48,111 +48,100 @@ SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 class AssemblyTools():
 
     def __init__(self, ROS_rate, start_time):
-        self._wrench_pub    = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
-        self._pose_pub      = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
-        self._adj_wrench_pub = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
+        self._wrench_pub            = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
+        self._pose_pub              = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
+        self._adj_wrench_pub        = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
 
         #for plotting node
-        self.avg_wrench_pub = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
-        self.avg_speed_pub = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
-        self.rel_position_pub = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
+        self.avg_wrench_pub         = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
+        self.avg_speed_pub          = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
+        self.rel_position_pub       = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
 
-        self.status_pub = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
+        self.status_pub             = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
 
-        self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
+        self._ft_sensor_sub         = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
         # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
 
         #Needed to get current pose of the robot
-        self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-        self.broadcaster = tf2_ros.StaticTransformBroadcaster()
+        self.tf_buffer              = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
+        self.tf_listener            = tf2_ros.TransformListener(self.tf_buffer)
+        self.broadcaster            = tf2_ros.StaticTransformBroadcaster()
 
+        #Instantiate the dictionary of frames which are published to tf2. They have to be published in a single Broadcaster call to both be accessible.
+        self.reference_frames       = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
 
-        #job parameters moved in from the peg_in_hole_params.yaml file
-        #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
-        #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
-        self.target_peg = 'peg_10mm'
-        self.target_hole = 'hole_10mm'
-        self.activeTCP = 'tip'
-        self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
-        # self.activeTCP_Title = self.target_peg
+        self._rate_selected         = ROS_rate
+        self._rate                  = rospy.Rate(self._rate_selected) #setup for sleeping in hz
+        self._start_time            = start_time #for _spiral_search_basic_force_control and spiral_search_motion
+        self.curr_time              = rospy.get_rostime() - self._start_time
+        self.curr_time_numpy        = np.double(self.curr_time.to_sec())
+        self.highForceWarning       = False
+        self.collision_confidence   = 0
+        self._seq                   = 0
 
+        # Initialize filtering class
+        self.filters                = AssemblyFilters(5, self._rate_selected)
 
-        self._rate_selected = ROS_rate
-        self._rate = rospy.Rate(self._rate_selected) #setup for sleeping in hz
-        self._seq = 0
-        self._start_time = start_time #for _spiral_search_basic_force_control and spiral_search_basic_compliance_control
-        self.filters = AssemblyFilters(5, self._rate_selected)
+        self.tool_data              = dict()
+        """ Dictionary of transform/ matrix transformation dictionary which contains each TCP configuration loaded from the YAML. It is automatically populated in readYAML(). Access info by invoking: 
 
-        #Spiral parameters
-        self._freq = np.double(0.15) #Hz frequency in _spiral_search_basic_force_control
-        self._amp  = np.double(10.0)  #Newton amplitude in _spiral_search_basic_force_control
-        self._first_wrench = self.create_wrench([0,0,0], [0,0,0])
-        self._freq_c = np.double(0.15) #Hz frequency in spiral_search_basic_compliance_control
-        self._amp_c  = np.double(.002)  #meters amplitude in spiral_search_basic_compliance_control
-        self._amp_limit_c = 2 * np.pi * 10 #search number of radii distance outward
-        
-        # # Establish goal position -- TODO: Analyse whether redundant  
+        self.tool_data[*tool name*]["transform"] = (geometry_msgs.TransformStamped) Transform from tool0 (robot wrist flange) to tcp location.
+        self.tool_data[*tool name*]["matrix"] = (np.array()) 4x4 homogeneous transformation matrix of same transform.
+        """
 
-        #generate helpful transform matrix for later
-        self.tool_data = dict()
         self.readYAML()
 
-
         #loop parameters
-        self.curr_time = rospy.get_rostime() - self._start_time
-        self.curr_time_numpy = np.double(self.curr_time.to_sec())
         self.wrench_vec  = self.get_command_wrench([0,0,0])
         self.next_trigger = '' #Empty to start. Each callback should decide what next trigger to implement in the main loop
         self.switch_state = False
 
+        # initialize loop parameters
         self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()
-        self.current_wrench = self._first_wrench
-        self._average_wrench_gripper = self._first_wrench.wrench 
+        self.current_wrench = self.create_wrench([0,0,0], [0,0,0])
+        self._average_wrench_gripper = self.create_wrench([0,0,0], [0,0,0]).wrench 
         self._average_wrench_world = Wrench()
-        self._bias_wrench = self._first_wrench.wrench #Calculated to remove the steady-state error from wrench readings. 
-        #TODO - subtract bias_wrench from the "current wrench" callback; Tried it but performance was unstable.
+        self._bias_wrench = self.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings. 
         self.average_speed = np.array([0.0,0.0,0.0])
- 
-        self.highForceWarning = False
-        self.surface_height = 0.0
-        self.restart_height = -.1
-        self.collision_confidence = 0
 
-        #Simple Moving Average Parameters
-        self._buffer_window = self._rate_selected #self._rate_selected = 1/Hz since this variable is the rate of ROS commands
-        self._data_buffer = []
-        # self._moving_avg_data = np. #Empty to start. make larger than we need since np is contiguous memory. Will ignore NaN values.
-        # self._data_buffer = np.empty(self._buffer_window)
-        # self.avg_it = 0#iterator for allocating the first window in the moving average calculation
-        # self._data_buffer = np.zeros(self._buffer_window)
-        # self._moving_avg_data = [] #Empty to start
+        rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
+ 
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
         """
         
+        #job parameters moved in from the peg_in_hole_params.yaml file
+        #'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
+        #'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
+        self.target_peg                 = rospy.get_param('/task/target_peg')
+        self.target_hole                = rospy.get_param('/task/target_hole')
+        self.activeTCP                  = rospy.get_param('/task/starting_tcp')
+
         self.read_board_positions()
         
         self.read_peg_hole_dimensions()
 
+        #Spiral parameters
+        self._spiral_params             = rospy.get_param('/algorithm/spiral_params')
+        
         #Calculate transform from TCP to peg corner        
-        self.peg_locations   = rospy.get_param('/objects/'+self.target_peg+'/grasping/pinch_grasping/locations')
+        self.peg_locations              = rospy.get_param('/objects/'+self.target_peg+'/grasping/pinch_grasping/locations')
         
         # Setup default zero-transform in case it needs to be referenced for consistency.
-        self.tool_data['gripper_tip'] = dict()
-        a = TransformStamped()
-        a.header.frame_id = "tool0"
-        a.child_frame_id = 'gripper_tip'
-        a.transform.rotation.w = 1
+        self.tool_data['gripper_tip']   = dict()
+        a                               = TransformStamped()
+        a.header.frame_id               = "tool0"
+        a.child_frame_id                = 'gripper_tip'
+        a.transform.rotation.w          = 1
         self.tool_data['gripper_tip']['transform']    = a
         self.tool_data['gripper_tip']['matrix']       = AssemblyTools.to_homogeneous(a.transform.rotation, a.transform.translation)
-        self.reference_frames['tcp'] = a
+        self.reference_frames['tcp']    = a
         
 
         for key in list(self.peg_locations):
-            # Read in each listed tool position; measure their TF and store in dictionary.
+            #Read in each listed tool position; measure their TF and store in dictionary.
             #Write the position of the peg's corner wrt the gripper tip as a reference-ready TF.
             pegTransform = AssemblyTools.get_tf_from_YAML(self.peg_locations[str(key)]['pose'], self.peg_locations[str(key)]['orientation'],
             "tool0_to_gripper_tip_link", "peg_"+str(key)+"_position")
@@ -160,16 +149,16 @@ class AssemblyTools():
             self.send_reference_TFs()
             self._rate.sleep()
             a = self.tf_buffer.lookup_transform("tool0", "peg_"+str(key)+"_position", rospy.Time(0), rospy.Duration(1.0))
-            # a = self.tf_buffer.lookup_transform("tool0", 'peg_corner_position', rospy.Time(0), rospy.Duration(100.0))
             self.tool_data[str(key)]=dict()
             self.tool_data[str(key)]['transform']   = a
             self.tool_data[str(key)]['matrix']      = AssemblyTools.to_homogeneous(a.transform.rotation, a.transform.translation)
             rospy.logerr("Added TCP entry for " + str(key))
-            # rospy.logwarn(self.target_peg + " gives a homog matrix of " + str(self.tool_data[str(key)]['matrix']))
             
         rospy.logerr("TCP position dictionary now contains: " + str(list(self.tool_data))+ ", selected tool publishing now: ")
         self.select_tool(self.activeTCP)
 
+        self.surface_height = rospy.get_param('/task/assumed_starting_height') #Starting height assumption
+        self.restart_height = rospy.get_param('/task/restart_height') #Height to restart
         # quit()
 
     def read_board_positions(self):
@@ -274,27 +263,21 @@ class AssemblyTools():
         else:
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
 
-    def spiral_search_basic_compliance_control(self):
+    def spiral_search_motion(self, frequency = .15, min_amplitude = .002, max_cycles = 62.83185):
         """Generates position, orientation offset vectors which describe a plane spiral about z; 
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
         """
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
-        curr_amp = self._amp_c + self.safe_clearance * np.mod(2.0 * np.pi * self._freq_c *curr_time_numpy, self._amp_limit_c);
+        curr_amp = min_amplitude + self.safe_clearance * np.mod(2.0 * np.pi * frequency *curr_time_numpy, max_cycles);
 
-        # x_pos_offset = 0.88 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
-        # y_pos_offset = 0.550 #TODO:Assume the part needs to be inserted here at the offset. Fix with real value later
+        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
+
+        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
         
-        # self._amp_c = self._amp_c * (curr_time_numpy * 0.001 * curr_time_numpy+ 1)
-
-        x_pos = curr_amp * np.cos(2.0 * np.pi * self._freq_c *curr_time_numpy)
         x_pos = x_pos + self.x_pos_offset
-
-        y_pos = curr_amp * np.sin(2.0 * np.pi * self._freq_c *curr_time_numpy)
         y_pos = y_pos + self.y_pos_offset
-
-        # z_pos = 0.2 #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value 
         z_pos = self.current_pose.transform.translation.z #0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value
 
         pose_position = [x_pos, y_pos, z_pos]
@@ -338,15 +321,9 @@ class AssemblyTools():
 
         # rospy.loginfo_once("Callback working! " + str(data))
     
-    def post_action(self, trigger_name):
-        """Defines the next trigger which the state machine should execute.
-        """
-        return [trigger_name, True]
-
-    def subtract_vector3s(self, vec1, vec2):
-
-        newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
-        return newVector3
+    # def subtract_vector3s(self, vec1, vec2):
+    #     newVector3 = Vector3(vec1.x - vec2.x, vec1.y - vec2.y, vec1.z - vec2.z)
+    #     return newVector3
 
     def get_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
@@ -373,19 +350,26 @@ class AssemblyTools():
 
     def publish_wrench(self, input_vec):
         """Publish the commanded wrench to the command topic.
+        :param vec: (list of Floats) XYZ force commands
+        :param vec: (list of Floats) XYC commanded torque.
         """
         # self.check_controller(self.force_controller)
         # forces, torques = self.com_to_tcp(result[:3], result[3:], transform)
         # result_wrench = self.create_wrench(result[:3], result[3:])
         # result_wrench = self.create_wrench([7,0,0], [0,0,0])
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
-        self._wrench_pub.publish(result_wrench)
-        
-        guy = self.create_wrench([0,0,0], [0,0,0])
-        guy.wrench = self._average_wrench_world
 
-        guy.header.frame_id = "target_hole_position"
-        self._adj_wrench_pub.publish(guy)    
+        transform_world_to_gripper:TransformStamped = self.tf_buffer.lookup_transform('target_hole_position', 'tool0', rospy.Time(0), rospy.Duration(1.25))
+
+        offset =Point( -1*self.tool_data[self.activeTCP]["transform"].transform.translation.x, -1*self.tool_data[self.activeTCP]["transform"].transform.translation.y, -1*(self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05))
+
+        transform_world_to_gripper.transform.translation = offset
+
+        #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
+        result_wrench.wrench = AssemblyTools.transform_wrench(transform_world_to_gripper, result_wrench.wrench) #This works
+
+        self._wrench_pub.publish(result_wrench)
+
 
     @staticmethod
     def list_from_quat(quat):
@@ -491,18 +475,49 @@ class AssemblyTools():
 
     @staticmethod
     def wrenchToArray(wrench: Wrench):
+        """Restructures wrench object into numpy array with order needed by wrench reinterpretation math, namely, torque first then forces.
+        :param wrench: (geometry_msgs.Wrench) Input wrench.
+        :return: (np.Array) 1x6 numpy array 
+        """
         return np.array([wrench.torque.x, wrench.torque.y, wrench.torque.z, wrench.force.x, wrench.force.y, wrench.force.z])
-
+    
+    @staticmethod
     def arrayToWrench(array: np.ndarray):
+        """Restructures output 1x6 mathematical array representation of a wrench into a wrench object.
+        :param wrench: (np.Array) 1x6 numpy array 
+        :return: (geometry_msgs.Wrench) Return wrench.
+        """
+
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
-    def transform_wrench(T_ab, wrench):
+    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert=False, log=False):
+        """Transform a wrench object by the given transform object.
+        :param transform: (geometry_msgs.TransformStamped) Transform to apply
+        :param wrench: (geometry_msgs.Wrench) Wrench object to transform.
+        :param invert: (bool) Whether to interpret the tansformation's inverse, i.e. transform "from child to parent" instead of "from parent to child"
+        :return: (geometry.msgs.Wrench) changed wrench
+        """
+
+        matrix = AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation)
+
+        if(log):
+            rospy.loginfo_throttle(2, Fore.RED + " Transform passed in is " + str(transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL)
+        
+        if(invert):
+            matrix = trfm.inverse_matrix(matrix)
+
+        return AssemblyTools.transform_wrench_by_matrix(matrix, AssemblyTools.wrenchToArray(wrench))
+
+
+    @staticmethod
+    def transform_wrench_by_matrix(T_ab, wrench):
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
         :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
         :return wrench_transformed: (np.Array) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
+
         Ad_T = AssemblyTools.create_adjoint_representation(T_ab)
         wrench_transformed = np.matmul(Ad_T.T, wrench)
         return AssemblyTools.arrayToWrench(wrench_transformed)
@@ -554,7 +569,7 @@ class AssemblyTools():
         # create wrench
         wrench.force.x, wrench.force.y, wrench.force.z = force
         wrench.torque.x, wrench.torque.y, wrench.torque.z = torque 
-
+        
         # create header
         wrench_stamped.header.seq = self._seq
 
@@ -570,36 +585,43 @@ class AssemblyTools():
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
 
-        # self._average_wrench_gripper = self.weighted_average_wrenches(self._average_wrench_gripper, 9, self.current_wrench.wrench, 1)
-        self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
         
-        if (self.curr_time >= rospy.Duration(1)):
-            # Calculate a wrench value which is aligned to the target hole frame; publish it.
+        self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
-            # newData = self.create_wrench([0,0,0],[0,0,0])
-            # # TODO: Get projection on target hole 
-            # newData.header.frame_id = "target_hole_position"
-            transform = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(0.1))
-            # self._average_wrench_world = AssemblyTools.reorient_wrench(self._average_wrench_gripper, transform) 
-            self._average_wrench_world = AssemblyTools.transform_wrench(self.to_homogeneous(transform.transform.rotation, Point(0,0,0)), AssemblyTools.wrenchToArray(self._average_wrench_gripper))
+        #Get current angle from gripper to hole:
+        transform_world_rotation:TransformStamped = self.tf_buffer.lookup_transform('tool0', 'target_hole_position', rospy.Time(0), rospy.Duration(1.25))
+        #We want to rotate this only, not reinterpret F/T components.
+        #We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.                       
+        offset =Point(self.tool_data[self.activeTCP]["transform"].transform.translation.x, self.tool_data[self.activeTCP]["transform"].transform.translation.y, self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05)
+
             
-            #Wrench rel. to gripper
-            # rotationMat = AssemblyTools.to_homogeneous(transform.transform.rotation, Point(0,0,0))
-            # rospy.logerr_once("Here's the transform from target hole to tool0: " + str(transform.transform))
+        transform_world_rotation.transform.translation = offset
 
-        # rospy.logwarn_throttle(2, "Buffers is " + str(self.filters._data_buffer))
+        #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
+        self._average_wrench_world = AssemblyTools.transform_wrench(transform_world_rotation, self._average_wrench_gripper) #This works
 
-    def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
-        """Returns a simple linear interpolation between wrenches.
-        :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
-        :param scale1: (float) Weight of first input wrench
-        :param wrench2:(geometry_msgs.WrenchStamped) Second input wrench
-        :param scale2: (float) Weight of second input wrench
-        :return: (geometry_msgs.WrenchStamped)
-        """
-        newForce = (self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
-        newTorque = (self.as_array(wrench1.torque) * scale1 + self.as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
-        return self.create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
+        #Output the wrench for debug visualization
+        guy = self.create_wrench([0,0,0], [0,0,0])
+        guy.wrench = self._average_wrench_world
+        # guy.header.frame_id = "tool0"
+        guy.header.frame_id = "target_hole_position"
+        # guy.header.frame_id =  self.reference_frames['tcp'].child_frame_id
+        self._adj_wrench_pub.publish(guy)    
+
+
+
+    # Probably not needed, delete when certain: 
+    # def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
+    #     """Returns a simple linear interpolation between wrenches.
+    #     :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
+    #     :param scale1: (float) Weight of first input wrench
+    #     :param wrench2:(geometry_msgs.WrenchStamped) Second input wrench
+    #     :param scale2: (float) Weight of second input wrench
+    #     :return: (geometry_msgs.WrenchStamped)
+    #     """
+    #     newForce = (self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
+    #     newTorque = (self.as_array(wrench1.torque) * scale1 + self.as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
+    #     return self.create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
 
     def update_avg_speed(self):
         """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
@@ -632,7 +654,8 @@ class AssemblyTools():
         self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1],self.average_speed[2]))
 
         self.rel_position_pub.publish(self.current_pose.transform.translation)
-
+        
+        # Send a dictionary as plain text to expose some additional info
         status_dict = dict({('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id) )})
         if(self.surface_height != 0.0):
             # If we have located the work surface
