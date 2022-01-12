@@ -104,6 +104,8 @@ class AssemblyTools():
         self._average_wrench_world = Wrench()
         self._bias_wrench = self.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings. 
         self.average_speed = np.array([0.0,0.0,0.0])
+
+        rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
  
 
     def readYAML(self):
@@ -364,7 +366,7 @@ class AssemblyTools():
         transform_world_to_gripper.transform.translation = offset
 
         #Execute reinterpret-to-tcp and rotate-to-world simultaneously:
-        result_wrench.wrench = AssemblyTools.transform_wrench(transform_world_to_gripper, result_wrench.wrench, log=True) #This works
+        result_wrench.wrench = AssemblyTools.transform_wrench(transform_world_to_gripper, result_wrench.wrench) #This works
 
         self._wrench_pub.publish(result_wrench)
 
@@ -603,6 +605,7 @@ class AssemblyTools():
         guy.wrench = self._average_wrench_world
         # guy.header.frame_id = "tool0"
         guy.header.frame_id = "target_hole_position"
+        # guy.header.frame_id =  self.reference_frames['tcp'].child_frame_id
         self._adj_wrench_pub.publish(guy)    
 
 
