@@ -4,6 +4,7 @@
 # Imports for ros
 from inspect import EndOfBlock
 from operator import truediv
+from typing import List
 import rospy
 # import tf
 import numpy as np
@@ -26,23 +27,6 @@ import tf.transformations as trfm
 from threading import Lock
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
-
-#State names    
-IDLE_STATE           = 'idle'
-CHECK_FEEDBACK_STATE = 'checking load cell feedback'
-APPROACH_STATE       = 'approaching hole surface'
-FIND_HOLE_STATE      = 'finding hole'
-INSERTING_PEG_STATE  = 'inserting peg'
-COMPLETION_STATE     = 'completed insertion'
-SAFETY_RETRACT_STATE = 'retracting to safety' 
-
-#Trigger names
-CHECK_FEEDBACK_TRIGGER     = 'check loadcell feedback'
-APPROACH_SURFACE_TRIGGER   = 'start approach'
-FIND_HOLE_TRIGGER          = 'surface found'
-INSERT_PEG_TRIGGER         = 'hole found'
-ASSEMBLY_COMPLETED_TRIGGER = 'assembly completed'
-SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 
 
 class AssemblyTools():
@@ -77,7 +61,7 @@ class AssemblyTools():
         self.curr_time_numpy        = np.double(self.curr_time.to_sec())
         self.highForceWarning       = False
         self.collision_confidence   = 0
-        self._seq                   = 0
+        # self._seq                   = 0
 
         # Initialize filtering class
         self.filters                = AssemblyFilters(5, self._rate_selected)
@@ -102,7 +86,6 @@ class AssemblyTools():
         self.current_wrench = self.create_wrench([0,0,0], [0,0,0])
         self._average_wrench_gripper = self.create_wrench([0,0,0], [0,0,0]).wrench 
         self._average_wrench_world = Wrench()
-        self._bias_wrench = self.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings. 
         self.average_speed = np.array([0.0,0.0,0.0])
 
         rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
@@ -482,7 +465,7 @@ class AssemblyTools():
         return np.array([wrench.torque.x, wrench.torque.y, wrench.torque.z, wrench.force.x, wrench.force.y, wrench.force.z])
     
     @staticmethod
-    def arrayToWrench(array: np.ndarray):
+    def arrayToWrench(array: np.ndarray) -> np.ndarray:
         """Restructures output 1x6 mathematical array representation of a wrench into a wrench object.
         :param wrench: (np.Array) 1x6 numpy array 
         :return: (geometry_msgs.Wrench) Return wrench.
@@ -491,7 +474,7 @@ class AssemblyTools():
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
-    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert=False, log=False):
+    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert:bool=False, log:bool=False) -> np.ndarray:
         """Transform a wrench object by the given transform object.
         :param transform: (geometry_msgs.TransformStamped) Transform to apply
         :param wrench: (geometry_msgs.Wrench) Wrench object to transform.
@@ -511,7 +494,7 @@ class AssemblyTools():
 
 
     @staticmethod
-    def transform_wrench_by_matrix(T_ab, wrench):
+    def transform_wrench_by_matrix(T_ab:np.ndarray, wrench:np.ndarray) -> np.ndarray:
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
         :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
@@ -523,7 +506,7 @@ class AssemblyTools():
         return AssemblyTools.arrayToWrench(wrench_transformed)
 
     @staticmethod
-    def matrix_to_tf(input, base_frame, child_frame):
+    def matrix_to_tf(input:np.ndarray, base_frame:String, child_frame:String):
         """Converts matrix back into a TF.
         :param input: (np.Array) 4x4 homogeneous transformation matrix
         :param base_frame: (string) base frame for new pose.
@@ -534,7 +517,7 @@ class AssemblyTools():
         return output
 
     @staticmethod
-    def swap_pose_tf(input, child_frame):
+    def swap_pose_tf(input:PoseStamped, child_frame:String) -> TransformStamped:
         """Swaps pose for tf and vice-versa.
         :param input: (geometry_msgs.PoseStamped or geometry_msgs.TransformStamped) Input data type.
         :param child_frame: (string) Child frame name if converting Pose to Transform.
@@ -557,7 +540,7 @@ class AssemblyTools():
                 return output
         rospy.logerr("Invalid input to swap_pose_tf !!!")
 
-    def create_wrench(self, force, torque):
+    def create_wrench(self, force:list, torque:list) -> WrenchStamped:
         """Composes a standard wrench object from human-readable vectors.
         :param force: (list of floats) x,y,z force values
         :param torque: (list of floats) torques about x,y,z
@@ -571,17 +554,17 @@ class AssemblyTools():
         wrench.torque.x, wrench.torque.y, wrench.torque.z = torque 
         
         # create header
-        wrench_stamped.header.seq = self._seq
+        # wrench_stamped.header.seq = self._seq
 
         wrench_stamped.header.stamp = rospy.get_rostime()
         wrench_stamped.header.frame_id = "base_link"
-        self._seq+=1
+        # self._seq+=1
 
         wrench_stamped.wrench = wrench
 
         return wrench_stamped
 
-    def update_average_wrench(self):
+    def update_average_wrench(self) -> None:
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
 
@@ -609,21 +592,7 @@ class AssemblyTools():
         self._adj_wrench_pub.publish(guy)    
 
 
-
-    # Probably not needed, delete when certain: 
-    # def weighted_average_wrenches(self, wrench1, scale1, wrench2, scale2):
-    #     """Returns a simple linear interpolation between wrenches.
-    #     :param wrench1:(geometry_msgs.WrenchStamped) First input wrench
-    #     :param scale1: (float) Weight of first input wrench
-    #     :param wrench2:(geometry_msgs.WrenchStamped) Second input wrench
-    #     :param scale2: (float) Weight of second input wrench
-    #     :return: (geometry_msgs.WrenchStamped)
-    #     """
-    #     newForce = (self.as_array(wrench1.force) * scale1 + self.as_array(wrench2.force) * scale2) * 1/(scale1 + scale2)
-    #     newTorque = (self.as_array(wrench1.torque) * scale1 + self.as_array(wrench2.torque) * scale2) * 1/(scale1 + scale2)
-    #     return self.create_wrench([newForce[0], newForce[1], newForce[2]], [newTorque[0], newTorque[1], newTorque[2]]).wrench
-
-    def update_avg_speed(self):
+    def update_avg_speed(self) -> None:
         """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
          previous pose (.1 s in the past) and the current pose; this speed is filtered and stored as self.average_speed.
         """
@@ -646,7 +615,7 @@ class AssemblyTools():
         else:
             rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
     
-    def publish_plotted_values(self):
+    def publish_plotted_values(self) -> None:
         """Publishes critical data for plotting node to process.
         """
         self.avg_wrench_pub.publish(self._average_wrench_world)
@@ -662,15 +631,16 @@ class AssemblyTools():
             status_dict['surface_height']=str(self.surface_height)
         self.status_pub.publish(str(status_dict))
 
-    def as_array(self, vec):
+    def as_array(self, vec:Point) -> np.ndarray:
         """Takes a Point and returns a Numpy array.
         :param vec: (geometry_msgs.Point) Vector in serialized ROS format.
         :return: (numpy.Array) Vector in 3x1 numpy array format.
         """
-        return np.array([vec.x, vec.y, vec.z])
+        #insist that we get a 1D array returned
+        return np.array([vec.x, vec.y, vec.z]).reshape(-1,)
     
     #See if the force/speed (any vector) is within a 3-d bound. Technically, it is a box, with sqrt(2)*bound okay at diagonals.
-    def vectorRegionCompare_symmetrical(self, input, bounds_max):
+    def vectorRegionCompare_symmetrical(self, input:np.ndarray, bounds_max:list) -> bool:
         """See ``vectorRegionCompare``_. Compares an input to boundaries element-wise. Essentially checks whether a vector
          is within a rectangular region. This version assumes min values to be the negative of max values.
         :param input: (list of floats) x,y,z of a vector to check.
@@ -689,7 +659,7 @@ class AssemblyTools():
     
     # bounds_max and bounds_min let you set a range for each dimension. 
     #This just compares if you are in the cube described above. 
-    def vectorRegionCompare(self, input, bounds_max, bounds_min):
+    def vectorRegionCompare(self, input:list, bounds_max:list, bounds_min:list) -> bool:
         """.. vectorRegionCompare Compares an input to boundaries element-wise. Essentially checks whether a vector is within a rectangular region.
         :param input: (list of floats) x,y,z of a vector to check.
         :param bounds_max: (list of floats) x,y,z max value of each element.
@@ -701,11 +671,32 @@ class AssemblyTools():
         #    bounds_min[0], bounds_min[1], bounds_min[2] = bounds_max[0] * -1, bounds_max[1] * -1, bounds_max[2] * -1
         #TODO - convert to a process of numpy arrays! They process way faster because that library is written in C++
         #Note - actually Numpy's allclose() method may be perfect here.
+
+        # rospy.logerr("Bounds and stuff: " +str(input) + str(bounds_max) + str(bounds_min))
         if( bounds_max[0] >= input[0] >= bounds_min[0]):
             if( bounds_max[1] >= input[1] >= bounds_min[1]):
                 if( bounds_max[2] >= input[2] >= bounds_min[2]):
                     return True
         return False
+
+    def checkIfStatic(self, maxSpeeds:np.ndarray)->bool:
+        res = np.allclose(abs(self.average_speed), np.zeros(3), atol=abs( maxSpeeds))
+        rospy.loginfo_throttle(1, Fore.BLUE + 'Static check: ' + str(res)+ Style.RESET_ALL)
+        return res
+        # return self.vectorRegionCompare_symmetrical(self.average_speed, maxSpeeds)
+
+    def checkIfColliding(self, commandedForce:np.ndarray, deadzoneRadius:list = [4,4,3], relativeScaling:float = .1)->bool:
+        """Checks if  an equal and opposite reaction force is stopping acceleration in all directions - this would indicate there is a static obstacle in collision with the tcp.
+        """
+        force = self.as_array(self._average_wrench_world.force).reshape(3)
+        res = np.allclose(force, -1*commandedForce, atol = deadzoneRadius, rtol = relativeScaling )
+        
+        rospy.loginfo_throttle(1,Fore.BLUE +  "Collision checking force " + str(force) + " against command " + str(commandedForce*-1) + ' with a result of ' + str(res) + " and the difference is " + str(force + commandedForce) + Style.RESET_ALL)
+
+        return res
+        # if(type(lowerThresholds) == type(None)):
+        #     lowerThresholds = -1 * upperThresholds
+        # return self.vectorRegionCompare(self.as_array(self._average_wrench_world.force)-commandedForce, upperThresholds, lowerThresholds)
 
     #TODO: Make the parameters of function part of the constructor or something...
     def force_cap_check(self, danger_force=[45, 45, 45], danger_transverse_force=[3.5, 3.5, 3.5], warning_force=[25, 25, 25], warning_transverse_force=[2, 2, 2]):
@@ -762,7 +753,7 @@ class AssemblyFilters():
         # self._data_buffer = np.zeros(self._buffer_window)
         # self._moving_avg_data = [] #Empty to start
     
-    def average_wrench(self, input):
+    def average_wrench(self, input)-> np.ndarray:
         # out = input
         # Combine 
         force = self.average_threes(input.force, 'force')
@@ -770,7 +761,7 @@ class AssemblyFilters():
         
         return Wrench(self.dict_to_point(force), self.dict_to_point(torque))
     
-    def average_speed(self, input):
+    def average_speed(self, input) -> np.ndarray:
         """Takes speed as a list of components, returns smoothed version
         :param input: (numpy.Array) Speed vector
         :return: (numpy.Array) Smoothed speed vector
