@@ -681,7 +681,7 @@ class AssemblyTools():
 
     def checkIfStatic(self, maxSpeeds:np.ndarray)->bool:
         res = np.allclose(abs(self.average_speed), np.zeros(3), atol=abs( maxSpeeds))
-        rospy.loginfo_throttle(1, Fore.BLUE + 'Static check: ' + str(res)+ Style.RESET_ALL)
+        
         return res
         # return self.vectorRegionCompare_symmetrical(self.average_speed, maxSpeeds)
 

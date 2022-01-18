@@ -171,10 +171,12 @@ class AlgorithmBlocks(AssemblyTools):
         state_name=str(self.state)
         if("state_") in state_name:
             if(state_name in self.steps):
+                #This step has been realized as a Step class
                 if(not self.step):
                     #Set step to an instance of the referred class and pass in the parameters.
                     self.step = self.steps[state_name][0](self, *self.steps[state_name][1])
-                
+                else:
+                    self.step.execute()
                 if (self.step.checkCompletion()):
                     self.next_trigger, self.switch_state = self.step.onExit()
 
@@ -482,8 +484,8 @@ class AssemblyStep:
         self.done = False
 
         #Set up exit condition sensitivity
-        self.exitPeriod = .25       #Seconds to stay within bounds
-        self.exitThreshold = .99    #Percentage of time for the last period
+        self.exitPeriod = 1      #Seconds to stay within bounds
+        self.exitThreshold = .9    #Percentage of time for the last period
 
         #Pass in a reference to the AlgorithmBlocks parent class; this reduces data copying in memory
         self.assembly = algorithmBlocks
@@ -493,6 +495,7 @@ class AssemblyStep:
         self.updateCommands()
         
     def updateCommands(self):
+        rospy.loginfo_throttle(1, Fore.BLUE + 'Updating commands ' + Style.RESET_ALL)
         #Command wrench
         self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.seeking_force)
         #Command pose
@@ -501,14 +504,14 @@ class AssemblyStep:
     def checkCompletion(self):
 
         if(self.exitConditions()):
-            self.contact_confidence += .1/(self.exitPeriod*self.assembly._rate_selected)
+            self.contact_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
             rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(self.contact_confidence))
             
             if(self.contact_confidence > self.exitThreshold):
                 return True
         else:
             if(self.contact_confidence>0.0):
-                self.contact_confidence -= .1/(self.exitPeriod*self.assembly._rate_selected)
+                self.contact_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
         return False
 
     def exitConditions(self)->bool:
@@ -526,7 +529,7 @@ class AssemblyStep:
             
             #Measure flat surface height and store it for future steps:
             #TODO: Generalize the "Saving data for later steps" capability so it doesn't have to be a bunch of messy class variables.
-            self.surface_height = self.assembly.current_pose.transform.translation.z
+            self.assembly.surface_height = self.assembly.current_pose.transform.translation.z
             #Tell the state machine to move to the next step according to the transitions dictionary. This way the AssemblyStep class doesn't need the information of its next state. You can have it send Triggers to go to other states instead.
             return STEP_COMPLETE_TRIGGER, TRUE 
 
