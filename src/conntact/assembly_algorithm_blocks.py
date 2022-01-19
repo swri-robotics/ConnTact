@@ -175,6 +175,7 @@ class AlgorithmBlocks(AssemblyTools):
                 if(not self.step):
                     #Set step to an instance of the referred class and pass in the parameters.
                     self.step = self.steps[state_name][0](self, *self.steps[state_name][1])
+                    rospy.loginfo( Fore.GREEN + "Created step object " + str(type(self.step)) + Style.RESET_ALL )
                 else:
                     self.step.execute()
                 if (self.step.checkCompletion()):
@@ -446,7 +447,7 @@ class AssemblyStep:
 
         if(self.exitConditions()):
             self.collision_confidence += 1/self.assembly._rate_selected
-            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(self.collision_confidence))
+            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.contact_confidence, 3)))
             
             if(self.collision_confidence > .90):
                 #Stopped moving vertically and in contact with something that counters push force
@@ -464,7 +465,7 @@ class AssemblyStep:
         return self.static() and self.collision()
 
     def static(self)->bool:
-        return self.checkIfStatic(np.array(self.assembly.speed_static)) 
+        return self.assembly.checkIfStatic(np.array(self.assembly.speed_static)) 
 
     def collision(self)->bool:
         return self.assembly.checkIfColliding(np.array(self.seeking_force))
@@ -472,66 +473,6 @@ class AssemblyStep:
     def onExit(self):
         pass
 
-
-
-class AssemblyStep:
-    def __init__(self, algorithmBlocks:AlgorithmBlocks) -> None:
-        #set up the parameters for this step
-        self.contact_confidence = 0.0
-        self.seeking_force = [0,0,-7]
-        # self.desiredOrientation = trfm.quaternion_from_euler(0,0,-90)
-        self.desiredOrientation = trfm.quaternion_from_euler(0,0,0)
-        self.done = False
-
-        #Set up exit condition sensitivity
-        self.exitPeriod = 1      #Seconds to stay within bounds
-        self.exitThreshold = .9    #Percentage of time for the last period
-
-        #Pass in a reference to the AlgorithmBlocks parent class; this reduces data copying in memory
-        self.assembly = algorithmBlocks
-        
-    def execute(self):
-        rospy.logerr_throttle(2, "step executing!")
-        self.updateCommands()
-        
-    def updateCommands(self):
-        rospy.loginfo_throttle(1, Fore.BLUE + 'Updating commands ' + Style.RESET_ALL)
-        #Command wrench
-        self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.seeking_force)
-        #Command pose
-        self.assembly.pose_vec = self.assembly.linear_search_position([0,0,0])
-
-    def checkCompletion(self):
-
-        if(self.exitConditions()):
-            self.contact_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
-            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(self.contact_confidence))
-            
-            if(self.contact_confidence > self.exitThreshold):
-                return True
-        else:
-            if(self.contact_confidence>0.0):
-                self.contact_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
-        return False
-
-    def exitConditions(self)->bool:
-        rospy.logerr_throttle(2, "step exit conditions returning " + str(self.static() and self.collision()))
-        return self.static() and self.collision()
-
-    def static(self)->bool:
-        return self.assembly.checkIfStatic(np.array(self.assembly.speed_static)) 
-
-    def collision(self)->bool:
-        return self.assembly.checkIfColliding(np.array(self.seeking_force))
-
-    def onExit(self):
-            rospy.logerr("Flat surface detected! Moving to spiral search!")
-            
-            #Measure flat surface height and store it for future steps:
-            #TODO: Generalize the "Saving data for later steps" capability so it doesn't have to be a bunch of messy class variables.
-            self.assembly.surface_height = self.assembly.current_pose.transform.translation.z
-            #Tell the state machine to move to the next step according to the transitions dictionary. This way the AssemblyStep class doesn't need the information of its next state. You can have it send Triggers to go to other states instead.
-            return STEP_COMPLETE_TRIGGER, TRUE 
 
 
 # def finding_surface(self):

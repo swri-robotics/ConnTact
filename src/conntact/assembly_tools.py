@@ -158,15 +158,15 @@ class AssemblyTools():
         #Set up target hole pose
         tf_robot_to_task_board = AssemblyTools.get_tf_from_YAML(taskPos, taskOri, "base_link", "task_board")
         pose_task_board_to_hole = AssemblyTools.get_pose_from_YAML(holePos, holeOri, "base_link")
-        target_hole_pose = tf2_geometry_msgs.do_transform_pose(pose_task_board_to_hole, tf_robot_to_task_board)
+        self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(pose_task_board_to_hole, tf_robot_to_task_board)
         # self.target_broadcaster = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
-        targetHoleTF = AssemblyTools.swap_pose_tf(target_hole_pose, "target_hole_position")
+        targetHoleTF = AssemblyTools.swap_pose_tf(self.target_hole_pose, "target_hole_position")
         self.reference_frames['target_hole_position'] = targetHoleTF
         self.send_reference_TFs()
         self._rate.sleep()
         # self._target_pub.publish(self.target_hole_pose)
-        self.x_pos_offset = target_hole_pose.pose.position.x
-        self.y_pos_offset = target_hole_pose.pose.position.y
+        self.x_pos_offset = self.target_hole_pose.pose.position.x
+        self.y_pos_offset = self.target_hole_pose.pose.position.y
 
     def read_peg_hole_dimensions(self):
         """Read peg and hole data from YAML configuration file.
