@@ -10,6 +10,7 @@
 from builtins import staticmethod
 from operator import truediv
 from pickle import STRING
+from typing import List
 
 from colorama.initialise import reset_all
 import rospy
@@ -21,6 +22,8 @@ from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamp
 from rospy.core import configure_logging
 import tf.transformations as trfm
 
+import csv
+import yaml
 
 from colorama import Fore, Back, Style, init
 # from sensor_msgs.msg import JointState
@@ -199,7 +202,7 @@ class ApproachStep(AssemblyStep):
         self.exitThreshold = self.paramsDict["stability"]    #Percentage of time for the last period
 
     def execute(self):
-        rospy.logerr_throttle(2, Fore.BLUE +"Approach step executing!" + Style.RESET_ALL)
+        # rospy.logerr_throttle(2, Fore.BLUE +"Approach step executing!" + Style.RESET_ALL)
         self.updateCommands()
         
     def updateCommands(self):
@@ -216,7 +219,7 @@ class ApproachStep(AssemblyStep):
 
         if(self.exitConditions()):
             if(self.contact_confidence < 1):
-                self.contact_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
+                self.contact_confidence += 1/(self.assembly._rate_selected)
             rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.contact_confidence, 3)))
             
             if(self.contact_confidence > self.exitThreshold):
@@ -235,7 +238,7 @@ class ApproachStep(AssemblyStep):
         else:
             #Exit conditions not true
             if(self.contact_confidence>0.0):
-                self.contact_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
+                self.contact_confidence -= 1/(self.assembly._rate_selected)
 
         return False
 
@@ -253,30 +256,65 @@ class RunTestStep(ApproachStep):
                 "axis"          : [0,0,1],
                 "force"         : [0,0,-7],
                 "stability"     : .95,
-                "holdTime"      : 1
+                "holdTime"      : 5
             }) -> None:
         ApproachStep.__init__(self, algorithmBlocks, paramsDict)
+
+        
+        self.loggingInterval = rospy.Time.from_sec(1/20) #Try to log at 20 hz for now.
+        self.lastLog = rospy.Time.now()#record starting time
         self.openCSV()
 
-    def execute(self):
-        self.logData()
-        rospy.logerr_throttle(2, Fore.BLUE +"Approach step executing!" + Style.RESET_ALL)
-        self.updateCommands()
-        
     def onExit(self):
             rospy.logerr("Test complete! Resetting... ")
             self.closeCSV()
             #Tell the state machine to move to the next step according to the transitions dictionary. This way the AssemblyStep class doesn't need the information of its next state. You can have it send Triggers to go to other states instead.
             return STEP_COMPLETE_TRIGGER, True
 
-    def openCSV(self):
-        pass
+    def openCSV(self, path = './output_data.csv'):
+        try:
+           csv_exists = (self.assembly.csvfile is None) or self.assembly.csvfile 
+        except (NameError, AttributeError):
+            csv_exists = False
+
+        if(csv_exists):    
+            rospy.loginfo(Fore.MAGENTA + "CSV: Reopening output file"+ Style.RESET_ALL)
+            self.assembly.csvfile = open(path, 'w', newline='') 
+        else:
+            rospy.loginfo(Fore.MAGENTA + "CSV: Creating output file"+ Style.RESET_ALL)
+            try:
+                #Open it and overwrite contents with blank
+                self.assembly.csvfile = open(path, 'w+', newline='')
+
+            except:
+                rospy.loginfo(Fore.MAGENTA + Fore.MAGENTA + "CSV: Can't make output file." + Style.RESET_ALL)
+
+        
+        self.assembly.outputter = csv.writer(self.assembly.csvfile)
+        self.writeLine(["Test number " + str(self.assembly.testingStage), "Today's date: TODO"])
+        self.writeLine(["Time", "Force X", "Force Y", "Force Z", "Position X", "Position Y", "Position Z"])
 
     def logData(self):
-        pass
+        now = rospy.Time.now()
+        if((now - self.lastLog) > self.loggingInterval):
+            #It's been long enough, log data again.
+            self.lastLog = rospy.Time.now()
+            force = self.assembly._average_wrench_world.force
+            pos = self.assembly.current_pose.transform.translation
+            self.writeLine([str(rospy.get_time()),  force.x, force.y, force.z, pos.x, pos.y, pos.z])
+        
+    def writeLine(self, line:list):
+        self.assembly.outputter.writerow(line)
 
     def closeCSV(self):
-        pass
+        try:
+            #Open it and overwrite contents with blank
+            self.assembly.csvfile.close()
+            rospy.loginfo(Fore.MAGENTA + Fore.MAGENTA + "CSV: File closed." + Style.RESET_ALL)
+        except NameError:
+            rospy.loginfo(Fore.MAGENTA + Fore.MAGENTA + Back.BLUE +"CSV: Close called without file open!" + Style.RESET_ALL)
+
+
 
 class ResetStep(AssemblyStep):
         def __init__(self, algorithmBlocks:AlgorithmBlocks, paramsDict = {

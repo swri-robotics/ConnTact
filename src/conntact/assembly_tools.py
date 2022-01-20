@@ -691,7 +691,7 @@ class AssemblyTools():
         force = self.as_array(self._average_wrench_world.force).reshape(3)
         res = np.allclose(force, -1*commandedForce, atol = deadzoneRadius, rtol = relativeScaling )
         
-        rospy.loginfo_throttle(1,Fore.BLUE +  "Collision checking force " + str(force) + " against command " + str(commandedForce*-1) + ' with a result of ' + str(res) + " and the difference is " + str(force + commandedForce) + Style.RESET_ALL)
+        # rospy.loginfo_throttle(1,Fore.BLUE +  "Collision checking force " + str(force) + " against command " + str(commandedForce*-1) + ' with a result of ' + str(res) + " and the difference is " + str(force + commandedForce) + Style.RESET_ALL)
 
         return res
         # if(type(lowerThresholds) == type(None)):
