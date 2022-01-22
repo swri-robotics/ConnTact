@@ -75,9 +75,9 @@ class AlgorithmBlocks(AssemblyTools):
 
         #Configuration variables, to be moved to a yaml file later:
         self.speed_static = [1/1000,1/1000,1/1000] #Speed at which the system considers itself stopped. Rel. to target hole.
-        force_dangerous = [35,35,45]                        #Force value which kills the program. Rel. to gripper.
+        force_dangerous = [55,55,65]                        #Force value which kills the program. Rel. to gripper.
         force_transverse_dangerous = np.array([30,30,30])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        force_warning = [20,20,20]                          #Force value which pauses the program. Rel. to gripper.
+        force_warning = [40,40,50]                          #Force value which pauses the program. Rel. to gripper.
         force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         self.max_force_error = [4, 4, 4]                #Allowable error force with no actual loads on the gripper.
         self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning 
@@ -108,6 +108,8 @@ class AlgorithmBlocks(AssemblyTools):
         ]
 
         self.steps:dict = { APPROACH_STATE: (AssemblyStep, []) }
+
+        self.previousState = None #Store a reference to the previous state here.
        
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         
@@ -182,6 +184,7 @@ class AlgorithmBlocks(AssemblyTools):
                     self.next_trigger, self.switch_state = self.step.onExit()
 
             else:
+                # This step has been realized as a looping method.
                 method_name = "self."+state_name[state_name.find('state_')+6:]+'()'
                 try:
                     rospy.loginfo_throttle(2, Fore.WHITE + "In state "+state_name + Style.RESET_ALL + ", now executing " + method_name)
@@ -196,6 +199,37 @@ class AlgorithmBlocks(AssemblyTools):
             rospy.logerr("Invalid state name! Terminating.")
             quit()
         
+    def algorithm_execute(self):
+
+        self.collision_confidence = 0
+        
+        self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
+
+        rospy.loginfo(Fore.BLACK + Back.GREEN + "Beginning search algorithm. "+Style.RESET_ALL)
+
+        while not rospy.is_shutdown() and self.state != EXIT_STATE:
+            # Main program loop. 
+            # Refresh values, run process trigger (either loop-back to perform state actions or transition to new state), then output controller commands and wait for next loop time.
+            self.all_states_calc()
+            self.checkForceCap()
+
+            if(self.switch_state): #If the command to change states has come in:
+                self.switch_state = False
+                if(self.step):
+                    #If a Step class has been defined for the current State, we delete it to be tidy.
+                    del self.step
+                    self.step = None
+            else:
+                # If we're not switching states, we use RUN_LOOP_TRIGGER to execute this state's loop code.
+                self.next_trigger = RUN_LOOP_TRIGGER
+                
+            # Execute the trigger chosen
+            self.trigger(self.next_trigger)
+
+            # Publish robot motion commands only once per loop, right at the end of the loop:
+            self.update_commands()
+            self._rate.sleep()
+                    
 
 
     def check_load_cell_feedback(self):
@@ -376,34 +410,6 @@ class AlgorithmBlocks(AssemblyTools):
 
         self.publish_plotted_values()
 
-    def algorithm_execute(self):
-
-        self.collision_confidence = 0
-        
-        self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
-
-        rospy.loginfo(Fore.BLACK + Back.GREEN + "Beginning search algorithm. "+Style.RESET_ALL)
-
-        while not rospy.is_shutdown() and self.state != EXIT_STATE:
-            # Main program loop. Refresh values, run process trigger (either loop-back to perform state actions or transition to new state), then output controller commands and wait for next loop time.
-            self.all_states_calc()
-            self.checkForceCap()
-
-            if(self.switch_state):
-                self.switch_state = False
-                if(self.step):
-                    del self.step
-                    self.step = None
-            else:
-                self.next_trigger = RUN_LOOP_TRIGGER
-                
-            self.trigger(self.next_trigger)
-
-            # self.next_trigger, self.switch_state = self.post_action(RUN_LOOP_TRIGGER)
-
-            self.update_commands()
-            self._rate.sleep()
-                    
     def checkForceCap(self):
         if(not self.force_cap_check(*self.cap_check_forces)):   
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
@@ -469,6 +475,12 @@ class AssemblyStep:
 
     def collision(self)->bool:
         return self.assembly.checkIfColliding(np.array(self.seeking_force))
+
+    def noCollision(self)->bool:
+        '''Checks the current forces against an expected force of zero, helpfully telling us if the robot is in free motion
+        :return: (bool) whether the force is fairly close to zero.
+        '''
+        return self.assembly.checkIfColliding(np.zeros(3))
 
     def onExit(self):
         pass

@@ -73,7 +73,7 @@ class StaticForceTest(AlgorithmBlocks, Machine):
         # Override Assembly Tools config variables
         ROS_rate = 100 #setup for sleeping in hz
         start_time = rospy.get_rostime() 
-        
+
         AlgorithmBlocks.__init__(self, ROS_rate, start_time)
 
         #Override Alg Blocks config variables:
@@ -99,7 +99,7 @@ class StaticForceTest(AlgorithmBlocks, Machine):
             {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':CHECK_FEEDBACK_STATE, 'dest':APPROACH_STATE         },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':RUN_TEST_STATE         },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':RUN_TEST_STATE      , 'dest':RESET_STATE            },
-            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':RESET_STATE         , 'dest':RUN_TEST_STATE         },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':RESET_STATE         , 'dest':APPROACH_STATE         },
             {'trigger':ALL_TESTS_COMPLETE_TRIGGER, 'source':RESET_STATE         , 'dest':COMPLETION_STATE       },
             {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':RESET_STATE            },
             {'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_loop'},
@@ -107,27 +107,34 @@ class StaticForceTest(AlgorithmBlocks, Machine):
 
         ]
 
-        self.paramList = {
-            "Test1": {
+        self.paramList = [
+            {
+                "name"          : "Test1",
                 "axis"          : [0,0,1],
-                "force"         : [0,0,5],
+                "force"         : [0,0,-5],
                 "stability"     : .90,
-                "holdTime"      : 2.5
-            },
-            "Test2": {
+                "holdTime"      : 10
+            },{
+                "name"          : "Test2",
                 "axis"          : [0,0,1],
-                "force"         : [0,0,10],
+                "force"         : [0,0,-10],
                 "stability"     : .90,
-                "holdTime"      : 2.5
-            },
-            "Test3": {
+                "holdTime"      : 5
+            },{
+                "name"          : "Test3",
                 "axis"          : [0,0,1],
-                "force"         : [0,0,15],
+                "force"         : [0,0,-15],
                 "stability"     : .90,
-                "holdTime"      : 2.5
+                "holdTime"      : 5
+            },{
+                "name"          : "Test4_high_force",
+                "axis"          : [0,0,1],
+                "force"         : [0,0,-20],
+                "stability"     : .85,
+                "holdTime"      : 5
             }
 
-        }
+        ]
 
         self.target_position = self.target_hole_pose
         # rospy.logerr("Target hole position: " + str(self.target_position))
@@ -138,11 +145,16 @@ class StaticForceTest(AlgorithmBlocks, Machine):
             RUN_TEST_STATE: (RunTestStep, []) ,
             RESET_STATE: (ResetStep, [])            
             }
-        
 
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
 
+        self.updateTestParams()
         self.tcp_selected = 'tip'
+
+    def updateTestParams(self):
+        #Loads the next parameter set into the Steps dictionary in time for it to be run by the AlgorithmBlocks base class.
+        rospy.logerr("Updating Params")
+        self.steps[RUN_TEST_STATE] = (self.steps[RUN_TEST_STATE][0], [self.paramList[self.testingStage]])
 
     def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
         """Generates a command pose vector which causes the robot to hold a certain orientation
@@ -169,8 +181,7 @@ class StaticForceTest(AlgorithmBlocks, Machine):
         pose_orientation = [0, 1, 0, 0]
         # pose_orientation = desired_orientation #Let this be handled by the TCP system, it reduces dangerous wiggling.
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
-
-
+    
     def main(self):
         # TODO: Remove following Sleep, use a rospy.wait command of some kind
         rospy.sleep(3)
@@ -197,6 +208,7 @@ class ApproachStep(AssemblyStep):
         self.paramsDict=paramsDict
         # self.desiredOrientation = trfm.quaternion_from_euler(0,0,-90)
         #Set up exit condition sensitivity
+        self.seeking_force = self.paramsDict["force"]#Using seekingForce syncs the collision detection check with the actual force command
         self.exitPeriod = self.paramsDict["holdTime"]      #Seconds to stay within bounds
         self.holdStartTime = 0;
         self.exitThreshold = self.paramsDict["stability"]    #Percentage of time for the last period
@@ -208,7 +220,7 @@ class ApproachStep(AssemblyStep):
     def updateCommands(self):
         # rospy.loginfo_throttle(1, Fore.BLUE + 'Updating commands ' + Style.RESET_ALL)
         #Command wrench
-        self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.paramsDict["force"])
+        self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.seeking_force)
         #Command pose
         # self.assembly.pose_vec = self.assembly.linear_search_position([0,0,0])
         self.assembly.pose_vec = self.assembly.arbitrary_axis_comply(self.paramsDict["axis"])
@@ -243,7 +255,7 @@ class ApproachStep(AssemblyStep):
         return False
 
     def onExit(self):
-            rospy.logerr("Flat surface detected! Moving to next step!")
+            rospy.logerr("Moving to next step!")
             
             #Measure flat surface height and store it for future steps:
             #TODO: Generalize the "Saving data for later steps" capability so it doesn't have to be a bunch of messy class variables.
@@ -253,6 +265,7 @@ class ApproachStep(AssemblyStep):
 
 class RunTestStep(ApproachStep):
     def __init__(self, algorithmBlocks:AlgorithmBlocks, paramsDict = {
+                "name"          : "Test",
                 "axis"          : [0,0,1],
                 "force"         : [0,0,-7],
                 "stability"     : .95,
@@ -260,66 +273,50 @@ class RunTestStep(ApproachStep):
             }) -> None:
         ApproachStep.__init__(self, algorithmBlocks, paramsDict)
 
-        
+        rospy.loginfo(Fore.BLUE+ "Executing test according to configuration: "+str(self.paramsDict["name"])+ Style.RESET_ALL)
         self.loggingInterval = rospy.Time.from_sec(1/20) #Try to log at 20 hz for now.
         self.lastLog = rospy.Time.now()#record starting time
-        self.openCSV()
-
-    def onExit(self):
-            rospy.logerr("Test complete! Resetting... ")
-            self.closeCSV()
-            #Tell the state machine to move to the next step according to the transitions dictionary. This way the AssemblyStep class doesn't need the information of its next state. You can have it send Triggers to go to other states instead.
-            return STEP_COMPLETE_TRIGGER, True
-
-    def openCSV(self, path = './output_data.csv'):
-        try:
-           csv_exists = (self.assembly.csvfile is None) or self.assembly.csvfile 
-        except (NameError, AttributeError):
-            csv_exists = False
-
-        if(csv_exists):    
-            rospy.loginfo(Fore.MAGENTA + "CSV: Reopening output file"+ Style.RESET_ALL)
-            self.assembly.csvfile = open(path, 'w', newline='') 
-        else:
-            rospy.loginfo(Fore.MAGENTA + "CSV: Creating output file"+ Style.RESET_ALL)
-            try:
-                #Open it and overwrite contents with blank
-                self.assembly.csvfile = open(path, 'w+', newline='')
-
-            except:
-                rospy.loginfo(Fore.MAGENTA + Fore.MAGENTA + "CSV: Can't make output file." + Style.RESET_ALL)
-
-        
-        self.assembly.outputter = csv.writer(self.assembly.csvfile)
+        self.file = self.openCSV(sys.path[0]+'/output_data' + self.paramsDict["name"] + '.csv')
+        self.outputter = csv.writer(self.file)
         self.writeLine(["Test number " + str(self.assembly.testingStage), "Today's date: TODO"])
         self.writeLine(["Time", "Force X", "Force Y", "Force Z", "Position X", "Position Y", "Position Z"])
+        
+
+    def execute(self):
+        self.logData()
+        return super().execute()
+
+    def onExit(self):
+        rospy.logerr("Test complete! Resetting... ")
+        self.closeCSV()
+        #Tell the state machine to move to the next step according to the transitions dictionary. This way the AssemblyStep class doesn't need the information of its next state. You can have it send Triggers to go to other states instead.
+        return STEP_COMPLETE_TRIGGER, True
+
+    def openCSV(self, path = sys.path[0]+'/output_data.csv'):
+        rospy.loginfo(Fore.MAGENTA + "CSV: Opening! Path is: "+str(path)+ Style.RESET_ALL)
+        return open(path, "w", newline='')
+
+    def writeLine(self, line:list):
+        self.outputter.writerow(line)
 
     def logData(self):
         now = rospy.Time.now()
-        if((now - self.lastLog) > self.loggingInterval):
+        if((now - self.loggingInterval).to_sec() > self.lastLog.to_sec()):
             #It's been long enough, log data again.
             self.lastLog = rospy.Time.now()
             force = self.assembly._average_wrench_world.force
             pos = self.assembly.current_pose.transform.translation
             self.writeLine([str(rospy.get_time()),  force.x, force.y, force.z, pos.x, pos.y, pos.z])
         
-    def writeLine(self, line:list):
-        self.assembly.outputter.writerow(line)
-
     def closeCSV(self):
-        try:
-            #Open it and overwrite contents with blank
-            self.assembly.csvfile.close()
-            rospy.loginfo(Fore.MAGENTA + Fore.MAGENTA + "CSV: File closed." + Style.RESET_ALL)
-        except NameError:
-            rospy.loginfo(Fore.MAGENTA + Fore.MAGENTA + Back.BLUE +"CSV: Close called without file open!" + Style.RESET_ALL)
-
+        rospy.loginfo(Fore.MAGENTA + "CSV: Closing!"+ Style.RESET_ALL)
+        self.file.close()
 
 
 class ResetStep(AssemblyStep):
         def __init__(self, algorithmBlocks:AlgorithmBlocks, paramsDict = {
                     "axis"          : [0,0,1],
-                    "force"         : [0,0,7],
+                    "force"         : [0,0,10],
                     "stability"     : .90,
                     "holdTime"      : .25
                 }) -> None:
@@ -328,6 +325,7 @@ class ResetStep(AssemblyStep):
             self.paramsDict=paramsDict
             # self.desiredOrientation = trfm.quaternion_from_euler(0,0,-90)
             #Set up exit condition sensitivity
+            self.seekingForce = self.paramsDict["force"]
             self.exitPeriod = self.paramsDict["holdTime"]      #Seconds to stay within bounds
             self.holdStartTime = 0;
             self.exitThreshold = self.paramsDict["stability"]    #Percentage of time for the last period
@@ -339,7 +337,7 @@ class ResetStep(AssemblyStep):
         def updateCommands(self):
             # rospy.loginfo_throttle(1, Fore.BLUE + 'Updating commands ' + Style.RESET_ALL)
             #Command wrench
-            self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.paramsDict["force"])
+            self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.seeking_force)
             #Command pose
             # self.assembly.pose_vec = self.assembly.linear_search_position([0,0,0])
             self.assembly.pose_vec = self.assembly.arbitrary_axis_comply(self.paramsDict["axis"])
@@ -372,8 +370,9 @@ class ResetStep(AssemblyStep):
                     self.contact_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
 
             return False
+
         def exitConditions(self) -> bool:
-            return self.static() and self.awayFromSurface()
+            return self.awayFromSurface() and self.noCollision()
 
         def awayFromSurface(self)->bool:
             #Check if we've retreated 1cm from the surface
@@ -381,12 +380,16 @@ class ResetStep(AssemblyStep):
             return (currentHeight - self.assembly.surface_height > .01)
 
         def onExit(self):
-                rospy.logerr("Reset successful! Moving to next test!")
-                if(self.assembly.testingStage < len(self.assembly.paramList)):
-                    self.assembly.testingStage += 1  
-                
+                if(self.assembly.testingStage < len(self.assembly.paramList) ):
+                    self.assembly.testingStage += 1
+                    self.assembly.updateTestParams()
+                    rospy.logerr("Reset successful! Moving to test " + str(self.assembly.testingStage) )
+                    return STEP_COMPLETE_TRIGGER, True
+                else:
+                    rospy.logerr("Last test complete, quitting! " + str(self.assembly.testingStage) )
+                    return ALL_TESTS_COMPLETE_TRIGGER, True
                 #Measure flat surface height and store it for future steps:
                 #TODO: Generalize the "Saving data for later steps" capability so it doesn't have to be a bunch of messy class variables.
                 #Tell the state machine to move to the next step according to the transitions dictionary. This way the AssemblyStep class doesn't need the information of its next state. You can have it send Triggers to go to other states instead.
-                return STEP_COMPLETE_TRIGGER, True
+                
 
