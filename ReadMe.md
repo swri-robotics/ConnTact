@@ -24,17 +24,6 @@ Development of framework was done under Ubuntu Focal (20.04) using ROS Noetic.
   - Install ROS package dependencies: `rosdep install --rosdistro noetic --ignore-src --from-paths .`
   - Source ROS and build the workspace: `. /opt/ros/noetic/setup.bash`, `catkin build`
 
-## Examples
-
-The repository is currently set up with examples that demonstrate assembly tasks for the [NIST assembly task board](https://www.nist.gov/el/intelligent-systems-division-73500/robotic-grasping-and-manipulation-assembly/assembly) using a Universal Robots UR10e. Currently two algorithms are implemented that perform peg insertion tasks using a vertical searching method and a corner-contact searching method to find the holes.
-
-First, by jogging the UR manually, locate the corner of the NIST task board in the robot's base frame. Update the expected position of the board in
-
-To run these examples, open a terminals sourced to the built project workspace and run:
-
-    roslaunch conntact ur10e_upload_compliance.launch algorithm_selected:=<algorithm>
-
-Where `<algorithm>` is either `spiral_search_node` or `corner_search_node`.
 
 ## Usage
 
@@ -43,6 +32,39 @@ Where `<algorithm>` is either `spiral_search_node` or `corner_search_node`.
 
 
 ### Configuring a new application
+
+
+## Running Examples
+
+The repository is currently set up with examples that demonstrate assembly tasks for the [NIST assembly task board](https://www.nist.gov/el/intelligent-systems-division-73500/robotic-grasping-and-manipulation-assembly/assembly) using a Universal Robots UR10e. The system can insert any of the circular pegs into their respective holes. Relative locations of these holes on the board are already recorded in *config/peg_in_hole_params.yaml*.
+
+To run the examples, you must first determine the location and position of the NIST task board (or equivalent). First, by jogging the UR manually, locate the corner of the task board in the robot's base frame.
+
+![board_frame](resource/board_corner.png)
+
+![board_overall](resource/board_overall.png)
+
+Update the expected position of the board in peg_in_hole_params.yaml under *environment state*:
+
+>environment_state:
+    task_frame:
+        position: [-639, 282, -337]
+        orientation: [0, 0, 0]
+    kitting_frame:
+        position: [640, 544, -502]
+        orientation: [0, 0, 0]
+
+
+
+Currently two algorithms are implemented that perform peg insertion tasks: a vertical searching method and a corner-contact searching method.
+
+To run these examples, open a terminals sourced to the built project workspace and run:
+
+    roslaunch conntact ur10e_upload_compliance.launch algorithm_selected:=<algorithm>
+
+Where `<algorithm>` is either `spiral_search_node` or `corner_search_node`*.
+
+/* - Note: Corner Search mode is WIP; also, beware - the change in TCP orientation causes fast motion of the robot. We're working on a fix.
 
 ## Acknowledgements
 
