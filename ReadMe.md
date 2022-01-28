@@ -38,23 +38,32 @@ Development of framework was done under Ubuntu Focal (20.04) using ROS Noetic.
 
 The repository is currently set up with examples that demonstrate assembly tasks for the [NIST assembly task board](https://www.nist.gov/el/intelligent-systems-division-73500/robotic-grasping-and-manipulation-assembly/assembly) using a Universal Robots UR10e. The system can insert any of the circular pegs into their respective holes. Relative locations of these holes on the board are already recorded in *config/peg_in_hole_params.yaml*.
 
-To run the examples, you must first determine the location and position of the NIST task board (or equivalent). First, by jogging the UR manually, locate the corner of the task board in the robot's base frame.
+To run the examples, you must first determine the location and position of the NIST task board (or equivalent). First, by jogging the UR manually, locate the corner of the task board in the robot's base frame. We selected an arbitrary corner to be the board's origin, as shown below.
+ 
+![board_overall](resource/board_overall.jpg)
 
-![board_frame](resource/board_corner.png)
+Align the gripper's axes as marked on the board (align the +X axis with that drawn on the board.)
 
-![board_overall](resource/board_overall.png)
+![board_frame](resource/board_corner.jpg)
 
-Update the expected position of the board in peg_in_hole_params.yaml under *environment state*:
+Update the expected position and Z-axis orientation of the board in peg_in_hole_params.yaml under *environment state*:
 
 >environment_state:
-    task_frame:
-        position: [-639, 282, -337]
-        orientation: [0, 0, 0]
-    kitting_frame:
-        position: [640, 544, -502]
-        orientation: [0, 0, 0]
+>    task_frame:
+>        position: **[-639, 282, -337]**
+>        orientation: **[0, 0, 0]**
+>    kitting_frame:
+>        position: [640, 544, -502]
+>        orientation: [0, 0, 0]
 
+Now the robot can locate the boards. Next, you can select the peg to be inserted by modifying the *task*:
 
+>task:
+>    target_peg: "peg_10mm"
+>    target_hole: "hole_10mm"
+>    starting_tcp: "tip"
+>    assumed_starting_height: 0.0
+>    restart_height: -0.1
 
 Currently two algorithms are implemented that perform peg insertion tasks: a vertical searching method and a corner-contact searching method.
 
