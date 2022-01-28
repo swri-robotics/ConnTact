@@ -29,8 +29,6 @@ Development of framework was done under Ubuntu Focal (20.04) using ROS Noetic.
 
 ### Setting up a workcell
 
-
-
 ### Configuring a new application
 
 
@@ -46,25 +44,25 @@ Align the gripper's axes as marked on the board (align the +X axis with that dra
 
 ![board_frame](resource/board_corner.jpg)
 
-Update the expected position and Z-axis orientation of the board in peg_in_hole_params.yaml under *environment state*:
-
->environment_state:
->    task_frame:
->        position: **[-639, 282, -337]**
->        orientation: **[0, 0, 0]**
->    kitting_frame:
->        position: [640, 544, -502]
->        orientation: [0, 0, 0]
-
-Now the robot can locate the boards. Next, you can select the peg to be inserted by modifying the *task*:
-
->task:
->    target_peg: "peg_10mm"
->    target_hole: "hole_10mm"
->    starting_tcp: "tip"
->    assumed_starting_height: 0.0
->    restart_height: -0.1
-
+Based on the robot's tcp position as displayed on the "Move" tab of the pendant, update the expected position and Z-axis orientation of the board in `peg_in_hole_params.yaml` under `environment state`:
+```
+environment_state:
+    task_frame:
+        position: **[-639, 282, -337]**
+        orientation: **[0, 0, 0]**
+    kitting_frame:
+        position: [640, 544, -502]
+        orientation: [0, 0, 0]
+```
+Now the robot can find the rough locations of each of the circular holes. No need to be perfect; the whole system is designed to overcome small inaccuracies! Next, you can select the peg to be inserted by modifying the `task`:
+```
+task:
+    target_peg: "peg_10mm"
+    target_hole: "hole_10mm"
+    starting_tcp: "tip"
+    assumed_starting_height: 0.0
+    restart_height: -0.1
+```
 Currently two algorithms are implemented that perform peg insertion tasks: a vertical searching method and a corner-contact searching method.
 
 To run these examples, open a terminals sourced to the built project workspace and run:
@@ -73,7 +71,7 @@ To run these examples, open a terminals sourced to the built project workspace a
 
 Where `<algorithm>` is either `spiral_search_node` or `corner_search_node`*.
 
-/* - Note: Corner Search mode is WIP; also, beware - the change in TCP orientation causes fast motion of the robot. We're working on a fix.
+* *Note: Corner Search mode is WIP.*
 
 ## Acknowledgements
 
