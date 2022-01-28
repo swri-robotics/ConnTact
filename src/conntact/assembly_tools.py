@@ -27,24 +27,6 @@ from threading import Lock
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
-#State names    
-IDLE_STATE           = 'idle'
-CHECK_FEEDBACK_STATE = 'checking load cell feedback'
-APPROACH_STATE       = 'approaching hole surface'
-FIND_HOLE_STATE      = 'finding hole'
-INSERTING_PEG_STATE  = 'inserting peg'
-COMPLETION_STATE     = 'completed insertion'
-SAFETY_RETRACT_STATE = 'retracting to safety' 
-
-#Trigger names
-CHECK_FEEDBACK_TRIGGER     = 'check loadcell feedback'
-APPROACH_SURFACE_TRIGGER   = 'start approach'
-FIND_HOLE_TRIGGER          = 'surface found'
-INSERT_PEG_TRIGGER         = 'hole found'
-ASSEMBLY_COMPLETED_TRIGGER = 'assembly completed'
-SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
-
-
 class AssemblyTools():
 
     def __init__(self, ROS_rate, start_time):
