@@ -1,3 +1,6 @@
 .vscode/
 **/__pycache__/
 src/**/pytest.py
+*.pyc
+output_data**
+**.ipynb**

@@ -156,32 +156,6 @@ class StaticForceTest(AlgorithmBlocks, Machine):
         rospy.logerr("Updating Params")
         self.steps[RUN_TEST_STATE] = (self.steps[RUN_TEST_STATE][0], [self.paramList[self.testingStage]])
 
-    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
-        """Generates a command pose vector which causes the robot to hold a certain orientation
-         and comply in one dimension while staying on track in the others.
-        :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
-        :param direction_vector: (array-like list of bools) vector of bools or 0/1 values to indicate which axes comply and which try to stay the same as those of the target hole position.
-        :param desired_orientation: (list of floats) quaternion parameters for orientation; currently disabled because changes in orientation are dangerous and unpredictable. Use TCPs instead.
-        """
-
-        #initially set the new command position to be the current physical (disturbed) position
-        #This allows movement allowed by outside/command forces to move the robot at a steady rate.
-
-        pose_position = self.current_pose.transform.translation
-
-        if(not direction_vector[0]):
-            pose_position.x = self.target_hole_pose.pose.position.x
-
-        if(not direction_vector[1]):
-            pose_position.y = self.target_hole_pose.pose.position.y
-
-        if(not direction_vector[2]):
-            pose_position.z = self.target_hole_pose.pose.position.z
-
-        pose_orientation = [0, 1, 0, 0]
-        # pose_orientation = desired_orientation #Let this be handled by the TCP system, it reduces dangerous wiggling.
-        return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
-    
     def main(self):
         # TODO: Remove following Sleep, use a rospy.wait command of some kind
         rospy.sleep(3)
@@ -230,11 +204,11 @@ class ApproachStep(AssemblyStep):
     def checkCompletion(self):
 
         if(self.exitConditions()):
-            if(self.contact_confidence < 1):
-                self.contact_confidence += 1/(self.assembly._rate_selected)
-            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.contact_confidence, 3)))
+            if(self.completion_confidence < 1):
+                self.completion_confidence += 1/(self.assembly._rate_selected)
+            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.completion_confidence, 3)))
             
-            if(self.contact_confidence > self.exitThreshold):
+            if(self.completion_confidence > self.exitThreshold):
                 if(self.holdStartTime == 0):
                     #Start counting down to completion as long as we don't drop below threshold again:
                     self.holdStartTime = rospy.get_time()
@@ -249,8 +223,8 @@ class ApproachStep(AssemblyStep):
                 self.holdStartTime = 0
         else:
             #Exit conditions not true
-            if(self.contact_confidence>0.0):
-                self.contact_confidence -= 1/(self.assembly._rate_selected)
+            if(self.completion_confidence>0.0):
+                self.completion_confidence -= 1/(self.assembly._rate_selected)
 
         return False
 
@@ -347,11 +321,11 @@ class ResetStep(AssemblyStep):
         def checkCompletion(self):
 
             if(self.exitConditions()):
-                if(self.contact_confidence < 1):
-                    self.contact_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
-                rospy.logerr_throttle(1, "Monitoring for completion, confidence = " + str(np.around(self.contact_confidence, 3)))
+                if(self.completion_confidence < 1):
+                    self.completion_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
+                rospy.logerr_throttle(1, "Monitoring for completion, confidence = " + str(np.around(self.completion_confidence, 3)))
                 
-                if(self.contact_confidence > self.exitThreshold):
+                if(self.completion_confidence > self.exitThreshold):
                     if(self.holdStartTime == 0):
                         #Start counting down to completion as long as we don't drop below threshold again:
                         self.holdStartTime = rospy.get_time()
@@ -366,8 +340,8 @@ class ResetStep(AssemblyStep):
                     self.holdStartTime = 0
             else:
                 #Exit conditions not true
-                if(self.contact_confidence>0.0):
-                    self.contact_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
+                if(self.completion_confidence>0.0):
+                    self.completion_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
 
             return False
 
