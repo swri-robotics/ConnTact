@@ -27,6 +27,32 @@ Development of framework was done under Ubuntu Focal (20.04) using ROS Noetic.
 
 ## Usage
 
+### Structure
+
+Conntact is structured with 3 levels of functionality:
+
+#### AssemblyTools
+
+> *Do the following job* ***here*** *and at* ***this*** *angle*
+
+  The AssemblyTools package provides a bunch of utility functions. These translate data from hardware into **task space**: the frame-of-reference of the task to be accomplished. This way, an algorithm developed at a given position and orientation is automatically reoriented and repositioned when a new task position is fed into the system. AssemblyTools also provides useful data, such as speed estimation and sensor data filtering.
+
+#### AlgorithmBlocks
+
+> *First do* ***this*** *and then do* ***this*** *and then* ***this***
+
+  The AlgorithmBlocks program is an implimentation of the pytransitions Machine package. It comprises example functions which run according to an easily-reconfigurable state machine. By breaking a task down into sequential tasks, you can use AlgorithmBlocks to sequence these tasks and add decision-making/redundancy/fallback functionality.
+
+#### AssemblyStep
+
+> *Do* ***this*** *until* ***this*** *happens*
+
+  AlgorithmBlocks can run *functions* for simple tasks, but for tactile sensing you often need a lot of specific variable and flags to track conditions. These tasks are streamlined with the AssemblyStep class. Each Step object provides all the basic functions for a sensing task - setup, loop behavior, completion checking - and can be easily expanded or overriden to accomplish a wide variety of tasks.
+
+### Development
+
+We suggest the following workflow to take a task from a human and give it to a robot.
+
 ### Setting up a workcell
 
 ### Configuring a new application
@@ -71,7 +97,7 @@ To run these examples, open a terminals sourced to the built project workspace a
 
 Where `<algorithm>` is either `spiral_search_node` or `corner_search_node`*.
 
-* *Note: Corner Search mode is WIP.*
+> ⚠ **Note:** Corner Search mode is WIP. This program, or any other which changes the robot TCP orientation, currently causes a rapid motion to assume the specified orientation which can cause collision or damage or just scare you out of your pants. We recommend leaving the orientation vertical until this problem is solved.  
 
 ## Acknowledgements
 
