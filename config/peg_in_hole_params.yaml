@@ -38,7 +38,8 @@ objects: #List objects and their required description
                       #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
     hole_10mm:
         stl_file: "file_location.stl"
-        local_position: [264, -41.3, 0] #Starting position from task_frame
+        # local_position: [264, -41.3, 0] #Starting position from task_frame
+        local_position: [-660, 400, 0] #Starting position from task_frame
         local_orientation: [0,0,0]
         dimensions:
             diameter: 10.4 #mm

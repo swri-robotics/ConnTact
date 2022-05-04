@@ -20,8 +20,8 @@
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find conntact)/config/basic_config_example.rviz" required="true" />
   
-  <node type="plotting_node" name="assembly_plotter" 
-    pkg="conntact" output="screen" required="false" />
+  <!-- <node type="plotting_node" name="assembly_plotter" 
+    pkg="conntact" output="screen" required="false" /> -->
 
   <node type="$(arg algorithm_selected)" name="algorithm_node" 
     pkg="conntact" output="screen" required="true" />

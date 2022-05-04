@@ -83,6 +83,10 @@ class AlgorithmBlocks(AssemblyTools):
         self.max_force_error = [3.5, 3.5, 5]                #Allowable error force with no actual loads on the gripper.
         self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning 
 
+        # TODo: Need for debugging. Can delete later
+        self.test_first_insertion_calc = 1
+        self.wrench_reorientation = 0 #dummy value
+
 
         states = [
             IDLE_STATE, 
@@ -168,9 +172,9 @@ class AlgorithmBlocks(AssemblyTools):
         try:
             rospy.loginfo_throttle(2, Fore.WHITE + "In state "+state_name + Style.RESET_ALL)
             exec(method_name)
-        except (NameError, AttributeError):
-            rospy.logerr_throttle(2, "State name " + method_name + " does not match 'state_'+(state loop method name) in algorithm!")
-            pass
+        # except (NameError, AttributeError):
+        #     rospy.logerr_throttle(2, "State name " + method_name + " does not match 'state_'+(state loop method name) in algorithm!")
+        #     pass
         except:
             print("Unexpected error when trying to locate state loop name:", sys.exc_info()[0])
             raise
@@ -199,15 +203,16 @@ class AlgorithmBlocks(AssemblyTools):
         # Also requires "seeking_force" to be compensated pretty exactly by a static surface.
         #Take an average of static sensor reading to check that it's stable.
 
-        seeking_force = 5
+        seeking_force = 10
         self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
 
         if(not self.force_cap_check(*self.cap_check_forces)):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
-            and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [10,10,seeking_force*1.5], [-10,-10,seeking_force*.75])):
+        # elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
+        #     and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [10,10,seeking_force*1.5], [-10,-10,seeking_force*.75])):
+        elif(self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static)):
             self.collision_confidence = self.collision_confidence + 1/self._rate_selected
             rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(self.collision_confidence))
             #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
@@ -255,36 +260,158 @@ class AlgorithmBlocks(AssemblyTools):
                 rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z) 
                     + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) + Style.RESET_ALL )
 
-            
+    # def align_to_hole(starting_axis, starting_pose, ending_axis, ending_pose):
+    #     pass
+
+    def orient_TCP_axis(pose_start, pose_finish, seeking_force=10, seeking_torque=5):
+        """
+        This method will use compliance to transfer the position of the robot from one pose to another.
+        ROS pose input with position and orientation
+        """
+        #Convert to numpy pose and quaternion
+        print("pose_start")
+        print(pose_start)
+        print("pose_finish")
+        print(pose_finish)
+        p_start = np.array([pose_start.position.x, pose_start.position.y, pose_start.position.z])
+        q_start = np.array([pose_start.orientation.x, pose_start.orientation.y, pose_start.orientation.z, pose_start.orientation.w])
+        p_finish = np.array([pose_finish.position.x, pose_finish.position.y, pose_finish.position.z])
+        q_finish = np.array([pose_finish.orientation.x, pose_finish.orientation.y, pose_finish.orientation.z, pose_finish.orientation.w])
+
+        #Convert Quaternion to Homogeneous Transformation matrix (linear translation vector will be [0,0,0,1]' in the column index 3).
+        homog_matrix_start  = self.to_rotation_matrix(pose_start.orientation)
+        homog_matrix_finish = self.to_rotation_matrix(pose_finish.orientation)
+        print("homog_matrix_start")
+        print(homog_matrix_start)
+        print("homog_matrix_finish")
+        print(homog_matrix_finish)
+        
+        #Calculate axis of torque vector with cross product of the z-axis from each rotation matrix in the homogeneous transformation matrices
+        z_cross = np.cross([homog_matrix_start[0][2], homog_matrix_start[1][2], homog_matrix_start[2][2]], [homog_matrix_finish[0][2], homog_matrix_finish[1][2], homog_matrix_finish[2][2]])
+        L2_norm = np.linalg.norm(z_cross)
+        unit_rot_axis = -1 * np.divide(z_cross, L2_norm) #Multiply by -1 since it is assumed that the "start" z-axis points "down" while "finish" z-axis points "up"
+        # unit_rot_axis = [0-1,0]
+        # unit_rot_axis = np.divide(z_cross, L2_norm) #Multiply by -1 since it is assumed that the "start" z-axis points "down" while "finish" z-axis points "up"
+
+        #Command the wrench that is in the TCP frame (where the forces and torques are physically occurring), not the loadcell frame
+        self.get_command_wrench([0,0,seeking_force], [seeking_torque*unit_rot_axis[0], seeking_torque*unit_rot_axis[1], seeking_torque*unit_rot_axis[2]])
+
+        #TODO:KEVIN Add a stopping condition so the wrench is set to zero when the insertion axis is almost reached
+
+
 
     def inserting_along_axis(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
         #horizontally. We keep going until vertical speed is very near to zero.
 
+        testing_orient_TCP_axis = 1
 
-        seeking_force = 5.0
-        self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.full_compliance_position()
+        if (testing_orient_TCP_axis == 1):
+            # print("TESTING ORIENT_TCP_AXIS")
+            rospy.loginfo_throttle(5, "TESTING ORIENT_TCP_AXIS")
+            pose_start_transform = self.get_current_pos()
+            # print(pose_start_transform)
+            # error=force_error
+            pose_start = Pose()
+            pose_start.position.x = pose_start_transform.transform.translation.x
+            pose_start.position.y = pose_start_transform.transform.translation.y
+            pose_start.position.z = pose_start_transform.transform.translation.z
+            pose_start.orientation.x = pose_start_transform.transform.rotation.x
+            pose_start.orientation.y = pose_start_transform.transform.rotation.y
+            pose_start.orientation.z = pose_start_transform.transform.rotation.z
+            pose_start.orientation.w = pose_start_transform.transform.rotation.w
 
-        if(not self.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
-            rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
-            #and not self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [6,6,80], [-6,-6,-80])
-            and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [1.5,1.5,seeking_force*1.5], [-1.5,-1.5,seeking_force*-.75])
-            and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
-            self.collision_confidence = self.collision_confidence + 1/self._rate_selected
-            rospy.logerr_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.collision_confidence))
-            #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
-            if(self.collision_confidence > .90):
-                    #Stopped moving vertically and in contact with something that counters push force
-                    self.next_trigger, self.switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
+
+            pose_finish = Pose()
+            # rospy.loginfo(self.get_current_pos())
+            pose_finish.position.x = pose_start_transform.transform.translation.x
+            pose_finish.position.y = pose_start_transform.transform.translation.y
+            pose_finish.position.z = pose_start_transform.transform.translation.z
+
+            pose_finish.orientation.x = 1
+            pose_finish.orientation.y = 0
+            pose_finish.orientation.z = 0
+            pose_finish.orientation.w = 0
+
+            # print("pose_start_call")
+            # print(pose_start)
+            # print("pose_finish_call")
+            # print(pose_finish)
+
+            # self.orient_TCP_axis(pose_start, pose_finish, seeking_force=10, seeking_torque=5)
+            # TODo: THE CODE IS NOT COPYING pose_start or pose_finish. It appears to have undefined behavior if printed from both before/during method call
+            # self.orient_TCP_axis(pose_start, pose_finish)
+            
+            # Hard code what will become orient_TCP_axis function inputs
+            seeking_force=10 
+            seeking_torque=10
+
+
+            #Convert Quaternion to Homogeneous Transformation matrix (linear translation vector will be [0,0,0,1]' in the column index 3).
+            homog_matrix_start  = self.to_rotation_matrix(pose_start.orientation)
+            homog_matrix_finish = self.to_rotation_matrix(pose_finish.orientation)
+            # print("homog_matrix_start")
+            # print(homog_matrix_start)
+            # print("homog_matrix_finish")
+            # print(homog_matrix_finish)
+            
+            #Calculate axis of torque vector with cross product of the z-axis from each rotation matrix in the homogeneous transformation matrices
+            z_cross = np.cross([homog_matrix_start[0][2], homog_matrix_start[1][2], homog_matrix_start[2][2]], [homog_matrix_finish[0][2], homog_matrix_finish[1][2], homog_matrix_finish[2][2]])
+            L2_norm = np.linalg.norm(z_cross)
+            unit_rot_axis = -1 * np.divide(z_cross, L2_norm) #Multiply by -1 since it is assumed that the "start" z-axis points "down" while "finish" z-axis points "up"
+            unit_rot_axis = np.divide(z_cross, L2_norm) #Multiply by -1 since it is assumed that the "start" z-axis points "down" while "finish" z-axis points "up"
+            unit_rot_axis = [0.8,-0.2,0]
+            unit_rot_axis = [0.707,-0.707,0]
+            #Command the wrench that is in the TCP frame (where the forces and torques are physically occurring), not the loadcell frame
+            # self.get_command_wrench([0,0,seeking_force], [seeking_torque*unit_rot_axis[0], seeking_torque*unit_rot_axis[1], seeking_torque*unit_rot_axis[2]])
+            
+            # TODo: Is this in the correct frame? See above comment.
+            if(self.test_first_insertion_calc == 1):
+                self.wrench_reorientation = [0,0,seeking_force, seeking_torque*unit_rot_axis[0], seeking_torque*unit_rot_axis[1], seeking_torque*unit_rot_axis[2]] 
+                self.test_first_insertion_calc = 0
+            # else:
+                # print("Value of self.test_first_insertion_calc")
+                # print(self.test_first_insertion_calc)     
+            
+            rospy.loginfo_throttle(2, [0,0,seeking_force, seeking_torque*unit_rot_axis[0], seeking_torque*unit_rot_axis[1], seeking_torque*unit_rot_axis[2]])
+            rospy.loginfo_throttle(2, self.wrench_reorientation)
+            self.wrench_vec  = self.wrench_reorientation
+            self.pose_vec = self.full_compliance_position([0,0,0], [pose_start.orientation.w, pose_start.orientation.x, pose_start.orientation.y, pose_start.orientation.z])
+            # print("CALCULATED POSE_VEC")
+            # print(self.pose_vec)
+            # error=forceerror
+
+
+            # self.publish_wrench([0,0,seeking_force, seeking_torque*unit_rot_axis[0], seeking_torque*unit_rot_axis[1], seeking_torque*unit_rot_axis[2]])
+
+
+
+            # testing_orient_TCP_axis = 0
+        
         else:
-            #
-            self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
-            if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z) 
-                    + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) + Style.RESET_ALL)
+            seeking_force = 5.0
+            self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+            self.pose_vec = self.full_compliance_position()
+
+            if(not self.force_cap_check(*self.cap_check_forces)):
+                self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+                rospy.logerr("Force/torque unsafe; pausing application.")
+            elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
+                #and not self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [6,6,80], [-6,-6,-80])
+                and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [1.5,1.5,seeking_force*1.5], [-1.5,-1.5,seeking_force*-.75])
+                and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
+                self.collision_confidence = self.collision_confidence + 1/self._rate_selected
+                rospy.logerr_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.collision_confidence))
+                #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
+                if(self.collision_confidence > .90):
+                        #Stopped moving vertically and in contact with something that counters push force
+                        self.next_trigger, self.switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
+            else:
+                #
+                self.collision_confidence = np.max( np.array([self.collision_confidence * 95/self._rate_selected, .01]))
+                if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
+                    rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z) 
+                        + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) + Style.RESET_ALL)
 
             
 
@@ -349,9 +476,9 @@ class AlgorithmBlocks(AssemblyTools):
         self.update_avg_speed()
         self.update_average_wrench()
         # self._update_plots()
-        rospy.loginfo_throttle(1, Fore.BLUE + "Average wrench in newtons  is force \n" + str(self._average_wrench_world.force)+ 
+        rospy.loginfo_throttle(10, Fore.BLUE + "Average wrench in newtons  is force \n" + str(self._average_wrench_world.force)+ 
             " and torque \n" + str(self._average_wrench_world.torque) + Style.RESET_ALL)
-        rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.average_speed) +Style.RESET_ALL)
+        rospy.loginfo_throttle(10, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.average_speed) +Style.RESET_ALL)
 
         self.publish_plotted_values()
 

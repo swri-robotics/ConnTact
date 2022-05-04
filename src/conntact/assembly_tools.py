@@ -452,6 +452,15 @@ class AssemblyTools():
         return output
     
     @staticmethod
+    def to_rotation_matrix(quat):
+        """Takes a quaternion and outputs a 3x3 rotation matrix.
+        :param quat: (geometry_msgs.Quaternion) Orientation information.
+        :return: (np.Array()) 4x4 homogeneous transformation matrix with the translation in index column 3 as [0,0,0,1]'.
+        """
+        output = trfm.quaternion_matrix(np.array([quat.x, quat.y, quat.z, quat.w]))
+        return output 
+
+    @staticmethod
     def matrix_to_pose(input, base_frame):
         """Converts matrix into a pose.
         :param input: (np.Array) 4x4 homogeneous transformation matrix
