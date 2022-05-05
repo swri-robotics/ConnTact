@@ -31,6 +31,6 @@
 
 # Mutable Transform Publisher
 - git:
-    local-name: cartesian_controllers
+    local-name: mutable_transform_publisher
     uri: 'https://github.com/Jmeyer1292/mutable_transform_publisher.git'
     version: '6d4c84b8bc5c7058bd093cf602697d73581cb59a'
