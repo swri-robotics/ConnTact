@@ -2,22 +2,35 @@
 - git:
     local-name: Universal_Robots_ROS_Driver
     uri: 'https://github.com/UniversalRobots/Universal_Robots_ROS_Driver.git'
-    version: 'ec2beb65afd6be5373d1e21a86dd42a07e25b447'
+    #version: 'ec2beb65afd6be5373d1e21a86dd42a07e25b447'
+    version: 'fd1b4c2c8c906c9550bf4ca543bfed7986184311'
     
 # UR Description Files
 - git:
     local-name: fmauch_universal_robot
     uri: 'https://github.com/fmauch/universal_robot.git'
-    version: '1ffdd69181389b14b7d6342f0c5bad3b45c5e32f'
+    version: '00447a56132296417e13fd593aafe20d42810afd'
     
 # Universal Robot Messages
 - git:
     local-name: ur_msgs
     uri: 'https://github.com/ros-industrial/ur_msgs.git'
-    version: '8455fa579497599a22e41388618d70aa62995693'
+    version: 'ad0934a5d1ecc3005e272d778d24bfc69160a116'
 
 # Robot Cartesian Controller
 - git:
     local-name: cartesian_controllers
     uri: 'https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git'
-    version: '643476c552039d7f7eacdb5c3c65fc82fcac84e5'
+    version: 'efa18112dcf65ad3fc669b16948c32608a98a465'
+    
+ # Robotiq Driver
+- git:
+    local-name: robotiq
+    uri: 'https://github.com/ros-industrial/robotiq.git'
+    version: '45196f6558fe8ba9d89bc8a105396c68c3e7e892'   
+
+# Mutable Transform Publisher
+- git:
+    local-name: cartesian_controllers
+    uri: 'https://github.com/Jmeyer1292/mutable_transform_publisher.git'
+    version: '6d4c84b8bc5c7058bd093cf602697d73581cb59a'
