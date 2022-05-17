@@ -7,41 +7,36 @@
 # Imports for ros
 # from _typeshed import StrPath
 
+import csv
+import sys
 from builtins import staticmethod
 from operator import truediv
 from pickle import STRING
+from threading import Lock
 from typing import List
 
-from colorama.initialise import reset_all
-import rospy
-import sys
-import numpy as np
 import matplotlib.pyplot as plt
-from rospkg import RosPack
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
-from rospy.core import configure_logging
-import tf.transformations as trfm
-
-import csv
-import yaml
-
-from colorama import Fore, Back, Style, init
-# from sensor_msgs.msg import JointState
-# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
-from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
-from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
-
-import tf2_ros
-import tf2_py 
+import numpy as np
+import rospy
 # import tf2
 import tf2_geometry_msgs
-
-
-from threading import Lock
+import tf2_py
+import tf2_ros
+import yaml
+from colorama import Back, Fore, Style, init
+from colorama.initialise import reset_all
+# from sensor_msgs.msg import JointState
+# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
+from controller_manager_msgs.srv import (ListControllers, LoadController,
+                                         SwitchController)
+from geometry_msgs.msg import PoseStamped, TransformStamped, WrenchStamped
+from rospkg import RosPack
+from rospy.core import configure_logging
+from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
+from transitions import Machine
 
 from conntact.assembly_algorithm_blocks import AlgorithmBlocks, AssemblyStep
-
-from transitions import Machine
+# from conntact.assembly_algorithm_step import AssemblyStep
 
 IDLE_STATE           = 'state_idle'
 CHECK_FEEDBACK_STATE = 'state_check_load_cell_feedback'
@@ -201,32 +196,35 @@ class ApproachStep(AssemblyStep):
 
         # rospy.loginfo_throttle(2, Fore.CYAN + " Arbitrary command wrench is giving \n" + str(self.assembly.pose_vec) + "\nwhereas linear search would give \n" + str(self.assembly.linear_search_position([0,0,0])))
 
-    def checkCompletion(self):
+    def exitConditions(self) -> bool:
+        return self.collision() and self.static()
 
-        if(self.exitConditions()):
-            if(self.completion_confidence < 1):
-                self.completion_confidence += 1/(self.assembly._rate_selected)
-            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.completion_confidence, 3)))
+    # def checkCompletion(self):
+
+    #     if(self.exitConditions()):
+    #         if(self.completion_confidence < 1):
+    #             self.completion_confidence += 1/(self.assembly._rate_selected)
+    #         rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.completion_confidence, 3)))
             
-            if(self.completion_confidence > self.exitThreshold):
-                if(self.holdStartTime == 0):
-                    #Start counting down to completion as long as we don't drop below threshold again:
-                    self.holdStartTime = rospy.get_time()
-                    rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
+    #         if(self.completion_confidence > self.exitThreshold):
+    #             if(self.holdStartTime == 0):
+    #                 #Start counting down to completion as long as we don't drop below threshold again:
+    #                 self.holdStartTime = rospy.get_time()
+    #                 rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
 
-                elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
-                    #it's been long enough, exit loop
-                    rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
-                    return True 
-            else:
-                # Confidence has dropped below the threshold, cancel the countdown.
-                self.holdStartTime = 0
-        else:
-            #Exit conditions not true
-            if(self.completion_confidence>0.0):
-                self.completion_confidence -= 1/(self.assembly._rate_selected)
+    #             elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
+    #                 #it's been long enough, exit loop
+    #                 rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
+    #                 return True 
+    #         else:
+    #             # Confidence has dropped below the threshold, cancel the countdown.
+    #             self.holdStartTime = 0
+    #     else:
+    #         #Exit conditions not true
+    #         if(self.completion_confidence>0.0):
+    #             self.completion_confidence -= 1/(self.assembly._rate_selected)
 
-        return False
+    #     return False
 
     def onExit(self):
             rospy.logerr("Moving to next step!")
@@ -290,7 +288,7 @@ class RunTestStep(ApproachStep):
 class ResetStep(AssemblyStep):
         def __init__(self, algorithmBlocks:AlgorithmBlocks, paramsDict = {
                     "axis"          : [0,0,1],
-                    "force"         : [0,0,10],
+                    "force"         : [0,0,15],
                     "stability"     : .90,
                     "holdTime"      : .25
                 }) -> None:
@@ -305,7 +303,7 @@ class ResetStep(AssemblyStep):
             self.exitThreshold = self.paramsDict["stability"]    #Percentage of time for the last period
 
         def execute(self):
-            rospy.logerr_throttle(2, Fore.BLUE +"Reset step executing!" + Style.RESET_ALL)
+            # rospy.logerr_throttle(2, Fore.BLUE +"Reset step executing!" + Style.RESET_ALL)
             self.updateCommands()
             
         def updateCommands(self):
@@ -318,41 +316,41 @@ class ResetStep(AssemblyStep):
 
             # rospy.loginfo_throttle(2, Fore.CYAN + " Arbitrary command wrench is giving \n" + str(self.assembly.pose_vec) + "\nwhereas linear search would give \n" + str(self.assembly.linear_search_position([0,0,0])))
 
-        def checkCompletion(self):
+        # def checkCompletion(self):
 
-            if(self.exitConditions()):
-                if(self.completion_confidence < 1):
-                    self.completion_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
-                rospy.logerr_throttle(1, "Monitoring for completion, confidence = " + str(np.around(self.completion_confidence, 3)))
+        #     if(self.exitConditions()):
+        #         if(self.completion_confidence < 1):
+        #             self.completion_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
+        #         rospy.logerr_throttle(1, "Monitoring for completion, confidence = " + str(np.around(self.completion_confidence, 3)))
                 
-                if(self.completion_confidence > self.exitThreshold):
-                    if(self.holdStartTime == 0):
-                        #Start counting down to completion as long as we don't drop below threshold again:
-                        self.holdStartTime = rospy.get_time()
-                        rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
+        #         if(self.completion_confidence > self.exitThreshold):
+        #             if(self.holdStartTime == 0):
+        #                 #Start counting down to completion as long as we don't drop below threshold again:
+        #                 self.holdStartTime = rospy.get_time()
+        #                 rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
 
-                    elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
-                        #it's been long enough, exit loop
-                        rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
-                        return True 
-                else:
-                    # Confidence has dropped below the threshold, cancel the countdown.
-                    self.holdStartTime = 0
-            else:
-                #Exit conditions not true
-                if(self.completion_confidence>0.0):
-                    self.completion_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
+        #             elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
+        #                 #it's been long enough, exit loop
+        #                 rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
+        #                 return True 
+        #         else:
+        #             # Confidence has dropped below the threshold, cancel the countdown.
+        #             self.holdStartTime = 0
+        #     else:
+        #         #Exit conditions not true
+        #         if(self.completion_confidence>0.0):
+        #             self.completion_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
 
-            return False
+        #     return False
 
         def exitConditions(self) -> bool:
-            return self.awayFromSurface() and self.noCollision()
+            return self.awayFromSurface() and self.noForce()
 
         def awayFromSurface(self)->bool:
             #Check if we've retreated 1cm from the surface
             currentHeight = self.assembly.current_pose.transform.translation.z
-            return (currentHeight - self.assembly.surface_height > .01)
 
+            return (currentHeight - self.assembly.surface_height > .01)
         def onExit(self):
                 if(self.assembly.testingStage < len(self.assembly.paramList) ):
                     self.assembly.testingStage += 1

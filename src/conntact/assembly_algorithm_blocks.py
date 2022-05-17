@@ -7,40 +7,37 @@
 # Imports for ros
 # from _typeshed import StrPath
 
+import string
+import sys
 from builtins import staticmethod
 from operator import truediv
 from pickle import STRING, TRUE
-import string
-
-from colorama.initialise import reset_all
-from numpy.core.numeric import allclose
-import rospy
-import sys
-import numpy as np
-import matplotlib.pyplot as plt
-from rospkg import RosPack
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
-
-from rospy.core import configure_logging
-import tf.transformations as trfm
-
-from colorama import Fore, Back, Style, init
-# from sensor_msgs.msg import JointState
-# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
-from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
-from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
-
-import tf2_ros
-import tf2_py 
-# import tf2
-import tf2_geometry_msgs
-
-
 from threading import Lock
 
-from conntact.assembly_tools import AssemblyTools
-
+import matplotlib.pyplot as plt
+import numpy as np
+import rospy
+# import tf2
+# import tf2_geometry_msgs
+# import tf2_py
+# import tf2_ros
+import tf.transformations as trfm
+from colorama import Back, Fore, Style, init
+from colorama.initialise import reset_all
+# from sensor_msgs.msg import JointState
+# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
+from controller_manager_msgs.srv import (ListControllers, LoadController,
+                                         SwitchController)
+from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
+                               TransformStamped, Vector3, Wrench,
+                               WrenchStamped)
+from numpy.core.numeric import allclose
+from rospkg import RosPack
+from rospy.core import configure_logging
+from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
 from transitions import Machine
+
+from conntact.assembly_tools import AssemblyTools
 
 """State names
 For loop purposes, the state name *must* be identical to "state_"+(loop method name)
@@ -444,6 +441,8 @@ class AlgorithmBlocks(AssemblyTools):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
 
+
+
 class AssemblyStep:
     '''
     The default AssemblyStep provides a helpful structure to impliment discrete tasks in AssemblyBlocks. The default functionality below moves the TCP in a specified direction and ends when a rigid obstacle halts its motion. In general, the pattern goes thus:
@@ -459,6 +458,7 @@ class AssemblyStep:
     ::onExit:: is run by the AlgorithmBlocks execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the AlgorithmBlocks state machine). Any other end-of-step actions, like saving information to the AlgorithmBlocks object for later steps, can be done here.
 
     '''
+    # from conntact.assembly_algorithm_blocks import AlgorithmBlocks
 
     def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
         #set up the parameters for this step
@@ -475,7 +475,7 @@ class AssemblyStep:
         self.holdStartTime = 0;
 
         #Pass in a reference to the AlgorithmBlocks parent class; this reduces data copying in memory
-        self.assembly = algorithmBlocks
+        self.assembly:AlgorithmBlocks = algorithmBlocks
         
     def execute(self):
         '''Executed once per loop while this State is active. By default, just runs UpdateCommands to keep the compliance motion profile running.
@@ -540,7 +540,6 @@ class AssemblyStep:
         return STEP_COMPLETE_TRIGGER, True
 
 
-
 class findSurface(AssemblyStep):
     
     def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
@@ -560,31 +559,3 @@ class findSurface(AssemblyStep):
 
         return super().onExit()
         
-
-# class findHole(AssemblyStep):
-    
-#     def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
-#         AssemblyStep.__init__(self, algorithmBlocks)
-#         self.comply_axes = [0,0,1]
-#         self.seeking_force = [0,0,-7]
-
-#     def exitConditions(self)->bool:
-#         return self.droppedDown(.0004)
-
-#     def droppedDown(self, distance):
-#         return (self.assembly.current_pose.z < self.assembly.surface_height - distance)
-
-#     def onExit(self):
-#         """Executed once, when the change-state trigger is registered.
-#         """
-
-#         #Measure flat surface height and report it to AssemblyBlocks:
-#         self.assembly.target_hole_pose.x = self.assembly.current_pose.transform.translation.x
-#         self.assembly.target_hole_pose.y = self.assembly.current_pose.transform.translation.y
-
-
-#         return super().onExit()
-        
-
-# self.pose_vec = self.spiral_search_motion(self._spiral_params["frequency"], 
-#             self._spiral_params["min_amplitude"], self._spiral_params["max_cycles"])

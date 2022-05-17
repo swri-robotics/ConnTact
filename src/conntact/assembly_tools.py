@@ -28,7 +28,6 @@ from threading import Lock
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
-
 class AssemblyTools():
 
     def __init__(self, ROS_rate, start_time):
@@ -88,7 +87,7 @@ class AssemblyTools():
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
 
-        rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
+        # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
  
 
     def readYAML(self):
