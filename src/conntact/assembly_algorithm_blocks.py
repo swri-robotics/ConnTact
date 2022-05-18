@@ -520,7 +520,7 @@ class AssemblyStep:
         return False
 
     def exitConditions(self)->bool:
-        return self.noForce()
+        return self.noForce() 
 
     def static(self)->bool:
         return self.assembly.checkIfStatic(np.array(self.assembly.speed_static)) 

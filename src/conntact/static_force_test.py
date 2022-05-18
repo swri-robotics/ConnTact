@@ -199,33 +199,6 @@ class ApproachStep(AssemblyStep):
     def exitConditions(self) -> bool:
         return self.collision() and self.static()
 
-    # def checkCompletion(self):
-
-    #     if(self.exitConditions()):
-    #         if(self.completion_confidence < 1):
-    #             self.completion_confidence += 1/(self.assembly._rate_selected)
-    #         rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(np.around(self.completion_confidence, 3)))
-            
-    #         if(self.completion_confidence > self.exitThreshold):
-    #             if(self.holdStartTime == 0):
-    #                 #Start counting down to completion as long as we don't drop below threshold again:
-    #                 self.holdStartTime = rospy.get_time()
-    #                 rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
-
-    #             elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
-    #                 #it's been long enough, exit loop
-    #                 rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
-    #                 return True 
-    #         else:
-    #             # Confidence has dropped below the threshold, cancel the countdown.
-    #             self.holdStartTime = 0
-    #     else:
-    #         #Exit conditions not true
-    #         if(self.completion_confidence>0.0):
-    #             self.completion_confidence -= 1/(self.assembly._rate_selected)
-
-    #     return False
-
     def onExit(self):
             rospy.logerr("Moving to next step!")
             
@@ -247,11 +220,14 @@ class RunTestStep(ApproachStep):
 
         rospy.loginfo(Fore.BLUE+ "Executing test according to configuration: "+str(self.paramsDict["name"])+ Style.RESET_ALL)
         self.loggingInterval = rospy.Time.from_sec(1/20) #Try to log at 20 hz for now.
-        self.lastLog = rospy.Time.now()#record starting time
+        self.now = self.startTime = self.lastLog = rospy.Time.now()#record starting time
         self.file = self.openCSV(sys.path[0]+'/output_data' + self.paramsDict["name"] + '.csv')
         self.outputter = csv.writer(self.file)
         self.writeLine(["Test number " + str(self.assembly.testingStage), "Today's date: TODO"])
         self.writeLine(["Time", "Force X", "Force Y", "Force Z", "Position X", "Position Y", "Position Z"])
+
+        # The system should time out if it's not stable after some period. I'm going to say 4 times the hold time.
+        self.timeoutDuration = rospy.Duration(self.paramsDict["holdTime"] * 3)
         
 
     def execute(self):
@@ -271,9 +247,18 @@ class RunTestStep(ApproachStep):
     def writeLine(self, line:list):
         self.outputter.writerow(line)
 
+    def exitConditions(self) -> bool:
+        return self.static() and self.collision()
+
+    def checkCompletion(self):
+        if((self.now - self.startTime) > self.timeoutDuration):
+            rospy.loginfo(Fore.MAGENTA + "Execution step unstable, timeout reached." + Style.RESET_ALL)
+            self.writeLine(["Unstable! Test timed out.", "Exit time: ", str(self.timeoutDuration)])
+        return super().checkCompletion()
+
     def logData(self):
-        now = rospy.Time.now()
-        if((now - self.loggingInterval).to_sec() > self.lastLog.to_sec()):
+        self.now = rospy.Time.now()
+        if((self.now - self.loggingInterval).to_sec() > self.lastLog.to_sec()):
             #It's been long enough, log data again.
             self.lastLog = rospy.Time.now()
             force = self.assembly._average_wrench_world.force
@@ -288,7 +273,7 @@ class RunTestStep(ApproachStep):
 class ResetStep(AssemblyStep):
         def __init__(self, algorithmBlocks:AlgorithmBlocks, paramsDict = {
                     "axis"          : [0,0,1],
-                    "force"         : [0,0,15],
+                    "force"         : [0,0,20],
                     "stability"     : .90,
                     "holdTime"      : .25
                 }) -> None:
@@ -316,33 +301,6 @@ class ResetStep(AssemblyStep):
 
             # rospy.loginfo_throttle(2, Fore.CYAN + " Arbitrary command wrench is giving \n" + str(self.assembly.pose_vec) + "\nwhereas linear search would give \n" + str(self.assembly.linear_search_position([0,0,0])))
 
-        # def checkCompletion(self):
-
-        #     if(self.exitConditions()):
-        #         if(self.completion_confidence < 1):
-        #             self.completion_confidence += 1/(self.exitPeriod*self.assembly._rate_selected)
-        #         rospy.logerr_throttle(1, "Monitoring for completion, confidence = " + str(np.around(self.completion_confidence, 3)))
-                
-        #         if(self.completion_confidence > self.exitThreshold):
-        #             if(self.holdStartTime == 0):
-        #                 #Start counting down to completion as long as we don't drop below threshold again:
-        #                 self.holdStartTime = rospy.get_time()
-        #                 rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
-
-        #             elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
-        #                 #it's been long enough, exit loop
-        #                 rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
-        #                 return True 
-        #         else:
-        #             # Confidence has dropped below the threshold, cancel the countdown.
-        #             self.holdStartTime = 0
-        #     else:
-        #         #Exit conditions not true
-        #         if(self.completion_confidence>0.0):
-        #             self.completion_confidence -= 1/(self.exitPeriod*self.assembly._rate_selected)
-
-        #     return False
-
         def exitConditions(self) -> bool:
             return self.awayFromSurface() and self.noForce()
 
@@ -350,7 +308,8 @@ class ResetStep(AssemblyStep):
             #Check if we've retreated 1cm from the surface
             currentHeight = self.assembly.current_pose.transform.translation.z
 
-            return (currentHeight - self.assembly.surface_height > .01)
+            return (currentHeight - self.assembly.surface_height > -.05)
+
         def onExit(self):
                 if(self.assembly.testingStage < len(self.assembly.paramList) ):
                     self.assembly.testingStage += 1
