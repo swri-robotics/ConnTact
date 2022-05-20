@@ -2,7 +2,7 @@
 
 <launch>
   <!--  todo:Change this to happen in source code instead-->
-  <arg name="algorithm_selected" default="spiral_search_node" doc="Select the algorithm to be used: SpiralSearch or CornerSearch"/>
+  <arg name="algorithm_selected" default="spiral_search" doc="Select the algorithm to be used: spiral_search or corner_search or static_force"/>
   <rosparam file="$(find conntact)/config/peg_in_hole_params.yaml" />
   <rosparam file="$(find conntact)/config/conntact_config.yaml" />
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
@@ -24,7 +24,7 @@
   <node type="plotting_node" name="assembly_plotter" 
     pkg="conntact" output="screen" required="false" />
 
-  <node type="$(arg algorithm_selected)" name="algorithm_node" 
+  <node type="$(arg algorithm_selected)_node" name="algorithm_node" 
     pkg="conntact" output="screen" required="true" />
   <!--node if="$(arg algorithm_selected)" type="spiral_search_node" name="spiral_search_node" 
     pkg="conntact" output="screen" required="true" />
