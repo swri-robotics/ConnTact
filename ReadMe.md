@@ -14,13 +14,14 @@ ConnTact includes an implementation of the [transitions](https://github.com/pytr
 
 ## Installation
 
-Development of framework was done under Ubuntu Focal (20.04) using ROS Noetic.
-
+Development of framework was done under Ubuntu Focal (20.04) using [ROS Noetic](http://wiki.ros.org/noetic).
+  - If not previously installed, install [vcstools](http://wiki.ros.org/vcstool) and [catkin-tools](https://catkin-tools.readthedocs.io/en/latest/installing.html).
+  - Initialize ROS workspace (e.g., `mkdir -p ~/ros_ws/src`, `cd ~/ros_ws/`, `catkin init`)
   - Clone the repository into the `src/` directory of a ROS workspace (e.g., `~/ros_ws/src`)
   - Install Python dependencies `pip install transitions modern_robotics`
   - Install ROS source dependencies:
     - `cd ~/ros_ws/src`
-    - `vcs import < conntact/dependencies.rosinstall`
+    - `vcs import < ConnTact/dependencies.rosinstall` 
   - Install ROS package dependencies: `rosdep install --rosdistro noetic --ignore-src --from-paths .`
   - Source ROS and build the workspace: `. /opt/ros/noetic/setup.bash`, `catkin build`
 
