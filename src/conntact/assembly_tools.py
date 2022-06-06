@@ -134,9 +134,9 @@ class AssemblyTools():
             self.tool_data[str(key)]=dict()
             self.tool_data[str(key)]['transform']   = a
             self.tool_data[str(key)]['matrix']      = AssemblyTools.to_homogeneous(a.transform.rotation, a.transform.translation)
-            rospy.logerr("Added TCP entry for " + str(key))
+            # rospy.logerr("Added TCP entry for " + str(key))
             
-        rospy.logerr("TCP position dictionary now contains: " + str(list(self.tool_data))+ ", selected tool publishing now: ")
+        # rospy.logerr("TCP position dictionary now contains: " + str(list(self.tool_data))+ ", selected tool publishing now: ")
         self.select_tool(self.activeTCP)
 
         self.surface_height = rospy.get_param('/task/assumed_starting_height') #Starting height assumption
@@ -192,7 +192,7 @@ class AssemblyTools():
             self._rate.sleep()
             self.broadcaster.sendTransform(list(self.reference_frames.values()))
         else:
-            rospy.logerr("Trying to publish headless TF!")
+            rospy.logerr("Trying to publish headless TF! \n {}".format(self.reference_frames['tcp']))
     @staticmethod
     def get_tf_from_YAML(pos, ori, base_frame, child_frame): #Returns the transform from base_frame to child_frame based on vector inputs
         """Reads a TF from config YAML.
