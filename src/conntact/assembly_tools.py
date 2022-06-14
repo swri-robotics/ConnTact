@@ -6,25 +6,15 @@ from inspect import EndOfBlock
 from operator import truediv
 from typing import List
 import rospy
-# import tf
 import numpy as np
-import matplotlib.pyplot as plt
 from colorama import Fore, Back, Style
-from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
 from std_msgs.msg import String
-from rospy.core import configure_logging
-
-from sensor_msgs.msg import JointState
-# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
-from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
 
 import tf2_ros
-# import tf2
 import tf2_geometry_msgs
 import tf.transformations as trfm
 
-from threading import Lock
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
@@ -86,9 +76,6 @@ class AssemblyTools():
         self._average_wrench_gripper = self.create_wrench([0,0,0], [0,0,0]).wrench 
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
-
-        rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
- 
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
@@ -193,6 +180,7 @@ class AssemblyTools():
             self.broadcaster.sendTransform(list(self.reference_frames.values()))
         else:
             rospy.logerr("Trying to publish headless TF!")
+
     @staticmethod
     def get_tf_from_YAML(pos, ori, base_frame, child_frame): #Returns the transform from base_frame to child_frame based on vector inputs
         """Reads a TF from config YAML.
@@ -566,8 +554,6 @@ class AssemblyTools():
     def update_average_wrench(self) -> None:
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
-
-        
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
         #Get current angle from gripper to hole:
