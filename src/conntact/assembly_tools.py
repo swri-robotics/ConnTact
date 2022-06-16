@@ -9,7 +9,6 @@ import rospy
 import numpy as np
 from colorama import Fore, Back, Style
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
-from std_msgs.msg import String
 
 import tf2_ros
 import tf2_geometry_msgs
@@ -20,36 +19,14 @@ from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
 class AssemblyTools():
 
-    def __init__(self, ROS_rate, start_time):
-        self._wrench_pub            = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
-        self._pose_pub              = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped , queue_size=2)
-        self._adj_wrench_pub        = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
+    def __init__(self, rate, start_time):
 
-        #for plotting node
-        self.avg_wrench_pub         = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
-        self.avg_speed_pub          = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
-        self.rel_position_pub       = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
 
-        self.status_pub             = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
-
-        self._ft_sensor_sub         = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped, self.callback_update_wrench, queue_size=2)
-        # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
-
-        #Needed to get current pose of the robot
-        self.tf_buffer              = tf2_ros.Buffer(rospy.Duration(1200.0)) #tf buffer length
-        self.tf_listener            = tf2_ros.TransformListener(self.tf_buffer)
-        self.broadcaster            = tf2_ros.StaticTransformBroadcaster()
-
-        #Instantiate the dictionary of frames which are published to tf2. They have to be published in a single Broadcaster call to both be accessible.
+        #Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames       = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
 
-        self._rate_selected         = ROS_rate
-        self._rate                  = rospy.Rate(self._rate_selected) #setup for sleeping in hz
-        self._start_time            = start_time #for _spiral_search_basic_force_control and spiral_search_motion
-        self.curr_time              = rospy.get_rostime() - self._start_time
-        self.curr_time_numpy        = np.double(self.curr_time.to_sec())
+        self._rate_selected = rate
         self.highForceWarning       = False
-        self.collision_confidence   = 0
         # self._seq                   = 0
 
         # Initialize filtering class
@@ -479,7 +456,6 @@ class AssemblyTools():
 
         return AssemblyTools.transform_wrench_by_matrix(matrix, AssemblyTools.wrenchToArray(wrench))
 
-
     @staticmethod
     def transform_wrench_by_matrix(T_ab:np.ndarray, wrench:np.ndarray) -> np.ndarray:
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
@@ -493,7 +469,7 @@ class AssemblyTools():
         return AssemblyTools.arrayToWrench(wrench_transformed)
 
     @staticmethod
-    def matrix_to_tf(input:np.ndarray, base_frame:String, child_frame:String):
+    def matrix_to_tf(input:np.ndarray, base_frame:string, child_frame:string):
         """Converts matrix back into a TF.
         :param input: (np.Array) 4x4 homogeneous transformation matrix
         :param base_frame: (string) base frame for new pose.
@@ -504,7 +480,7 @@ class AssemblyTools():
         return output
 
     @staticmethod
-    def swap_pose_tf(input:PoseStamped, child_frame:String) -> TransformStamped:
+    def swap_pose_tf(input:PoseStamped, child_frame:string) -> TransformStamped:
         """Swaps pose for tf and vice-versa.
         :param input: (geometry_msgs.PoseStamped or geometry_msgs.TransformStamped) Input data type.
         :param child_frame: (string) Child frame name if converting Pose to Transform.
