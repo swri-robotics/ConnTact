@@ -18,35 +18,5 @@ if __name__ == '__main__':
 
     # Need to pass in methods to do all the ROS stuff. Prototype definitions are below the main method.
 
-
     assembly_application.main()
 
-
-class ConntactROSInterface(ConntactInterface):
-
-
-    def get_pose_change_over_time(self, frame, delta_time):
-        """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
-          previous pose (.1 s in the past) and the current pose; this speed is filtered and stored as self.average_speed.
-         """
-        curr_time = rospy.get_rostime() - self._start_time
-        if (curr_time.to_sec() > rospy.Duration(.5).to_sec()):
-            try:
-                earlierPosition = self.tf_buffer.lookup_transform("base_link", self.tool_data[self.activeTCP][
-                    'transform'].child_frame_id,
-                                                                  rospy.Time.now() - rospy.Duration(.1),
-                                                                  rospy.Duration(2.0))
-            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-                raise
-            # Speed Diff: distance moved / time between poses
-            positionDiff = self.as_array(self.current_pose.transform.translation) - self.as_array(
-                earlierPosition.transform.translation)
-            timeDiff = ((self.current_pose.header.stamp) - (earlierPosition.header.stamp)).to_sec()
-            if (timeDiff > 0.0):  # Update only if we're using a new pose; also, avoid divide by zero
-                speedDiff = positionDiff / timeDiff
-                # Moving averate weighted toward old speed; response is independent of rate selected.
-                # self.average_speed = self.average_speed * (1-10/self._rate_selected) + speedDiff * (10/self._rate_selected)
-                # rospy.logwarn_throttle(2.0, "Speed is currently about " + str(speedDiff))
-                self.average_speed = self.filters.average_speed(speedDiff)
-        else:
-            rospy.logwarn_throttle(1.0, "Too early to report past time!" + str(curr_time.to_sec()))
