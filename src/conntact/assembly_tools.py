@@ -54,7 +54,10 @@ class AssemblyTools():
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
-        self.average_speed = np.array([0.0, 0.0, 0.0])
+        self.average_speed = np.array([0.0,0.0,0.0])
+
+        # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
+ 
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data

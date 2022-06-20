@@ -4,43 +4,23 @@
 #UR IP Address is now 175.31.1.137
 #Computer has to be 175.31.1.150
 
-# Imports for ros
-# from _typeshed import StrPath
-
-from builtins import staticmethod
-from operator import truediv
-from pickle import STRING, TRUE
 import string
-
-from colorama.initialise import reset_all
-from numpy.core.numeric import allclose
-import rospy
 import sys
+from builtins import staticmethod
+
 import numpy as np
-import matplotlib.pyplot as plt
-from rospkg import RosPack
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
-
-from rospy.core import configure_logging
+import rospy
 import tf.transformations as trfm
-
-from colorama import Fore, Back, Style, init
-# from sensor_msgs.msg import JointState
-# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
-from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
-from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
-
-import tf2_ros
-import tf2_py 
-# import tf2
-import tf2_geometry_msgs
-
-
-from threading import Lock
+from colorama import Back, Fore, Style, init
+from std_srvs.srv import Trigger
+from controller_manager_msgs.srv import (ListControllers, LoadController,
+                                         SwitchController)
+from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
+                               TransformStamped, Vector3, Wrench,
+                               WrenchStamped)
+from transitions import Machine
 
 from conntact.assembly_tools import AssemblyTools
-
-from transitions import Machine
 
 """State names
 For loop purposes, the state name *must* be identical to "state_"+(loop method name)
@@ -73,6 +53,52 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 class AlgorithmBlocks(AssemblyTools):
 
     def __init__(self, ROS_rate, start_time):
+        try:
+            rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
+            self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
+            self.print("connected to service zero_ftsensor")
+            self.zero_ft_sensor()
+        except(rospy.ROSException):
+            self.print("failed to find service zero_ftsensor")
+
+        try:
+            rospy.wait_for_service("/controller_manager/switch_controller", 5)
+            rospy.wait_for_service("/controller_manager/list_controllers", 5)
+            switch_ctrl_srv = rospy.ServiceProxy("/controller_manager/switch_controller", SwitchController)
+            controller_lister_srv = rospy.ServiceProxy("/controller_manager/list_controllers", ListControllers)
+
+            get_cart_ctrl = lambda ctrl_list : [a for a in ctrl_list if(a.name == "cartesian_compliance_controller")][0]
+
+            start_controllers = ['cartesian_compliance_controller']
+            stop_controllers = ['pos_joint_traj_controller']
+            strictness = 2
+            start_asap = False
+            timeout = 1.0
+
+            # Let's try 3 times and then report error.
+            for a in [0,1,2,3]:
+                switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
+                                strictness=strictness, start_asap=start_asap, timeout=timeout)
+                ctrl_list = controller_lister_srv().controller
+                if(len(ctrl_list) < 1):
+                    rospy.logerr("No controllers in controller list! Controller list manager not ready.")
+                    rospy.sleep(.5)
+                    continue
+                else:
+                    cart_ctrl = get_cart_ctrl(ctrl_list)
+                    if cart_ctrl.state == 'running':
+                        self.print("Switched to cartesian_compliance_controller successfully.")
+                        break
+                    else:
+                        if(a<3):
+                            self.print("Trying again to switch to compliance_controller...")
+                            rospy.sleep(.5)
+                        else:
+                            self.print("Couldn't switch to compliance controller! Try swiching manually.")
+
+
+        except(rospy.ROSException):
+            self.print("failed to find service switch_controller. Try switching manually to begin.")
 
         #Configuration variables, to be moved to a yaml file later:
         self.speed_static = [1/1000,1/1000,1/1000] #Speed at which the system considers itself stopped. Rel. to target hole.
@@ -125,6 +151,17 @@ class AlgorithmBlocks(AssemblyTools):
         self.step:AssemblyStep = None
 
 
+    def zero_ft_sensor(self):
+        if self.zeroForceService():
+            self.print("Successfully zeroed the force-torque sensor.")
+        else:
+            self.print("Warning: Unsuccessfully tried to zero the force-torque sensor.")
+
+
+    def print(self, string: str):
+        rospy.loginfo(Fore.LIGHTBLUE_EX + string + Style.RESET_ALL)
+
+
     def post_action(self, trigger_name):
         """Defines the next trigger which the state machine should execute.
         """
@@ -164,9 +201,6 @@ class AlgorithmBlocks(AssemblyTools):
         self.completion_confidence = 0
 
     def update_commands(self):
-        # rospy.logerr_throttle(2, "Preparing to publish pose: " + str(self.pose_vec) + " and wrench: " + str(self.wrench_vec))
-        # rospy.logerr_throttle(2, "Preparing to publish pose: " + str(self.pose_vec))
-        # rospy.logerr_throttle(2, "Current pose: " + str(self.current_pose.transform) )
         self.publish_pose(self.pose_vec)
         self.publish_wrench(self.wrench_vec)
         
@@ -277,7 +311,7 @@ class AlgorithmBlocks(AssemblyTools):
             acceptable = True
 
             if(acceptable):
-                rospy.logerr("Starting linear search.")
+                self.print("Starting linear search.")
                 self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
                 
             else:
@@ -303,11 +337,11 @@ class AlgorithmBlocks(AssemblyTools):
         # el
         if(self.checkIfStatic(np.array(self.speed_static)) and self.checkIfColliding(np.array(seeking_force))):
             self.completion_confidence = self.completion_confidence + 1/self._rate_selected
-            rospy.logerr_throttle(1, "Monitoring for flat surface, confidence = " + str(self.completion_confidence))
+            # rospy.(1, "Monitoring for flat surface, confidence = " + str(self.completion_confidence))
             #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
             if(self.completion_confidence > .90):
                 #Stopped moving vertically and in contact with something that counters push force
-                rospy.logerr("Flat surface detected! Moving to spiral search!")
+                self.print("Flat surface detected! Moving to spiral search!")
                 #Measure flat surface height:
                 self.surface_height = self.current_pose.transform.translation.z
                 self.next_trigger, self.switch_state = self.post_action(FIND_HOLE_TRIGGER) 
@@ -332,20 +366,20 @@ class AlgorithmBlocks(AssemblyTools):
         elif( self.current_pose.transform.translation.z <= self.surface_height - .0004):
             #If we've descended at least 5mm below the flat surface detected, consider it a hole.
             self.completion_confidence = self.completion_confidence + 1/self._rate_selected
-            rospy.logerr_throttle(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
+            rospy.loginfo_throttle(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
             if(self.completion_confidence > .90):
                     #Descended from surface detection point. Updating hole location estimate.
                     self.x_pos_offset = self.current_pose.transform.translation.x
                     self.y_pos_offset = self.current_pose.transform.translation.y
                     self._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
                     #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
-                    rospy.logerr_throttle(1.0, "Hole found, peg inserting...")
+                    self.print("Hole found, peg inserting...")
                     self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER) 
         else:
             self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self._rate_selected, .01]))
-            if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z) 
-                    + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) + Style.RESET_ALL )
+            # if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
+                # rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z)
+                #     + " whereas we should drop down to " + str(self.surface_height - self.hole_dept+h) + Style.RESET_ALL )
 
     def inserting_along_axis(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
@@ -364,7 +398,7 @@ class AlgorithmBlocks(AssemblyTools):
             and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [1.5,1.5,seeking_force*-1.5], [-1.5,-1.5,seeking_force*-.75])
             and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
             self.completion_confidence = self.completion_confidence + 1/self._rate_selected
-            rospy.logerr_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.completion_confidence))
+            rospy.loginfo_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.completion_confidence))
             #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
             if(self.completion_confidence > .90):
                     #Stopped moving vertically and in contact with something that counters push force
@@ -444,6 +478,8 @@ class AlgorithmBlocks(AssemblyTools):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
 
+
+
 class AssemblyStep:
     '''
     The default AssemblyStep provides a helpful structure to impliment discrete tasks in AssemblyBlocks. The default functionality below moves the TCP in a specified direction and ends when a rigid obstacle halts its motion. In general, the pattern goes thus:
@@ -459,6 +495,7 @@ class AssemblyStep:
     ::onExit:: is run by the AlgorithmBlocks execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the AlgorithmBlocks state machine). Any other end-of-step actions, like saving information to the AlgorithmBlocks object for later steps, can be done here.
 
     '''
+    # from conntact.assembly_algorithm_blocks import AlgorithmBlocks
 
     def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
         #set up the parameters for this step
@@ -475,7 +512,7 @@ class AssemblyStep:
         self.holdStartTime = 0;
 
         #Pass in a reference to the AlgorithmBlocks parent class; this reduces data copying in memory
-        self.assembly = algorithmBlocks
+        self.assembly:AlgorithmBlocks = algorithmBlocks
         
     def execute(self):
         '''Executed once per loop while this State is active. By default, just runs UpdateCommands to keep the compliance motion profile running.
@@ -503,11 +540,9 @@ class AssemblyStep:
                 if(self.holdStartTime == 0):
                     #Start counting down to completion as long as we don't drop below threshold again:
                     self.holdStartTime = rospy.get_time()
-                    rospy.logerr("Countdown beginning at time " + str(self.holdStartTime))
 
                 elif(self.holdStartTime < rospy.get_time() - self.exitPeriod ):
                     #it's been long enough, exit loop
-                    rospy.logerr("Countdown ending at time " + str(rospy.get_time()))
                     return True 
             else:
                 # Confidence has dropped below the threshold, cancel the countdown.
@@ -520,7 +555,7 @@ class AssemblyStep:
         return False
 
     def exitConditions(self)->bool:
-        return self.noForce()
+        return self.noForce() 
 
     def static(self)->bool:
         return self.assembly.checkIfStatic(np.array(self.assembly.speed_static)) 
@@ -538,7 +573,6 @@ class AssemblyStep:
         """Executed once, when the change-state trigger is registered.
         """
         return STEP_COMPLETE_TRIGGER, True
-
 
 
 class findSurface(AssemblyStep):
@@ -560,31 +594,3 @@ class findSurface(AssemblyStep):
 
         return super().onExit()
         
-
-# class findHole(AssemblyStep):
-    
-#     def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
-#         AssemblyStep.__init__(self, algorithmBlocks)
-#         self.comply_axes = [0,0,1]
-#         self.seeking_force = [0,0,-7]
-
-#     def exitConditions(self)->bool:
-#         return self.droppedDown(.0004)
-
-#     def droppedDown(self, distance):
-#         return (self.assembly.current_pose.z < self.assembly.surface_height - distance)
-
-#     def onExit(self):
-#         """Executed once, when the change-state trigger is registered.
-#         """
-
-#         #Measure flat surface height and report it to AssemblyBlocks:
-#         self.assembly.target_hole_pose.x = self.assembly.current_pose.transform.translation.x
-#         self.assembly.target_hole_pose.y = self.assembly.current_pose.transform.translation.y
-
-
-#         return super().onExit()
-        
-
-# self.pose_vec = self.spiral_search_motion(self._spiral_params["frequency"], 
-#             self._spiral_params["min_amplitude"], self._spiral_params["max_cycles"])
