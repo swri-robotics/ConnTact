@@ -108,11 +108,16 @@ class ConntactROSInterface(ConntactInterface):
         :param wrench: (WrenchStamped) commanded force and torque object.
         '''
         self._wrench_pub.publish(wrench)
-        return
 
     def publish_averaged_wrench(self, wrench: Wrench):
         self._adj_wrench_pub.publish(wrench)
         return
+
+    def publish_plotting_values(self, items: dict):
+        self.status_pub.publish(str(items["status_dict"]))
+        self.avg_wrench_pub.publish(items["_average_wrench_world"])
+        self.avg_speed_pub.publish(Point(items["average_speed"][0], items["average_speed"][1], items["average_speed"][2]))
+        self.rel_position_pub.publish(items["current_pose"])
 
     def publish_command_position(self, pose: PoseStamped):
         '''Returns a position command out of Conntact and into the calling environment so that the robot can act upon that command.

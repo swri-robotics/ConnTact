@@ -87,6 +87,10 @@ class ConntactInterface():
         self.print_not_found_error()
         pass
 
+    def publish_plotting_values(self, items: dict):
+        self.print_not_found_error()
+        pass
+
     @abc.abstractmethod
     def print_not_found_error(self):
         '''Whine about the abstract method not being overridden in the implementation.

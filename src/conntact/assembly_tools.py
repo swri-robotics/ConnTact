@@ -20,7 +20,7 @@ from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
 class AssemblyTools():
 
-    def __init__(self, interface: ConntactInterface, rate: float):
+    def __init__(self, interface: ConntactInterface, rate: int):
 
         # Save a reference to the interface.
         self.interface = interface
@@ -276,7 +276,7 @@ class AssemblyTools():
         return transform
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
-        """Output ROS wrench parameters from human-readable vector inputs. 
+        """Output ROS wrench parameters from human-readable vector inputs.
         :param vec: (list of floats) Vector of desired force in each direction (in Newtons).
         :param ori: (list of floats) Vector of desired torque about each axis (in N*m)
         """
@@ -345,7 +345,6 @@ class AssemblyTools():
                 self.tool_data[self.activeTCP]['matrix'])  # tf from tcp_goal to wrist = gTw
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = AssemblyTools.matrix_to_pose(goal_matrix, b_link)
-
 
         self.interface.publish_command_position(goal_pose)
 
@@ -518,14 +517,15 @@ class AssemblyTools():
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
         # Get current angle from gripper to hole:
-        transform_world_rotation: TransformStamped = self.tf_buffer.lookup_transform('tool0', 'target_hole_position',
-                                                                                     rospy.Time(0),
-                                                                                     rospy.Duration(1.25))
+        transform_world_rotation: TransformStamped = self.interface.get_transform('tool0', 'target_hole_position')
+
         # We want to rotate this only, not reinterpret F/T components.
         # We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.
-        offset = Point(self.tool_data[self.activeTCP]["transform"].transform.translation.x,
-                       self.tool_data[self.activeTCP]["transform"].transform.translation.y,
-                       self.tool_data[self.activeTCP]["transform"].transform.translation.z - .05)
+
+        relative_translation = self.tool_data[self.activeTCP]["transform"].transform.translation
+        offset = Point(relative_translation.x,
+                       relative_translation.y,
+                       relative_translation.z - .05)
 
         transform_world_rotation.transform.translation = offset
 
@@ -556,19 +556,26 @@ class AssemblyTools():
     def publish_plotted_values(self) -> None:
         """Publishes critical data for plotting node to process.
         """
-        self.avg_wrench_pub.publish(self._average_wrench_world)
 
-        self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1], self.average_speed[2]))
-
-        self.rel_position_pub.publish(self.current_pose.transform.translation)
-
+        items = dict()
         # Send a dictionary as plain text to expose some additional info
-        status_dict = dict(
+        items["status_dict"] = dict(
             {('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id))})
         if (self.surface_height != 0.0):
             # If we have located the work surface
-            status_dict['surface_height'] = str(self.surface_height)
-        self.status_pub.publish(str(status_dict))
+            items["status_dict"]['surface_height'] = str(self.surface_height)
+
+        # self.status_pub.publish(str(status_dict))
+
+        # self.avg_wrench_pub.publish(self._average_wrench_world)
+        items["_average_wrench_world"] = self._average_wrench_world
+
+        # self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1], self.average_speed[2]))
+        items["average_speed"] = self.average_speed
+
+        items["current_pose"] = self.current_pose.transform.translation
+
+        self.interface.publish_plotting_values(items)
 
     def as_array(self, vec: Point) -> np.ndarray:
         """Takes a Point and returns a Numpy array.
