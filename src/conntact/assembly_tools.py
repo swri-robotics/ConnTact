@@ -12,8 +12,9 @@ import tf2_geometry_msgs
 import numpy as np
 from colorama import Fore, Back, Style
 import tf.transformations as trfm
+import inspect
 
-from conntact_interface import ConntactInterface
+from conntact.conntact_interface import ConntactInterface
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
@@ -26,7 +27,7 @@ class AssemblyTools():
         self.interface = interface
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
-
+        
         self._rate_selected = rate
         self.highForceWarning = False
         # self._seq                   = 0
@@ -132,8 +133,8 @@ class AssemblyTools():
         # self.target_broadcaster = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
         targetHoleTF = AssemblyTools.swap_pose_tf(self.target_hole_pose, "target_hole_position")
         self.reference_frames['target_hole_position'] = targetHoleTF
-        self.send_reference_TFs()
-        self._rate.sleep()
+        # self.send_reference_TFs()
+        # self._rate.sleep()
         self.x_pos_offset = self.target_hole_pose.pose.position.x
         self.y_pos_offset = self.target_hole_pose.pose.position.y
 
@@ -158,7 +159,11 @@ class AssemblyTools():
         # rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
 
     def send_reference_TFs(self):
+        # print(Fore.MAGENTA + Back.BLUE + "Send requested by method {}.".format(inspect.stack()[1][3]) + Style.RESET_ALL)
+        print(Fore.MAGENTA  + "Sending tcps: {}".format(self.reference_frames) + Style.RESET_ALL)
+        print(Fore.MAGENTA  + "Sending list: {}".format(list(self.reference_frames.values())) + Style.RESET_ALL)
         self.interface.register_frames(list(self.reference_frames.values()))
+
 
     @staticmethod
     def get_tf_from_YAML(pos, ori, base_frame,

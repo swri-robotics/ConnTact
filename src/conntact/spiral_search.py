@@ -35,6 +35,8 @@ import tf2_geometry_msgs
 from threading import Lock
 
 from conntact.assembly_algorithm_blocks import AlgorithmBlocks, AssemblyStep
+from conntact.conntact_interface import ConntactInterface
+from conntact.ros_conntact_interface import ConntactROSInterface
 
 from transitions import Machine
 
@@ -62,15 +64,17 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 class SpiralSearch(AlgorithmBlocks, Machine):
 
-    def __init__(self):
-        
+    def __init__(self, interface=None):
         
 
         # Override Assembly Tools config variables
         ROS_rate = 100 #setup for sleeping in hz
         start_time = rospy.get_rostime() 
+
+        if(interface is None):
+            interface = ConntactROSInterface(ROS_rate)
         
-        AlgorithmBlocks.__init__(self, ROS_rate, start_time)
+        AlgorithmBlocks.__init__(self, ROS_rate, start_time, interface)
 
         #Override Alg Blocks config variables:
         states = [

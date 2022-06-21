@@ -52,7 +52,7 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 class AlgorithmBlocks(AssemblyTools):
 
-    def __init__(self, ROS_rate, start_time):
+    def __init__(self, ROS_rate, start_time, interface):
         try:
             rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
             self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
@@ -80,6 +80,7 @@ class AlgorithmBlocks(AssemblyTools):
                 switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
                                 strictness=strictness, start_asap=start_asap, timeout=timeout)
                 ctrl_list = controller_lister_srv().controller
+                self.print(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
                 if(len(ctrl_list) < 1):
                     rospy.logerr("No controllers in controller list! Controller list manager not ready.")
                     rospy.sleep(.5)
@@ -142,7 +143,7 @@ class AlgorithmBlocks(AssemblyTools):
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         
         
-        AssemblyTools.__init__(self, ROS_rate, start_time)
+        AssemblyTools.__init__(self, interface, ROS_rate)
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
         # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search 

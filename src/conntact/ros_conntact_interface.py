@@ -12,7 +12,7 @@ import tf.transformations as trfm
 import numpy as np
 from colorama import Fore, Back, Style
 
-from conntact_interface import ConntactInterface
+from conntact.conntact_interface import ConntactInterface
 
 class ConntactROSInterface(ConntactInterface):
     def __init__(self, ROS_rate=100):
@@ -87,7 +87,14 @@ class ConntactROSInterface(ConntactInterface):
         ''' Adds one or more frames of reference to the environment.
         :param framesList: (List) List of `geometry_msgs.msg.TransformStamped` frames to be added to the environment for later reference with get_pose
         '''
+
+        # if(self.reference_frames['tcp'].header.frame_id != ''):
+        #     # print("Broadcasting tfs: " + str(self.reference_frames))
+        #     self._rate.sleep()
+        #     self.broadcaster.sendTransform(list(self.reference_frames.values()))
+        
         self.broadcaster.sendTransform(framesList)
+        # rospy.spin()
 
     def send_error(self, message, delay=0.0):
         '''Displays an error message for the user.
@@ -130,3 +137,24 @@ class ConntactROSInterface(ConntactInterface):
         '''
         print("Abstract Conntact method {} not yet implemented.".format(inspect.stack()[1][3]))
         raise NotImplementedError()
+
+
+# base                                   base_link.
+# base_link_inertia                      base_link.
+# table                                  base_link.
+# tool0                                  peg_tip_position.
+# flange                                 wrist_3_link.
+# base_plate                             table.
+# tool0_to_gripper_tip_link              tool0.
+# tool0_eoat_link                        tool0.
+# wrist_3_link                           wrist_2_link.
+# tool0_controller                       base.
+# forearm_link                           upper_arm_link.
+# upper_arm_link                         shoulder_link.
+# shoulder_link                          base_link_inertia.
+# wrist_1_link                           forearm_link.
+# wrist_2_link                           wrist_1_link.
+# peg_tip_position                       tool0_to_gripper_tip_link.
+# target_hole_position                   base_link.
+# peg_corner_position                    tool0_to_gripper_tip_link.
+# peg_middle_position                    tool0_to_gripper_tip_link.
