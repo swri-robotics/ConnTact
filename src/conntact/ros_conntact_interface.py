@@ -58,6 +58,7 @@ class ConntactROSInterface(ConntactInterface):
         :return: (geometry_msgs.TransformStamped)
         :rtype: :class:`geometry_msgs.msg.TransformStamped`
         '''
+        print(Fore.MAGENTA + "lookup tcps: {}, {}".format(frame, origin) + Style.RESET_ALL)
         return self.tf_buffer.lookup_transform(origin, frame, rospy.Time.now(), rospy.Duration(1))
 
 
@@ -92,7 +93,8 @@ class ConntactROSInterface(ConntactInterface):
         #     # print("Broadcasting tfs: " + str(self.reference_frames))
         #     self._rate.sleep()
         #     self.broadcaster.sendTransform(list(self.reference_frames.values()))
-        
+        namelist = [(jj.header.frame_id, jj.child_frame_id) for jj in framesList]
+        print(Fore.MAGENTA +"Broadcasting tfs: {}".format(namelist) + Style.RESET_ALL)
         self.broadcaster.sendTransform(framesList)
         # rospy.spin()
 

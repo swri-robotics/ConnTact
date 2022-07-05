@@ -50,12 +50,13 @@ class AssemblyTools():
         self.switch_state = False
 
         # initialize loop parameters
-        self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
+        self.current_pose = self.get_current_pos()
+
 
         # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
  
@@ -160,8 +161,8 @@ class AssemblyTools():
 
     def send_reference_TFs(self):
         # print(Fore.MAGENTA + Back.BLUE + "Send requested by method {}.".format(inspect.stack()[1][3]) + Style.RESET_ALL)
-        print(Fore.MAGENTA  + "Sending tcps: {}".format(self.reference_frames) + Style.RESET_ALL)
-        print(Fore.MAGENTA  + "Sending list: {}".format(list(self.reference_frames.values())) + Style.RESET_ALL)
+        # print(Fore.MAGENTA  + "Sending tcps: {}".format(self.reference_frames) + Style.RESET_ALL)
+        # print(Fore.MAGENTA  + "Sending list: {}".format(list(self.reference_frames.values())) + Style.RESET_ALL)
         self.interface.register_frames(list(self.reference_frames.values()))
 
 
@@ -213,6 +214,7 @@ class AssemblyTools():
         :param tool_name: (string) Key in tool_data dictionary for desired frame.
         """
         # TODO: Make this a loop-run state to slowly slerp from one TCP to another using https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
+
         if (tool_name in list(self.tool_data)):
             self.activeTCP = tool_name
             self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
