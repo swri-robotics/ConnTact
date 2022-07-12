@@ -18,6 +18,13 @@ from conntact.conntact_interface import ConntactInterface
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
 
+class ToolData():
+    def __init__(self):
+        self.name = ""
+        self.frame_name = ""
+        self.transform = None
+        self.matrix = None
+        self.validToolsDict = None
 
 class AssemblyTools():
 
@@ -36,6 +43,7 @@ class AssemblyTools():
         self.filters = AssemblyFilters(5, self._rate_selected)
 
         self.tool_data = dict()
+        self.toolData = ToolData()
         """ Dictionary of transform/ matrix transformation dictionary which contains each TCP configuration loaded from the YAML. It is automatically populated in readYAML(). Access info by invoking: 
 
         self.tool_data[*tool name*]["transform"] = (geometry_msgs.TransformStamped) Transform from tool0 (robot wrist flange) to tcp location.
@@ -50,16 +58,16 @@ class AssemblyTools():
         self.switch_state = False
 
         # initialize loop parameters
+        self.current_pose = self.get_current_pos()
         self.pose_vec = self.full_compliance_position()
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
-        self.current_pose = self.get_current_pos()
 
 
         # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
- 
+
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
@@ -72,6 +80,7 @@ class AssemblyTools():
         self.target_hole = rospy.get_param('/task/target_hole')
         self.activeTCP = rospy.get_param('/task/starting_tcp')
 
+
         self.read_board_positions()
 
         self.read_peg_hole_dimensions()
@@ -82,31 +91,23 @@ class AssemblyTools():
         # Calculate transform from TCP to peg corner
         self.peg_locations = rospy.get_param('/objects/' + self.target_peg + '/grasping/pinch_grasping/locations')
 
-        # Setup default zero-transform in case it needs to be referenced for consistency.
-        self.tool_data['gripper_tip'] = dict()
-        a = TransformStamped()
-        a.header.frame_id = "tool0"
-        a.child_frame_id = 'gripper_tip'
-        a.transform.rotation.w = 1
-        self.tool_data['gripper_tip']['transform'] = a
-        self.tool_data['gripper_tip']['matrix'] = AssemblyTools.to_homogeneous(a.transform.rotation,
-                                                                               a.transform.translation)
-        self.reference_frames['tcp'] = a
-
-        for key in list(self.peg_locations):
-            # Read in each listed tool position; measure their TF and store in dictionary.
-            # Write the position of the peg's corner wrt the gripper tip as a reference-ready TF.
-            pegTransform = AssemblyTools.get_tf_from_YAML(self.peg_locations[str(key)]['pose'],
-                                                          self.peg_locations[str(key)]['orientation'],
-                                                          "tool0_to_gripper_tip_link", "peg_" + str(key) + "_position")
-            self.reference_frames['tcp'] = pegTransform
-            self.send_reference_TFs()
-            a = self.interface.get_transform("tool0", "peg_" + str(key) + "_position")
-            self.tool_data[str(key)] = dict()
-            self.tool_data[str(key)]['transform'] = a
-            self.tool_data[str(key)]['matrix'] = AssemblyTools.to_homogeneous(a.transform.rotation,
-                                                                              a.transform.translation)
-            rospy.logerr("Added TCP entry for " + str(key))
+        # Set up tool_data.
+        self.toolData.name = self.activeTCP
+        self.toolData.validToolsDict = self.peg_locations
+        # for key in list(self.peg_locations):
+        #     # Read in each listed tool position; measure their TF and store in dictionary.
+        #     # Write the position of the peg's corner wrt the gripper tip as a reference-ready TF.
+        #     pegTransform = AssemblyTools.get_tf_from_YAML(self.peg_locations[str(key)]['pose'],
+        #                                                   self.peg_locations[str(key)]['orientation'],
+        #                                                   "tool0_to_gripper_tip_link", "peg_" + str(key) + "_position")
+        #     self.reference_frames['tcp'] = pegTransform
+        #     self.send_reference_TFs()
+        #     a = self.interface.get_transform("tool0", "peg_" + str(key) + "_position")
+        #     self.tool_data[str(key)] = dict()
+        #     self.tool_data[str(key)]['transform'] = a
+        #     self.tool_data[str(key)]['matrix'] = AssemblyTools.to_homogeneous(a.transform.rotation,
+        #                                                                       a.transform.translation)
+        #     rospy.logerr("Added TCP entry for " + str(key))
 
         rospy.logerr(
             "TCP position dictionary now contains: " + str(list(self.tool_data)) + ", selected tool publishing now: ")
@@ -215,10 +216,21 @@ class AssemblyTools():
         """
         # TODO: Make this a loop-run state to slowly slerp from one TCP to another using https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
 
-        if (tool_name in list(self.tool_data)):
-            self.activeTCP = tool_name
-            self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
+        # if (tool_name in list(self.tool_data)):
+        #     self.activeTCP = tool_name
+        #     self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
+        #     self.send_reference_TFs()
+        if (tool_name in list(self.toolData.validToolsDict)):
+            self.toolData.name = tool_name
+            self.toolData.frame_name = "peg_" + tool_name + "_position"
+            gripper_to_tool_tip_transform = AssemblyTools.get_tf_from_YAML(
+                self.peg_locations[tool_name]['pose'],
+                self.peg_locations[tool_name]['orientation'],
+                "tool0_to_gripper_tip_link", self.toolData.frame_name)
+            self.reference_frames['tcp'] = gripper_to_tool_tip_transform
             self.send_reference_TFs()
+            # get the transform from tool0 (which CartesianControllers treats as the root frame) to the TCP
+            self.toolData.transform = self.interface.get_transform("tool0", self.toolData.frame_name)
         else:
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
 
@@ -277,6 +289,7 @@ class AssemblyTools():
         """Read in current pose from robot base to activeTCP.        
         """
         transform = TransformStamped()  # TODO: Check that this worked.
+        rospy.spin()
 
         if (self.activeTCP == "tool0"):
             transform = self.interface.get_transform("base_link", "tool0")
