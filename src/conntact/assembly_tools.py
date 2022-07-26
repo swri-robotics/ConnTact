@@ -34,6 +34,7 @@ class AssemblyTools():
         self.interface = interface
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
+        self._start_time = rospy.get_rostime()
         
         self._rate_selected = rate
         self.highForceWarning = False
@@ -51,6 +52,7 @@ class AssemblyTools():
         """
 
         self.readYAML()
+        print("Unyamml'd")
 
         # loop parameters
         self.wrench_vec = self.get_command_wrench([0, 0, 0])
@@ -58,12 +60,18 @@ class AssemblyTools():
         self.switch_state = False
 
         # initialize loop parameters
+        rospy.sleep(10)
+        print("Pose'n")
         self.current_pose = self.get_current_pos()
+        print("Pose'd")
         self.pose_vec = self.full_compliance_position()
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
+
+
+        print("Ddoen weith aeinnit")
 
 
         # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
@@ -112,6 +120,7 @@ class AssemblyTools():
         rospy.logerr(
             "TCP position dictionary now contains: " + str(list(self.tool_data)) + ", selected tool publishing now: ")
         self.select_tool(self.activeTCP)
+        print("Select Tool successful!")
 
         self.surface_height = rospy.get_param('/task/assumed_starting_height')  # Starting height assumption
         self.restart_height = rospy.get_param('/task/restart_height')  # Height to restart
@@ -231,6 +240,8 @@ class AssemblyTools():
             self.send_reference_TFs()
             # get the transform from tool0 (which CartesianControllers treats as the root frame) to the TCP
             self.toolData.transform = self.interface.get_transform("tool0", self.toolData.frame_name)
+            print("self.tooldata.transform is now : {}".format(self.toolData.transform))
+
         else:
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
 
@@ -289,13 +300,12 @@ class AssemblyTools():
         """Read in current pose from robot base to activeTCP.        
         """
         transform = TransformStamped()  # TODO: Check that this worked.
-        rospy.spin()
 
         if (self.activeTCP == "tool0"):
             transform = self.interface.get_transform("base_link", "tool0")
         else:
             transform = self.interface.get_transform("base_link",
-                                                     self.tool_data[self.activeTCP]['transform'].child_frame_id)
+                                                     self.toolData.frame_name)
         return transform
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
@@ -569,7 +579,7 @@ class AssemblyTools():
 
         distance, time = self.interface.get_transform_change_over_time(
             "base_link",
-            self.tool_data[self.activeTCP]['transform'].child_frame_id,
+            self.toolData.frame_name,
             .1)
         if (time is not None and time > 0.0):  # Update only if we're using a new pose; also, avoid divide by zero
             speedDiff = distance / time
@@ -583,7 +593,7 @@ class AssemblyTools():
         items = dict()
         # Send a dictionary as plain text to expose some additional info
         items["status_dict"] = dict(
-            {('state', self.state), ('tcp_name', str(self.tool_data[self.activeTCP]['transform'].child_frame_id))})
+            {('state', self.state), ('tcp_name', str(self.toolData.frame_name))})
         if (self.surface_height != 0.0):
             # If we have located the work surface
             items["status_dict"]['surface_height'] = str(self.surface_height)
@@ -678,7 +688,7 @@ class AssemblyTools():
         :return: (Bool) True if all is safe; False if a warning stop is requested.
         """
         # Calculate acceptable torque from transverse forces
-        radius = np.linalg.norm(self.as_array(self.tool_data[self.activeTCP]['transform'].transform.translation))
+        radius = np.linalg.norm(self.as_array(self.toolData.transform.transform.translation))
         # Set a minimum radius to always permit some torque
         radius = max(3, radius)
         rospy.loginfo_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))

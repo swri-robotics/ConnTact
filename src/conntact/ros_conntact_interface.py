@@ -59,7 +59,13 @@ class ConntactROSInterface(ConntactInterface):
         :rtype: :class:`geometry_msgs.msg.TransformStamped`
         '''
         print(Fore.MAGENTA + "lookup tcps: {}, {}".format(frame, origin) + Style.RESET_ALL)
-        return self.tf_buffer.lookup_transform(origin, frame, rospy.Time.now(), rospy.Duration(1))
+        try:
+            output = self.tf_buffer.lookup_transform(origin, frame, rospy.Time(0), rospy.Duration(1))
+            print("Lookup successful! It's {} !!".format(output))
+            return output
+        except(tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            print("Error with getting TF!")
+            return None
 
 
     def get_transform_change_over_time(self, frame, origin, delta_time):
@@ -78,7 +84,8 @@ class ConntactROSInterface(ConntactInterface):
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
             return (None, None)
         # Speed Diff: distance moved / time between poses
-        positionDiff = self.as_array(self.current_pose.transform.translation) - self.as_array(
+        as_array = lambda vec : np.array([vec.x, vec.y, vec.z])
+        positionDiff = as_array(self.current_pose.transform.translation) - as_array(
             earlierPosition.transform.translation)
         timeDiff = ((self.current_pose.header.stamp) - (earlierPosition.header.stamp)).to_sec()
         return (positionDiff, timeDiff)
