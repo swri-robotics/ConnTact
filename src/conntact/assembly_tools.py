@@ -52,7 +52,6 @@ class AssemblyTools():
         """
 
         self.readYAML()
-        print("Unyamml'd")
 
         # loop parameters
         self.wrench_vec = self.get_command_wrench([0, 0, 0])
@@ -61,18 +60,12 @@ class AssemblyTools():
 
         # initialize loop parameters
         rospy.sleep(10)
-        print("Pose'n")
         self.current_pose = self.get_current_pos()
-        print("Pose'd")
         self.pose_vec = self.full_compliance_position()
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
-
-
-        print("Ddoen weith aeinnit")
-
 
         # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
 
@@ -97,11 +90,11 @@ class AssemblyTools():
         self._spiral_params = rospy.get_param('/algorithm/spiral_params')
 
         # Calculate transform from TCP to peg corner
-        self.peg_locations = rospy.get_param('/objects/' + self.target_peg + '/grasping/pinch_grasping/locations')
+        peg_locations = rospy.get_param('/objects/' + self.target_peg + '/grasping/pinch_grasping/locations')
 
         # Set up tool_data.
         self.toolData.name = self.activeTCP
-        self.toolData.validToolsDict = self.peg_locations
+        self.toolData.validToolsDict = peg_locations
         # for key in list(self.peg_locations):
         #     # Read in each listed tool position; measure their TF and store in dictionary.
         #     # Write the position of the peg's corner wrt the gripper tip as a reference-ready TF.
@@ -233,14 +226,18 @@ class AssemblyTools():
             self.toolData.name = tool_name
             self.toolData.frame_name = "peg_" + tool_name + "_position"
             gripper_to_tool_tip_transform = AssemblyTools.get_tf_from_YAML(
-                self.peg_locations[tool_name]['pose'],
-                self.peg_locations[tool_name]['orientation'],
+                self.toolData.validToolsDict[tool_name]['pose'],
+                self.toolData.validToolsDict[tool_name]['orientation'],
                 "tool0_to_gripper_tip_link", self.toolData.frame_name)
             self.reference_frames['tcp'] = gripper_to_tool_tip_transform
             self.send_reference_TFs()
             # get the transform from tool0 (which CartesianControllers treats as the root frame) to the TCP
-            self.toolData.transform = self.interface.get_transform("tool0", self.toolData.frame_name)
-            print("self.tooldata.transform is now : {}".format(self.toolData.transform))
+            self.toolData.transform = self.interface.get_transform(self.toolData.frame_name, "tool0")
+            self.toolData.matrix    = AssemblyTools.to_homogeneous(
+                self.toolData.transform.transform.rotation,
+                self.toolData.transform.transform.translation
+                )
+            print("New tool position selected: {}".format(self.toolData.name))
 
         else:
             rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
@@ -301,11 +298,15 @@ class AssemblyTools():
         """
         transform = TransformStamped()  # TODO: Check that this worked.
 
-        if (self.activeTCP == "tool0"):
-            transform = self.interface.get_transform("base_link", "tool0")
-        else:
-            transform = self.interface.get_transform("base_link",
-                                                     self.toolData.frame_name)
+        # if (self.activeTCP == "tool0"):
+        #     transform = self.interface.get_transform("base_link", "tool0")
+        # else:
+        #     transform = self.interface.get_transform("base_link",
+        #                                              self.toolData.frame_name)
+
+        transform = self.interface.get_transform("base_link",
+                                                 self.toolData.frame_name)
+
         return transform
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
@@ -324,7 +325,7 @@ class AssemblyTools():
         result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
 
         transform_world_to_gripper: TransformStamped = self.interface.get_transform('target_hole_position', 'tool0')
-        tcp_position = self.tool_data[self.activeTCP]["transform"].transform.translation
+        tcp_position = self.toolData.transform.transform.translation
         offset = Point(-1 * tcp_position.x, -1 * tcp_position.y, -1 * tcp_position.z - .05)
 
         transform_world_to_gripper.transform.translation = offset
@@ -375,9 +376,15 @@ class AssemblyTools():
             goal_matrix = AssemblyTools.to_homogeneous(goal_pose.pose.orientation,
                                                        goal_pose.pose.position)  # tf from base_link to tcp_goal = bTg
             backing_mx = trfm.inverse_matrix(
-                self.tool_data[self.activeTCP]['matrix'])  # tf from tcp_goal to wrist = gTw
+                self.toolData.matrix)  # tf from tcp_goal to wrist = gTw
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = AssemblyTools.matrix_to_pose(goal_matrix, b_link)
+
+        self.interface.send_info(
+            Fore.BLUE + "\nCurrent pos: \n{}\nGoal pos:\n{}\n".format(
+                goal_pose.pose.position,
+                self.current_pose.transform.translation
+            ) + Style.RESET_ALL, .25)
 
         self.interface.publish_command_position(goal_pose)
 
@@ -555,7 +562,7 @@ class AssemblyTools():
         # We want to rotate this only, not reinterpret F/T components.
         # We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.
 
-        relative_translation = self.tool_data[self.activeTCP]["transform"].transform.translation
+        relative_translation = self.toolData.transform.transform.translation
         offset = Point(relative_translation.x,
                        relative_translation.y,
                        relative_translation.z - .05)

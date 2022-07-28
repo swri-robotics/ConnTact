@@ -67,7 +67,15 @@ class AlgorithmBlocks(AssemblyTools):
             switch_ctrl_srv = rospy.ServiceProxy("/controller_manager/switch_controller", SwitchController)
             controller_lister_srv = rospy.ServiceProxy("/controller_manager/list_controllers", ListControllers)
 
-            get_cart_ctrl = lambda ctrl_list : [a for a in ctrl_list if(a.name == "cartesian_compliance_controller")][0]
+            def get_cart_ctrl(ctrl_list) :
+                """
+                :param ctrl_list: List of controller objects
+                :return: either a ref. to the cartesian compliance controller object or None if none exists
+                """
+                for a in ctrl_list:
+                    if(a.name == "cartesian_compliance_controller"):
+                        return a
+                return None
 
             start_controllers = ['cartesian_compliance_controller']
             stop_controllers = ['pos_joint_traj_controller']
@@ -76,26 +84,28 @@ class AlgorithmBlocks(AssemblyTools):
             timeout = 1.0
 
             # Let's try 3 times and then report error.
-            for a in [0,1,2,3]:
+            a = 100
+            while a > 0:
                 switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
                                 strictness=strictness, start_asap=start_asap, timeout=timeout)
                 ctrl_list = controller_lister_srv().controller
-                self.print(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
+                # self.print(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
                 if(len(ctrl_list) < 1):
                     rospy.logerr("No controllers in controller list! Controller list manager not ready.")
                     rospy.sleep(.5)
                     continue
                 else:
                     cart_ctrl = get_cart_ctrl(ctrl_list)
-                    if cart_ctrl.state == 'running':
-                        self.print("Switched to cartesian_compliance_controller successfully.")
-                        break
+                    if(cart_ctrl is not None):
+                        if cart_ctrl.state == 'running':
+                            self.print("Switched to cartesian_compliance_controller successfully.")
+                            break
+                    if(a>1):
+                        self.print("Trying again to switch to compliance_controller...")
+                        rospy.sleep(.5)
                     else:
-                        if(a<3):
-                            self.print("Trying again to switch to compliance_controller...")
-                            rospy.sleep(.5)
-                        else:
-                            self.print("Couldn't switch to compliance controller! Try swiching manually.")
+                        self.print("Couldn't switch to compliance controller! Try switching manually.")
+                a -= 1
 
 
         except(rospy.ROSException):
@@ -269,7 +279,7 @@ class AlgorithmBlocks(AssemblyTools):
 
             # Publish robot motion commands only once per loop, right at the end of the loop:
             self.update_commands()
-            self._rate.sleep()
+            self.interface.sleep_until_next_loop()
                     
 
     def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
