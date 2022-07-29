@@ -281,34 +281,6 @@ class AlgorithmBlocks(AssemblyTools):
             self.update_commands()
             self.interface.sleep_until_next_loop()
                     
-
-    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
-        """Generates a command pose vector which causes the robot to hold a certain orientation
-         and comply in one dimension while staying on track in the others.
-        :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
-        :param direction_vector: (array-like list of bools) vector of bools or 0/1 values to indicate which axes comply and which try to stay the same as those of the target hole position.
-        :param desired_orientation: (list of floats) quaternion parameters for orientation; currently disabled because changes in orientation are dangerous and unpredictable. Use TCPs instead.
-        """
-
-        #initially set the new command position to be the current physical (disturbed) position
-        #This allows movement allowed by outside/command forces to move the robot at a steady rate.
-
-        pose_position = self.current_pose.transform.translation
-
-        if(not direction_vector[0]):
-            pose_position.x = self.target_hole_pose.pose.position.x
-
-        if(not direction_vector[1]):
-            pose_position.y = self.target_hole_pose.pose.position.y
-
-        if(not direction_vector[2]):
-            pose_position.z = self.target_hole_pose.pose.position.z
-
-        pose_orientation = [0, 1, 0, 0]
-        # pose_orientation = desired_orientation #Let this be handled by the TCP system, it reduces dangerous wiggling.
-        return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
-    
-
     def check_load_cell_feedback(self):
         # self.switch_state = False
         #Take an average of static sensor reading to check that it's stable.

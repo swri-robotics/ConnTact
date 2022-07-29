@@ -131,7 +131,7 @@ class ConntactROSInterface(ConntactInterface):
         """Returns a force and torque command out of Conntact and into the calling environment so that the robot can act upon that command.
         :param wrench: (WrenchStamped) commanded force and torque object.
         """
-        # self._wrench_pub.publish(wrench)
+        self._wrench_pub.publish(wrench)
         # print("Command wrench is {}".format(wrench))
 
     def publish_averaged_wrench(self, wrench: Wrench):

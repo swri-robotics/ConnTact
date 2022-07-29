@@ -7,6 +7,7 @@ from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamp
     Transform
 import tf2_ros
 import tf2_geometry_msgs
+import inspect
 
 
 import numpy as np
@@ -59,9 +60,9 @@ class AssemblyTools():
         self.switch_state = False
 
         # initialize loop parameters
-        rospy.sleep(10)
+        # rospy.sleep(10)
         self.current_pose = self.get_current_pos()
-        self.pose_vec = self.full_compliance_position()
+        self.pose_vec = None
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
@@ -271,11 +272,22 @@ class AssemblyTools():
         :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion in z.
         :param desired_orientation: (list of floats) quaternion parameters for orientation. 
         """
-        pose_position = self.current_pose.transform.translation
+        # pose_position = self.current_pose.transform.translation
+        pose_position = Vector3()
+        pose_position.x, pose_position.y, pose_position.z = \
+            self.as_array(self.current_pose.transform.translation)
+
         pose_position.x = self.x_pos_offset + direction_vector[0]
         pose_position.y = self.y_pos_offset + direction_vector[1]
         pose_position.z = pose_position.z + direction_vector[2]
         pose_orientation = desired_orientation
+
+        # self.interface.send_info(
+        #     Fore.CYAN + "\nlinear_search_position requested by: {}\nReturning:\n{}".format(
+        #         inspect.stack()[1][3],
+        #         pose_position
+        #     ) + Style.RESET_ALL)
+
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
     def full_compliance_position(self, direction_vector=[0, 0, 0], desired_orientation=[0, 1, 0, 0]):
@@ -284,11 +296,23 @@ class AssemblyTools():
         :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion.
         :param desired_orientation: (list of floats) quaternion parameters for orientation. 
         """
-        pose_position = self.current_pose.transform.translation
+        # pose_position = self.current_pose.transform.translation
+        pose_position = Vector3()
+        pose_position.x, pose_position.y, pose_position.z = \
+            self.as_array(self.current_pose.transform.translation)
+
+
         pose_position.x = pose_position.x + direction_vector[0]
         pose_position.y = pose_position.y + direction_vector[1]
         pose_position.z = pose_position.z + direction_vector[2]
         pose_orientation = desired_orientation
+
+        # self.interface.send_info(
+        #     Fore.CYAN + "\nfull_compliance_position requested by: {}\nReturning:\n{}".format(
+        #         inspect.stack()[1][3],
+        #         pose_position
+        #     ) + Style.RESET_ALL)
+
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
         # Load cell current data
@@ -303,11 +327,51 @@ class AssemblyTools():
         # else:
         #     transform = self.interface.get_transform("base_link",
         #                                              self.toolData.frame_name)
-
+        # print("Current pose requested by {}".format(inspect.stack()[1][3]))
         transform = self.interface.get_transform("base_link",
                                                  self.toolData.frame_name)
+        # self.interface.send_info(
+        #     Fore.BLUE + "\nCurrent pos: \n{}\nRequested by:\n{}\n".format(
+        #         transform.transform.translation,
+        #         inspect.stack()[1][3]
+        #     ) + Style.RESET_ALL)
 
         return transform
+
+    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
+        """Generates a command pose vector which causes the robot to hold a certain orientation
+         and comply in one dimension while staying on track in the others.
+        :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
+        :param direction_vector: (array-like list of bools) vector of bools or 0/1 values to indicate which axes comply and which try to stay the same as those of the target hole position.
+        :param desired_orientation: (list of floats) quaternion parameters for orientation; currently disabled because changes in orientation are dangerous and unpredictable. Use TCPs instead.
+        """
+
+        #initially set the new command position to be the current physical (disturbed) position
+        #This allows movement allowed by outside/command forces to move the robot at a steady rate.
+
+        pose_position = Vector3()
+        pose_position.x, pose_position.y, pose_position.z =\
+            self.as_array(self.current_pose.transform.translation)
+
+        if(not direction_vector[0]):
+            pose_position.x = self.target_hole_pose.pose.position.x
+
+        if(not direction_vector[1]):
+            pose_position.y = self.target_hole_pose.pose.position.y
+
+        if(not direction_vector[2]):
+            pose_position.z = self.target_hole_pose.pose.position.z
+
+        pose_orientation = [0, 1, 0, 0]
+        # pose_orientation = desired_orientation #Let this be handled by the TCP system, it reduces dangerous wiggling.
+
+        # self.interface.send_info(
+        #     Fore.CYAN + "\nArbitrary_axis_comply requested by: {}\nReturning:\n{}".format(
+        #         inspect.stack()[1][3],
+        #         pose_position
+        #     ) + Style.RESET_ALL)
+
+        return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
         """Output ROS wrench parameters from human-readable vector inputs.
@@ -351,6 +415,11 @@ class AssemblyTools():
         # Ensure controller is loaded
         # self.check_controller(self.controller_name)
 
+        if (pose_stamped_vec is None):
+            self.interface.send_info("Command position not initialized yet...")
+            return
+
+
         # Create poseStamped msg
         goal_pose = PoseStamped()
 
@@ -380,11 +449,11 @@ class AssemblyTools():
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = AssemblyTools.matrix_to_pose(goal_matrix, b_link)
 
-        self.interface.send_info(
-            Fore.BLUE + "\nCurrent pos: \n{}\nGoal pos:\n{}\n".format(
-                goal_pose.pose.position,
-                self.current_pose.transform.translation
-            ) + Style.RESET_ALL, .25)
+        # self.interface.send_info(
+        #     Fore.BLUE + "Pose_Stamped_Vec:\n{}\nPublishing goal pos:\n{}\n".format(
+        #         pose_stamped_vec,
+        #         goal_pose.pose.position
+        #     ) + Style.RESET_ALL)
 
         self.interface.publish_command_position(goal_pose)
 
@@ -554,6 +623,7 @@ class AssemblyTools():
     def update_average_wrench(self) -> None:
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
+        self.current_wrench = self.interface.current_wrench
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
         # Get current angle from gripper to hole:
@@ -675,7 +745,11 @@ class AssemblyTools():
                          relativeScaling: float = .1) -> bool:
         """Checks if  an equal and opposite reaction force is stopping acceleration in all directions - this would indicate there is a static obstacle in collision with the tcp.
         """
+
         force = self.as_array(self._average_wrench_world.force).reshape(3)
+        self.interface.send_info("Commanded force: {}\n Perceived force:{}".format(
+            commandedForce, force)
+        )
         res = np.allclose(force, -1 * commandedForce, atol=deadzoneRadius, rtol=relativeScaling)
 
         # rospy.loginfo_throttle(1,Fore.BLUE +  "Collision checking force " + str(force) + " against command " + str(commandedForce*-1) + ' with a result of ' + str(res) + " and the difference is " + str(force + commandedForce) + Style.RESET_ALL)
