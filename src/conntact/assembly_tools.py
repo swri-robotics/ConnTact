@@ -139,7 +139,6 @@ class AssemblyTools():
         targetHoleTF = AssemblyTools.swap_pose_tf(self.target_hole_pose, "target_hole_position")
         self.reference_frames['target_hole_position'] = targetHoleTF
         # self.send_reference_TFs()
-        # self._rate.sleep()
         self.x_pos_offset = self.target_hole_pose.pose.position.x
         self.y_pos_offset = self.target_hole_pose.pose.position.y
 
@@ -320,16 +319,11 @@ class AssemblyTools():
     def get_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
         """
-        transform = TransformStamped()  # TODO: Check that this worked.
+        transform = TransformStamped()
 
-        # if (self.activeTCP == "tool0"):
-        #     transform = self.interface.get_transform("base_link", "tool0")
-        # else:
-        #     transform = self.interface.get_transform("base_link",
-        #                                              self.toolData.frame_name)
-        # print("Current pose requested by {}".format(inspect.stack()[1][3]))
-        transform = self.interface.get_transform("base_link",
-                                                 self.toolData.frame_name)
+        transform = self.interface.get_transform(self.toolData.frame_name,
+                                                 "base_link")
+        # To help debug:
         # self.interface.send_info(
         #     Fore.BLUE + "\nCurrent pos: \n{}\nRequested by:\n{}\n".format(
         #         transform.transform.translation,
@@ -650,17 +644,21 @@ class AssemblyTools():
         self.interface.publish_averaged_wrench(guy)
 
     def update_avg_speed(self) -> None:
-        """Updates a simple moving average of robot tcp speed in mm/s. A speed is calculated from the difference between a
+        """Updates a simple moving average of robot tcp speed in m/s. A speed is calculated from the difference between a
          previous pose (.1 s in the past) and the current pose; this speed is filtered and stored as self.average_speed.
         """
 
         distance, time = self.interface.get_transform_change_over_time(
-            "base_link",
             self.toolData.frame_name,
+            "base_link",
             .1)
         if (time is not None and time > 0.0):  # Update only if we're using a new pose; also, avoid divide by zero
             speedDiff = distance / time
             self.average_speed = self.filters.average_speed(speedDiff)
+            self.interface.send_info("Speed is {}".format(self.average_speed), 2)
+            if (np.linalg.norm(self.average_speed) > .035):
+                self.interface.send_error("Speed too high, quitting.")
+                quit()
 
 
     def publish_plotted_values(self) -> None:
@@ -747,9 +745,9 @@ class AssemblyTools():
         """
 
         force = self.as_array(self._average_wrench_world.force).reshape(3)
-        self.interface.send_info("Commanded force: {}\n Perceived force:{}".format(
-            commandedForce, force)
-        )
+        # self.interface.send_info("Commanded force: {}\n Perceived force:{}".format(
+        #     commandedForce, force)
+        # )
         res = np.allclose(force, -1 * commandedForce, atol=deadzoneRadius, rtol=relativeScaling)
 
         # rospy.loginfo_throttle(1,Fore.BLUE +  "Collision checking force " + str(force) + " against command " + str(commandedForce*-1) + ' with a result of ' + str(res) + " and the difference is " + str(force + commandedForce) + Style.RESET_ALL)
@@ -876,5 +874,5 @@ class AssemblyFilters():
         return np.convolve(buffered_data, np.ones(w), 'valid') / w
 
 
-if __name__ == '__main__':
-    rospy.init_node("demo_assembly_application_compliance")
+# if __name__ == '__main__':
+#     rospy.init_node("demo_assembly_application_compliance")

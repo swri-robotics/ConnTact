@@ -103,7 +103,6 @@ class ConntactROSInterface(ConntactInterface):
         """ Adds one or more frames of reference to the environment.
         :param framesList: (List) List of `geometry_msgs.msg.TransformStamped` frames to be added to the environment for later reference with get_pose
         """
-
         # if(self.reference_frames['tcp'].header.frame_id != ''):
         #     # print("Broadcasting tfs: " + str(self.reference_frames))
         #     self._rate.sleep()
@@ -111,7 +110,6 @@ class ConntactROSInterface(ConntactInterface):
         namelist = [(jj.header.frame_id, jj.child_frame_id) for jj in framesList]
         # print(Fore.MAGENTA + "Broadcasting tfs: {}".format(namelist) + Style.RESET_ALL)
         self.broadcaster.sendTransform(framesList)
-        # rospy.spin()
 
     def send_error(self, message, delay=0.0):
         """Displays an error message for the user.

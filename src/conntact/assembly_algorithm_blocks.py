@@ -399,7 +399,7 @@ class AlgorithmBlocks(AssemblyTools):
         rospy.loginfo_throttle(1, Fore.RED + "Hole found, peg inserted! Done!" +Style.RESET_ALL)
         if(self.current_pose.transform.translation.z > self.restart_height+.02):
             #High enough, won't pull itself upward.
-            seeking_force = 2.5
+            seeking_force = 5
             rospy.loginfo_once(Back.GREEN + Fore.WHITE + Style.BRIGHT + "Completed Task!" + Style.RESET_ALL)
             quit()
         else:

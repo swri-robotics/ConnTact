@@ -190,7 +190,8 @@ objects: #List objects and their required description
 #        material: "stainless steel"
 environment_state:
     task_frame:
-        position: [-639, 282, -337]
+#        position: [-639, 282, -337]
+        position: [-274, 576, -337]
         orientation: [0, 0, 0]
     kitting_frame:
         position: [640, 544, -502]
