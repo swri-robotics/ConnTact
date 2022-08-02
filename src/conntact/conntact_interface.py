@@ -15,6 +15,25 @@ from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamp
 
 class ConntactInterface():
 
+    @abc.abstractmethod
+    def get_unified_time(self):
+        """
+        :return: Current time. Conntact always measures periods relative to time since
+        AssemblyTools.__init__ ran by storing this value at that time; you can use this
+        method to make Conntact timestamps correspond with other elements of your system.
+        :rtype: :class: `double`
+        """
+        self.print_not_found_error()
+        pass
+
+    @abc.abstractmethod
+    def get_package_path(self):
+        """ Returns path to the current package, under which /config/conntact_params can be found.
+        :return: (string) Path to the current package, under which /config/conntact_params can be found.
+        :rtype: :class:`string`
+        """
+        self.print_not_found_error()
+        pass
 
     @abc.abstractmethod
     def get_transform(self, frame, origin):

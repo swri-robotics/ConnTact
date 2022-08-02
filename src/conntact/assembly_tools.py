@@ -2,6 +2,8 @@
 # Licensed under the Apache License, Version 2.0
 
 # Imports for ros
+import time
+
 import rospy
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, \
     Transform
@@ -14,6 +16,7 @@ import numpy as np
 from colorama import Fore, Back, Style
 import tf.transformations as trfm
 import inspect
+import yaml
 
 from conntact.conntact_interface import ConntactInterface
 
@@ -31,12 +34,31 @@ class AssemblyTools():
 
     def __init__(self, interface: ConntactInterface, rate: int):
 
+
         # Save a reference to the interface.
         self.interface = interface
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
         self._start_time = rospy.get_rostime()
-        
+        self.config = {}
+
+        # Read in yaml config file
+        path = self.interface.get_package_path()
+
+        def load_yaml_file(filename):
+            with open(path + '/config/' + filename + '.yaml') as stream:
+                try:
+                    info = yaml.safe_load(stream)
+                    # print(info)
+                    self.config.update(info)
+                except yaml.YAMLError as exc:
+                    print(exc)
+
+        load_yaml_file("conntact_config")
+        load_yaml_file("peg_in_hole_params")
+
+        print("Full config dict: {}".format(self.config))
+
         self._rate_selected = rate
         self.highForceWarning = False
         # self._seq                   = 0
@@ -52,6 +74,7 @@ class AssemblyTools():
         self.tool_data[*tool name*]["matrix"] = (np.array()) 4x4 homogeneous transformation matrix of same transform.
         """
 
+        time.sleep(10)
         self.readYAML()
 
         # loop parameters
@@ -60,16 +83,13 @@ class AssemblyTools():
         self.switch_state = False
 
         # initialize loop parameters
-        # rospy.sleep(10)
+
         self.current_pose = self.get_current_pos()
         self.pose_vec = None
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
-
-        # rospy.loginfo_once(Fore.CYAN + Back.RED + "Controllers list:\n" + str(ListControllers()) + Style.RESET_ALL);
-
 
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
@@ -78,62 +98,44 @@ class AssemblyTools():
         # job parameters moved in from the peg_in_hole_params.yaml file
         # 'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
         # 'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
-        self.target_peg = rospy.get_param('/task/target_peg')
-        self.target_hole = rospy.get_param('/task/target_hole')
-        self.activeTCP = rospy.get_param('/task/starting_tcp')
-
+        self.target_peg = self.config['task']['target_peg']
+        self.target_hole = self.config['task']['target_hole']
+        self.activeTCP = self.config['task']['starting_tcp']
 
         self.read_board_positions()
 
         self.read_peg_hole_dimensions()
 
         # Spiral parameters
-        self._spiral_params = rospy.get_param('/algorithm/spiral_params')
+        self._spiral_params = self.config['algorithm']['spiral_params']
 
         # Calculate transform from TCP to peg corner
-        peg_locations = rospy.get_param('/objects/' + self.target_peg + '/grasping/pinch_grasping/locations')
+        peg_locations = self.config['objects'][self.target_peg]['grasping_locations']
 
         # Set up tool_data.
         self.toolData.name = self.activeTCP
         self.toolData.validToolsDict = peg_locations
-        # for key in list(self.peg_locations):
-        #     # Read in each listed tool position; measure their TF and store in dictionary.
-        #     # Write the position of the peg's corner wrt the gripper tip as a reference-ready TF.
-        #     pegTransform = AssemblyTools.get_tf_from_YAML(self.peg_locations[str(key)]['pose'],
-        #                                                   self.peg_locations[str(key)]['orientation'],
-        #                                                   "tool0_to_gripper_tip_link", "peg_" + str(key) + "_position")
-        #     self.reference_frames['tcp'] = pegTransform
-        #     self.send_reference_TFs()
-        #     a = self.interface.get_transform("tool0", "peg_" + str(key) + "_position")
-        #     self.tool_data[str(key)] = dict()
-        #     self.tool_data[str(key)]['transform'] = a
-        #     self.tool_data[str(key)]['matrix'] = AssemblyTools.to_homogeneous(a.transform.rotation,
-        #                                                                       a.transform.translation)
-        #     rospy.logerr("Added TCP entry for " + str(key))
 
-        rospy.logerr(
-            "TCP position dictionary now contains: " + str(list(self.tool_data)) + ", selected tool publishing now: ")
         self.select_tool(self.activeTCP)
         print("Select Tool successful!")
 
-        self.surface_height = rospy.get_param('/task/assumed_starting_height')  # Starting height assumption
-        self.restart_height = rospy.get_param('/task/restart_height')  # Height to restart
-        # quit()
+        self.surface_height = self.config['task']['assumed_starting_height']  # Starting height assumption
+        self.restart_height = self.config['task']['restart_height']  # Height to restart
 
     def read_board_positions(self):
         """ Calculates pose of target hole relative to robot base frame.
         """
         temp_z_position_offset = 207  # Our robot is reading Z positions wrong on the pendant for some reason.
-        taskPos = list(np.array(rospy.get_param('/environment_state/task_frame/position')))
-        taskPos[2] = taskPos[2] + temp_z_position_offset
-        taskOri = rospy.get_param('/environment_state/task_frame/orientation')
-        holePos = list(np.array(rospy.get_param('/objects/' + self.target_hole + '/local_position')))
-        holePos[2] = holePos[2] + temp_z_position_offset
-        holeOri = rospy.get_param('/objects/' + self.target_hole + '/local_orientation')
+        task_pos = list(np.array(self.config['environment_state']['task_frame']['position']))
+        task_pos[2] = task_pos[2] + temp_z_position_offset
+        task_ori = self.config['environment_state']['task_frame']['orientation']
+        hole_pos = list(np.array(self.config['objects'][self.target_hole]['local_position']))
+        hole_pos[2] = hole_pos[2] + temp_z_position_offset
+        hole_ori = self.config['objects'][self.target_hole]['local_orientation']
 
         # Set up target hole pose
-        tf_robot_to_task_board = AssemblyTools.get_tf_from_YAML(taskPos, taskOri, "base_link", "task_board")
-        pose_task_board_to_hole = AssemblyTools.get_pose_from_YAML(holePos, holeOri, "base_link")
+        tf_robot_to_task_board = AssemblyTools.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
+        pose_task_board_to_hole = AssemblyTools.get_pose_from_yaml(hole_pos, hole_ori, "base_link")
         self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(pose_task_board_to_hole, tf_robot_to_task_board)
         # self.target_broadcaster = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
         targetHoleTF = AssemblyTools.swap_pose_tf(self.target_hole_pose, "target_hole_position")
@@ -145,32 +147,21 @@ class AssemblyTools():
     def read_peg_hole_dimensions(self):
         """Read peg and hole data from YAML configuration file.
         """
-        peg_diameter = rospy.get_param('/objects/' + self.target_peg + '/dimensions/diameter') / 1000  # mm
-        peg_tol_plus = rospy.get_param('/objects/' + self.target_peg + '/tolerance/upper_tolerance') / 1000
-        peg_tol_minus = rospy.get_param('/objects/' + self.target_peg + '/tolerance/lower_tolerance') / 1000
-        hole_diameter = rospy.get_param('/objects/' + self.target_hole + '/dimensions/diameter') / 1000  # mm
-        hole_tol_plus = rospy.get_param('/objects/' + self.target_hole + '/tolerance/upper_tolerance') / 1000
-        hole_tol_minus = rospy.get_param('/objects/' + self.target_hole + '/tolerance/lower_tolerance') / 1000
-        self.hole_depth = rospy.get_param('/objects/' + self.target_peg + '/dimensions/min_insertion_depth') / 1000
-
+        peg_dims = self.config['objects'][self.target_peg]['dimensions']
+        hole_dims = self.config['objects'][self.target_hole]['dimensions']
+        self.hole_depth = peg_dims['min_insertion_depth'] / 1000
         # setup, run to calculate useful values based on params:
-        self.clearance_max = hole_tol_plus - peg_tol_minus  # calculate the total error zone;
-        self.clearance_min = hole_tol_minus + peg_tol_plus  # calculate minimum clearance;     =0
-        self.clearance_avg = .5 * (self.clearance_max - self.clearance_min)  # provisional calculation of "wiggle room"
-        self.safe_clearance = (
-                                          hole_diameter - peg_diameter + self.clearance_min) / 2;  # = .2 *radial* clearance i.e. on each side.
-        # rospy.logerr("Peg is " + str(self.target_peg) + " and hole is " + str(self.target_hole))
-        # rospy.logerr("Spiral pitch is gonna be " + str(self.safe_clearance) + "because that's min tolerance " + str(self.clearance_min) + " plus gap of " + str(hole_diameter-peg_diameter))
+        clearance_max = hole_dims['upper_tolerance'] - peg_dims['lower_tolerance']  # calculate the total error zone;
+        clearance_min = hole_dims['lower_tolerance'] + peg_dims['upper_tolerance']  # calculate minimum clearance;     =0
+        clearance_avg = .5 * (clearance_max - clearance_min)  # provisional calculation of "wiggle room"
+        self.safe_clearance = (hole_dims['diameter'] - peg_dims['diameter'] + clearance_min) / 2000;  # = .2 *radial* clearance i.e. on each side.
 
     def send_reference_TFs(self):
-        # print(Fore.MAGENTA + Back.BLUE + "Send requested by method {}.".format(inspect.stack()[1][3]) + Style.RESET_ALL)
-        # print(Fore.MAGENTA  + "Sending tcps: {}".format(self.reference_frames) + Style.RESET_ALL)
-        # print(Fore.MAGENTA  + "Sending list: {}".format(list(self.reference_frames.values())) + Style.RESET_ALL)
         self.interface.register_frames(list(self.reference_frames.values()))
 
 
     @staticmethod
-    def get_tf_from_YAML(pos, ori, base_frame,
+    def get_tf_from_yaml(pos, ori, base_frame,
                          child_frame):  # Returns the transform from base_frame to child_frame based on vector inputs
         """Reads a TF from config YAML.
         :param pos: (string) Param key for desired position parameter.
@@ -180,7 +171,7 @@ class AssemblyTools():
         :return: Geometry_Msgs.TransformStamped with linked parameters.
         """
 
-        output_pose = AssemblyTools.get_pose_from_YAML(pos, ori, base_frame)  # tf_task_board_to_hole
+        output_pose = AssemblyTools.get_pose_from_yaml(pos, ori, base_frame)  # tf_task_board_to_hole
         output_tf = TransformStamped()
         output_tf.header = output_pose.header
         # output_tf.transform.translation = output_pose.pose.position
@@ -192,12 +183,11 @@ class AssemblyTools():
         return output_tf
 
     @staticmethod
-    def get_pose_from_YAML(pos, ori, base_frame):  # Returns the pose wrt base_frame based on vector inputs.
+    def get_pose_from_yaml(pos, ori, base_frame):  # Returns the pose wrt base_frame based on vector inputs.
         """Reads a Pose from config YAML.
         :param pos: (string) Param key for desired position parameter.
         :param ori: (string) Param key for desired orientation parameter.
         :param base_frame: (string) Base frame for output pose.
-        :param child_frame:  (string) Child frame for output pose.
         :return: Geometry_Msgs.PoseStamped with linked parameters.
         """
 
@@ -209,23 +199,23 @@ class AssemblyTools():
         tempQ = list(trfm.quaternion_from_euler(ori[0] * np.pi / 180, ori[1] * np.pi / 180, ori[2] * np.pi / 180))
         output_pose.pose = Pose(Point(pos[0] / 1000, pos[1] / 1000, pos[2] / 1000),
                                 Quaternion(tempQ[0], tempQ[1], tempQ[2], tempQ[3]))
-
         return output_pose
 
     def select_tool(self, tool_name):
         """Sets activeTCP frame according to title of desired peg frame (tip, middle, etc.). This frame must be included in the YAML.
         :param tool_name: (string) Key in tool_data dictionary for desired frame.
         """
-        # TODO: Make this a loop-run state to slowly slerp from one TCP to another using https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
+        # TODO: Make this a loop-run state to slowly slerp from one TCP to another using
+        #  https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
 
         # if (tool_name in list(self.tool_data)):
         #     self.activeTCP = tool_name
         #     self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
         #     self.send_reference_TFs()
-        if (tool_name in list(self.toolData.validToolsDict)):
+        if tool_name in list(self.toolData.validToolsDict):
             self.toolData.name = tool_name
             self.toolData.frame_name = "peg_" + tool_name + "_position"
-            gripper_to_tool_tip_transform = AssemblyTools.get_tf_from_YAML(
+            gripper_to_tool_tip_transform = AssemblyTools.get_tf_from_yaml(
                 self.toolData.validToolsDict[tool_name]['pose'],
                 self.toolData.validToolsDict[tool_name]['orientation'],
                 "tool0_to_gripper_tip_link", self.toolData.frame_name)
@@ -240,7 +230,8 @@ class AssemblyTools():
             print("New tool position selected: {}".format(self.toolData.name))
 
         else:
-            rospy.logerr_throttle(2, "Tool selection key error! No key '" + tool_name + "' in tool dictionary.")
+            self.interface.send_error("Tool selection key error! No key '" +
+                                      tool_name + "' in tool dictionary.", 2)
 
     def spiral_search_motion(self, frequency=.15, min_amplitude=.002, max_cycles=62.83185):
         """Generates position, orientation offset vectors which describe a plane spiral about z; 
@@ -250,17 +241,12 @@ class AssemblyTools():
         curr_time = rospy.get_rostime() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
         curr_amp = min_amplitude + self.safe_clearance * np.mod(2.0 * np.pi * frequency * curr_time_numpy, max_cycles);
-
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
-
         y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-
         x_pos = x_pos + self.x_pos_offset
         y_pos = y_pos + self.y_pos_offset
-        z_pos = self.current_pose.transform.translation.z  # 0.104 is the approximate height of the hole itself. TODO:Assume the part needs to be inserted here. Update once I know the real value
-
+        z_pos = self.current_pose.transform.translation.z
         pose_position = [x_pos, y_pos, z_pos]
-
         pose_orientation = [0, 1, 0, 0]  # w, x, y, z
 
         return [pose_position, pose_orientation]
@@ -299,28 +285,16 @@ class AssemblyTools():
         pose_position = Vector3()
         pose_position.x, pose_position.y, pose_position.z = \
             self.as_array(self.current_pose.transform.translation)
-
-
         pose_position.x = pose_position.x + direction_vector[0]
         pose_position.y = pose_position.y + direction_vector[1]
         pose_position.z = pose_position.z + direction_vector[2]
         pose_orientation = desired_orientation
-
-        # self.interface.send_info(
-        #     Fore.CYAN + "\nfull_compliance_position requested by: {}\nReturning:\n{}".format(
-        #         inspect.stack()[1][3],
-        #         pose_position
-        #     ) + Style.RESET_ALL)
-
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
-
-        # Load cell current data
 
     def get_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
         """
         transform = TransformStamped()
-
         transform = self.interface.get_transform(self.toolData.frame_name,
                                                  "base_link")
         # To help debug:
@@ -329,7 +303,6 @@ class AssemblyTools():
         #         transform.transform.translation,
         #         inspect.stack()[1][3]
         #     ) + Style.RESET_ALL)
-
         return transform
 
     def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
@@ -346,25 +319,18 @@ class AssemblyTools():
         pose_position = Vector3()
         pose_position.x, pose_position.y, pose_position.z =\
             self.as_array(self.current_pose.transform.translation)
-
         if(not direction_vector[0]):
             pose_position.x = self.target_hole_pose.pose.position.x
-
         if(not direction_vector[1]):
             pose_position.y = self.target_hole_pose.pose.position.y
-
         if(not direction_vector[2]):
             pose_position.z = self.target_hole_pose.pose.position.z
-
         pose_orientation = [0, 1, 0, 0]
-        # pose_orientation = desired_orientation #Let this be handled by the TCP system, it reduces dangerous wiggling.
-
         # self.interface.send_info(
         #     Fore.CYAN + "\nArbitrary_axis_comply requested by: {}\nReturning:\n{}".format(
         #         inspect.stack()[1][3],
         #         pose_position
         #     ) + Style.RESET_ALL)
-
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
@@ -372,7 +338,6 @@ class AssemblyTools():
         :param vec: (list of floats) Vector of desired force in each direction (in Newtons).
         :param ori: (list of floats) Vector of desired torque about each axis (in N*m)
         """
-
         return [vec[0], vec[1], vec[2], ori[0], ori[1], ori[2]]
 
     def publish_wrench(self, input_vec):
@@ -530,16 +495,12 @@ class AssemblyTools():
         :param invert: (bool) Whether to interpret the tansformation's inverse, i.e. transform "from child to parent" instead of "from parent to child"
         :return: (geometry.msgs.Wrench) changed wrench
         """
-
         matrix = AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation)
-
-        if (log):
-            rospy.loginfo_throttle(2, Fore.RED + " Transform passed in is " + str(
-                transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL)
-
-        if (invert):
+        if log:
+            print(Fore.RED + " Transform passed in is " + str(
+                transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL, 2)
+        if invert:
             matrix = trfm.inverse_matrix(matrix)
-
         return AssemblyTools.transform_wrench_by_matrix(matrix, AssemblyTools.wrenchToArray(wrench))
 
     @staticmethod
@@ -588,7 +549,7 @@ class AssemblyTools():
                 output.header = input.header
                 output.pose = input.transform
                 return output
-        rospy.logerr("Invalid input to swap_pose_tf !!!")
+        print("Invalid input to swap_pose_tf !!!")
 
     def create_wrench(self, force: list, torque: list) -> WrenchStamped:
         """Composes a standard wrench object from human-readable vectors.
@@ -602,14 +563,11 @@ class AssemblyTools():
         # create wrench
         wrench.force.x, wrench.force.y, wrench.force.z = force
         wrench.torque.x, wrench.torque.y, wrench.torque.z = torque
-
         # create header
         # wrench_stamped.header.seq = self._seq
-
         wrench_stamped.header.stamp = rospy.get_rostime()
         wrench_stamped.header.frame_id = "base_link"
         # self._seq+=1
-
         wrench_stamped.wrench = wrench
 
         return wrench_stamped
@@ -792,8 +750,9 @@ class AssemblyTools():
         else:
             rospy.logerr("Sleeping for 1s to damp oscillations...")
             self.highForceWarning = True
-            rospy.sleep(
-                1)  # Want the system to stop for a second in hopes that it prevents higher forces/torques. May not be helping.
+            time.sleep(1)
+            # Makes the system to stop for a second in hopes that it prevents higher forces/torques.
+            # May not be helping.
         return True
 
 

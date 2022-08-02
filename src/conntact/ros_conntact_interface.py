@@ -7,7 +7,7 @@ import inspect
 
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, \
     Transform
-import tf2_ros
+import tf2_ros, rospkg
 from std_msgs.msg import String
 import tf2_geometry_msgs
 import tf.transformations as trfm
@@ -46,6 +46,23 @@ class ConntactROSInterface(ConntactInterface):
         self._start_time = rospy.get_rostime()
         self.curr_time = rospy.Time(0)
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
+
+    def get_unified_time(self):
+        """
+        :return: Current time. Conntact always measures periods relative to time since
+        AssemblyTools.__init__ ran by storing this value at that time; you can use this
+        method to make Conntact timestamps correspond with other elements of your system.
+        :rtype: :class: `double`
+        """
+        # return np.double(rospy.get_rostime().to_sec())
+        return rospy.get_rostime()
+
+    def get_package_path(self):
+        """ Returns the position of `end` frame relative to `start` frame.
+                :return: (string) Path to the current package, under which /config/conntact_params can be found.
+                :rtype: :class:`string`
+                """
+        return rospkg.RosPack().get_path("conntact")
 
     def callback_update_wrench(self, data: WrenchStamped):
         """Callback to update current wrench data whenever new data becomes available.
@@ -158,3 +175,4 @@ class ConntactROSInterface(ConntactInterface):
         """
         print("Abstract Conntact method {} not yet implemented.".format(inspect.stack()[1][3]))
         raise NotImplementedError()
+
