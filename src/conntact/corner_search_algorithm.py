@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
 
 #UR IP Address is now 175.31.1.137
 #Computer has to be 175.31.1.150

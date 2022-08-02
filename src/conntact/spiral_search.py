@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
 
 #UR IP Address is now 175.31.1.137
 #Computer has to be 175.31.1.150
@@ -33,7 +34,9 @@ import tf2_geometry_msgs
 
 from threading import Lock
 
-from conntact.assembly_algorithm_blocks import AlgorithmBlocks
+from conntact.assembly_algorithm_blocks import AlgorithmBlocks, AssemblyStep
+from conntact.conntact_interface import ConntactInterface
+from conntact.ros_conntact_interface import ConntactROSInterface
 
 from transitions import Machine
 
@@ -53,6 +56,7 @@ APPROACH_SURFACE_TRIGGER   = 'start approach'
 FIND_HOLE_TRIGGER          = 'surface found'
 INSERT_PEG_TRIGGER         = 'hole found'
 ASSEMBLY_COMPLETED_TRIGGER = 'assembly completed'
+STEP_COMPLETE_TRIGGER      = 'next step'
 SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 RESTART_TEST_TRIGGER       = 'restart test'
 RUN_LOOP_TRIGGER           = 'run looped code'
@@ -60,15 +64,17 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 class SpiralSearch(AlgorithmBlocks, Machine):
 
-    def __init__(self):
-        
+    def __init__(self, interface=None):
         
 
         # Override Assembly Tools config variables
         ROS_rate = 100 #setup for sleeping in hz
         start_time = rospy.get_rostime() 
+
+        if(interface is None):
+            interface = ConntactROSInterface(ROS_rate)
         
-        AlgorithmBlocks.__init__(self, ROS_rate, start_time)
+        AlgorithmBlocks.__init__(self, ROS_rate, start_time, interface)
 
         #Override Alg Blocks config variables:
         states = [
@@ -86,14 +92,16 @@ class SpiralSearch(AlgorithmBlocks, Machine):
         transitions = [
             {'trigger':CHECK_FEEDBACK_TRIGGER    , 'source':IDLE_STATE          , 'dest':CHECK_FEEDBACK_STATE   },
             {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':CHECK_FEEDBACK_STATE, 'dest':APPROACH_STATE         },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
             {'trigger':FIND_HOLE_TRIGGER         , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
             {'trigger':INSERT_PEG_TRIGGER        , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
             {'trigger':ASSEMBLY_COMPLETED_TRIGGER, 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
-            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':CHECK_FEEDBACK_STATE   },
+            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
             {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_loop'}
 
         ]
+
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
 
         self.tcp_selected = 'tip'

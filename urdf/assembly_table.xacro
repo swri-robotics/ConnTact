@@ -39,7 +39,7 @@
           <box size="${BASE_PLATE_WIDTH} ${BASE_PLATE_LENGTH} ${BASE_PLATE_THICKNESS}"/>
         </geometry>
         <material name="StainlessSteel">
-          <color rgba="0.6 0.6 0.6 1.0"/>
+          <color rgba="0.6 0.1 0.1 1.0"/>
         </material>
       </visual>
       <collision>
@@ -48,7 +48,7 @@
           <box size="${BASE_PLATE_WIDTH} ${BASE_PLATE_LENGTH} ${BASE_PLATE_THICKNESS}"/>
         </geometry>
         <material name="StainlessSteel">
-          <color rgba="0.6 0.6 0.6 1.0"/>
+          <color rgba="0.6 0.1 0.1 1.0"/>
         </material>
       </collision>
     </link>

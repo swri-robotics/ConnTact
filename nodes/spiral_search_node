@@ -1,8 +1,13 @@
 #! /usr/bin/env python3
-# import conntact.spiral_search.main
-# import conntact.spiral_search.main
+
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
 
 import rospy
+import tf2_ros
+import abc
+from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
+from std_msgs.msg import String
 
 from conntact.spiral_search import SpiralSearch
 
@@ -10,6 +15,8 @@ if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
 
     assembly_application = SpiralSearch()
+
+    # Need to pass in methods to do all the ROS stuff. Prototype definitions are below the main method.
 
     assembly_application.main()
 
