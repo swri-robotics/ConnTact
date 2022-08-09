@@ -1,43 +1,12 @@
 # Copyright 2021 Southwest Research Institute
 # Licensed under the Apache License, Version 2.0
 
-#UR IP Address is now 175.31.1.137
-#Computer has to be 175.31.1.150
-
 # Imports for ros
-# from _typeshed import StrPath
 
-from builtins import staticmethod
-from operator import truediv
-from pickle import STRING
-
-from colorama.initialise import reset_all
 import rospy
-import sys
-import numpy as np
-import matplotlib.pyplot as plt
-from rospkg import RosPack
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
-from rospy.core import configure_logging
-
-from colorama import Fore, Back, Style, init
-# from sensor_msgs.msg import JointState
-# from assembly_ros.srv import ExecuteStart, ExecuteRestart, ExecuteStop
-from controller_manager_msgs.srv import SwitchController, LoadController, ListControllers
-from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_pose
-
-import tf2_ros
-import tf2_py 
-# import tf2
-import tf2_geometry_msgs
-
-
-from threading import Lock
-
 from conntact.assembly_algorithm_blocks import AlgorithmBlocks, AssemblyStep
-from conntact.conntact_interface import ConntactInterface
 from conntact.ros_conntact_interface import ConntactROSInterface
-
 from transitions import Machine
 
 IDLE_STATE           = 'state_idle'
@@ -64,17 +33,9 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 class SpiralSearch(AlgorithmBlocks, Machine):
 
-    def __init__(self, interface=None):
-        
+    def __init__(self, ROS_rate, conntext, interface):
 
-        # Override Assembly Tools config variables
-        ROS_rate = 100 #setup for sleeping in hz
-        start_time = rospy.get_rostime() 
-
-        if(interface is None):
-            interface = ConntactROSInterface(ROS_rate)
-        
-        AlgorithmBlocks.__init__(self, ROS_rate, start_time, interface)
+        AlgorithmBlocks.__init__(self, ROS_rate, conntext, interface)
 
         #Override Alg Blocks config variables:
         states = [

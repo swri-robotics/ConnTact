@@ -5,6 +5,7 @@
   <rosparam file="$(find conntact)/config/peg_in_hole_params.yaml" />
   <rosparam file="$(find conntact)/config/conntact_config.yaml" />
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
+  <!--   That's UR-specific! -->
 
   <include file="$(find ur_robot_driver)/launch/ur10e_bringup.launch" >
     <arg name="robot_ip" default="172.31.1.137" doc="SwRI Collaborative Lab's UR10e IP Address" />

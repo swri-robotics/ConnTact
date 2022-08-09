@@ -50,9 +50,17 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 
 
-class AlgorithmBlocks(AssemblyTools):
+# class AlgorithmBlocks(AssemblyTools):
+class AlgorithmBlocks():
 
-    def __init__(self, ROS_rate, start_time, interface):
+    def __init__(self, rate, conntext, interface):
+        self.rate_selected = rate
+        self.conntext = conntext
+        if interface is None:
+            self.interface = self.conntext.interface
+        else:
+            self.interface = interface
+        self.start_time = self.interface.get_unified_time()
         try:
             rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
             self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
@@ -60,7 +68,6 @@ class AlgorithmBlocks(AssemblyTools):
             self.zero_ft_sensor()
         except(rospy.ROSException):
             self.print("failed to find service zero_ftsensor")
-
         try:
             rospy.wait_for_service("/controller_manager/switch_controller", 5)
             rospy.wait_for_service("/controller_manager/list_controllers", 5)
@@ -76,13 +83,11 @@ class AlgorithmBlocks(AssemblyTools):
                     if(a.name == "cartesian_compliance_controller"):
                         return a
                 return None
-
             start_controllers = ['cartesian_compliance_controller']
             stop_controllers = ['pos_joint_traj_controller']
             strictness = 2
             start_asap = False
             timeout = 1.0
-
             # Let's try 3 times and then report error.
             a = 100
             while a > 0:
@@ -112,6 +117,8 @@ class AlgorithmBlocks(AssemblyTools):
             self.print("failed to find service switch_controller. Try switching manually to begin.")
 
         #Configuration variables, to be moved to a yaml file later:
+        self.pose_vec = None
+        self.wrench_vec = self.conntext.get_command_wrench([0, 0, 0])
         self.speed_static = [1/1000,1/1000,1/1000] #Speed at which the system considers itself stopped. Rel. to target hole.
         force_dangerous = [55,55,65]                        #Force value which kills the program. Rel. to gripper.
         force_transverse_dangerous = np.array([30,30,30])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
@@ -119,7 +126,7 @@ class AlgorithmBlocks(AssemblyTools):
         force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         self.max_force_error = [4, 4, 4]                #Allowable error force with no actual loads on the gripper.
         self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning 
-        self._bias_wrench = self.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings. 
+        self._bias_wrench = self.conntext.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings.
 
         #List the official states here. Takes strings, but the tokens created above so typos are less likely from repeated typing of strings (unchecked by interpreter).
         states = [
@@ -148,12 +155,12 @@ class AlgorithmBlocks(AssemblyTools):
         self.steps:dict = { APPROACH_STATE: (findSurface, []) }
 
         self.previousState = None #Store a reference to the previous state here.
-        # self.surface_height = 0.0
+        # self.conntext.surface_height = 0.0
 
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         
         
-        AssemblyTools.__init__(self, interface, ROS_rate)
+        # AssemblyTools.__init__(self, interface, ROS_rate)
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
         # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search 
@@ -168,10 +175,8 @@ class AlgorithmBlocks(AssemblyTools):
         else:
             self.print("Warning: Unsuccessfully tried to zero the force-torque sensor.")
 
-
     def print(self, string: str):
         rospy.loginfo(Fore.LIGHTBLUE_EX + string + Style.RESET_ALL)
-
 
     def post_action(self, trigger_name):
         """Defines the next trigger which the state machine should execute.
@@ -181,19 +186,19 @@ class AlgorithmBlocks(AssemblyTools):
     def is_already_retracting(self):
         return self.is_state_safety_retraction()
     def on_enter_state_check_load_cell_feedback(self):
-        # self.select_tool('corner')
+        # self.conntext.select_tool('corner')
         self.reset_on_state_enter()
-        self.select_tool(self.tcp_selected)
+        self.conntext.select_tool(self.tcp_selected)
         self._log_state_transition()
     def on_enter_state_finding_surface(self):
-        # self.select_tool('corner')
+        # self.conntext.select_tool('corner')
         self.reset_on_state_enter()
-        self.select_tool(self.tcp_selected)
+        self.conntext.select_tool(self.tcp_selected)
         self._log_state_transition()
     def on_enter_state_finding_hole(self):
-        # self.select_tool('corner')
+        # self.conntext.select_tool('corner')
         self.reset_on_state_enter()
-        self.select_tool(self.tcp_selected)
+        self.conntext.select_tool(self.tcp_selected)
         self._log_state_transition()
     def on_enter_state_inserting_along_axis(self):
         self.reset_on_state_enter()
@@ -207,14 +212,14 @@ class AlgorithmBlocks(AssemblyTools):
 
 
     def _log_state_transition(self):
-        rospy.loginfo(Fore.BLACK + Back.WHITE +"State transition to " + str(self.state) + " at time = " + str(rospy.get_rostime()) + Style.RESET_ALL )
+        rospy.loginfo(Fore.BLACK + Back.WHITE +"State transition to " +
+                      str(self.state) + " at time = " + str(self.interface.get_unified_time()) + Style.RESET_ALL )
     def reset_on_state_enter(self):
         self.completion_confidence = 0
 
     def update_commands(self):
-        self.publish_pose(self.pose_vec)
-        self.publish_wrench(self.wrench_vec)
-        
+        self.conntext.publish_pose(self.pose_vec)
+        self.conntext.publish_wrench(self.wrench_vec)
 
     def run_loop(self):
         """Runs the method with name matching the state name. Superceded by AssemblyStep class type if one exists.
@@ -286,11 +291,11 @@ class AlgorithmBlocks(AssemblyTools):
         #Take an average of static sensor reading to check that it's stable.
 
         if (self.curr_time_numpy > 1.5):
-            self._bias_wrench = self._average_wrench_gripper
-            rospy.loginfo("Measured bias wrench. Force: " + str(self.as_array(self._bias_wrench.force)) 
-                +" and Torque: " + str(self.as_array(self._bias_wrench.torque)))
+            self._bias_wrench = self.conntext._average_wrench_gripper
+            rospy.loginfo("Measured bias wrench. Force: " + str(self.conntext.as_array(self._bias_wrench.force)) 
+                +" and Torque: " + str(self.conntext.as_array(self._bias_wrench.torque)))
             
-            # acceptable = self.vectorRegionCompare_symmetrical(self.as_array(self._bias_wrench.force), np.ndarray(self.max_force_error))
+            # acceptable = self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self._bias_wrench.force), np.ndarray(self.max_force_error))
             acceptable = True
 
             if(acceptable):
@@ -301,36 +306,36 @@ class AlgorithmBlocks(AssemblyTools):
                 rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
                 self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
 
-    def finding_surface(self):
-        #seek in Z direction until we stop moving for about 1 second. 
-        # Also requires "seeking_force" to be compensated pretty exactly by a static surface.
-        #Take an average of static sensor reading to check that it's stable.
-
-        seeking_force = [0,0,-7]
-        self.wrench_vec  = self.get_command_wrench(seeking_force)
-        self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
-
-
-        rospy.logwarn_throttle(1, "Running finding_surface method according to the old traditions")
-        # if(not self.force_cap_check(*self.cap_check_forces)):
-        #     self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
-        #     rospy.logerr("Force/torque unsafe; pausing application.")
-        # # elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
-        # #     and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [10,10,seeking_force*-1.5], [-10,-10,seeking_force*-.75])):
-        # el
-        if(self.checkIfStatic(np.array(self.speed_static)) and self.checkIfColliding(np.array(seeking_force))):
-            self.completion_confidence = self.completion_confidence + 1/self._rate_selected
-            # rospy.(1, "Monitoring for flat surface, confidence = " + str(self.completion_confidence))
-            #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
-            if(self.completion_confidence > .90):
-                #Stopped moving vertically and in contact with something that counters push force
-                self.print("Flat surface detected! Moving to spiral search!")
-                #Measure flat surface height:
-                self.surface_height = self.current_pose.transform.translation.z
-                self.next_trigger, self.switch_state = self.post_action(FIND_HOLE_TRIGGER) 
-                self.completion_confidence = 0.01
-        else:
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self._rate_selected, .001]))
+    # def finding_surface(self):
+    #     #seek in Z direction until we stop moving for about 1 second. 
+    #     # Also requires "seeking_force" to be compensated pretty exactly by a static surface.
+    #     #Take an average of static sensor reading to check that it's stable.
+    # 
+    #     seeking_force = [0,0,-7]
+    #     self.wrench_vec  = self.conntext.get_command_wrench(seeking_force)
+    #     self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
+    # 
+    # 
+    #     rospy.logwarn_throttle(1, "Running finding_surface method according to the old traditions")
+    #     # if(not self.conntext.force_cap_check(*self.cap_check_forces)):
+    #     #     self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+    #     #     rospy.logerr("Force/torque unsafe; pausing application.")
+    #     # # elif( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, self.speed_static) 
+    #     # #     and self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [10,10,seeking_force*-1.5], [-10,-10,seeking_force*-.75])):
+    #     # el
+    #     if(self.checkIfStatic(np.array(self.speed_static)) and self.checkIfColliding(np.array(seeking_force))):
+    #         self.completion_confidence = self.completion_confidence + 1/self.rate_selected
+    #         # rospy.(1, "Monitoring for flat surface, confidence = " + str(self.completion_confidence))
+    #         #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
+    #         if(self.completion_confidence > .90):
+    #             #Stopped moving vertically and in contact with something that counters push force
+    #             self.print("Flat surface detected! Moving to spiral search!")
+    #             #Measure flat surface height:
+    #             self.conntext.surface_height = self.conntext.current_pose.transform.translation.z
+    #             self.next_trigger, self.switch_state = self.post_action(FIND_HOLE_TRIGGER) 
+    #             self.completion_confidence = 0.01
+    #     else:
+    #         self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .001]))
 
     def finding_hole(self):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
@@ -339,30 +344,27 @@ class AlgorithmBlocks(AssemblyTools):
        
 
         seeking_force = -7.0
-        self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.spiral_search_motion(self._spiral_params["frequency"], 
-            self._spiral_params["min_amplitude"], self._spiral_params["max_cycles"])
+        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
+        self.pose_vec = self.conntext.spiral_search_motion(self.conntext._spiral_params["frequency"], 
+            self.conntext._spiral_params["min_amplitude"], self.conntext._spiral_params["max_cycles"])
 
-        if(not self.force_cap_check(*self.cap_check_forces)):
+        if(not self.conntext.force_cap_check(*self.cap_check_forces)):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.current_pose.transform.translation.z <= self.surface_height - .0004):
+        elif( self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - .0004):
             #If we've descended at least 5mm below the flat surface detected, consider it a hole.
-            self.completion_confidence = self.completion_confidence + 1/self._rate_selected
+            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
             rospy.loginfo_throttle(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
             if(self.completion_confidence > .90):
                     #Descended from surface detection point. Updating hole location estimate.
-                    self.x_pos_offset = self.current_pose.transform.translation.x
-                    self.y_pos_offset = self.current_pose.transform.translation.y
-                    self._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
+                    self.conntext.x_pos_offset = self.conntext.current_pose.transform.translation.x
+                    self.conntext.y_pos_offset = self.conntext.current_pose.transform.translation.y
+                    self.conntext._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
                     #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
                     self.print("Hole found, peg inserting...")
                     self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER) 
         else:
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self._rate_selected, .01]))
-            # if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                # rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z)
-                #     + " whereas we should drop down to " + str(self.surface_height - self.hole_dept+h) + Style.RESET_ALL )
+            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
 
     def inserting_along_axis(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
@@ -370,17 +372,17 @@ class AlgorithmBlocks(AssemblyTools):
 
 
         seeking_force = -5.0
-        self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.full_compliance_position()
+        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
+        self.pose_vec = self.conntext.full_compliance_position()
 
-        if(not self.force_cap_check(*self.cap_check_forces)):
+        if(not self.conntext.force_cap_check(*self.cap_check_forces)):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.vectorRegionCompare_symmetrical(self.average_speed, self.speed_static) 
-            #and not self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [6,6,80], [-6,-6,-80])
-            and self.vectorRegionCompare(self.as_array(self._average_wrench_world.force), [1.5,1.5,seeking_force*-1.5], [-1.5,-1.5,seeking_force*-.75])
-            and self.current_pose.transform.translation.z <= self.surface_height - self.hole_depth):
-            self.completion_confidence = self.completion_confidence + 1/self._rate_selected
+        elif( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, self.speed_static) 
+            #and not self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [6,6,80], [-6,-6,-80])
+            and self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [1.5,1.5,seeking_force*-1.5], [-1.5,-1.5,seeking_force*-.75])
+            and self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - self.conntext.hole_depth):
+            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
             rospy.loginfo_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.completion_confidence))
             #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
             if(self.completion_confidence > .90):
@@ -388,16 +390,16 @@ class AlgorithmBlocks(AssemblyTools):
                     self.next_trigger, self.switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
         else:
             #
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self._rate_selected, .01]))
-            if(self.current_pose.transform.translation.z >= self.surface_height - self.hole_depth):
-                rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.current_pose.transform.translation.z) 
-                    + " whereas we should drop down to " + str(self.surface_height - self.hole_depth) + Style.RESET_ALL)
+            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
+            if(self.conntext.current_pose.transform.translation.z >= self.conntext.surface_height - self.conntext.hole_depth):
+                rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.conntext.current_pose.transform.translation.z) 
+                    + " whereas we should drop down to " + str(self.conntext.surface_height - self.conntext.hole_depth) + Style.RESET_ALL)
 
     def completed_insertion(self):
         #Inserted properly.
      
         rospy.loginfo_throttle(1, Fore.RED + "Hole found, peg inserted! Done!" +Style.RESET_ALL)
-        if(self.current_pose.transform.translation.z > self.restart_height+.02):
+        if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height+.02):
             #High enough, won't pull itself upward.
             seeking_force = 5
             rospy.loginfo_once(Back.GREEN + Fore.WHITE + Style.BRIGHT + "Completed Task!" + Style.RESET_ALL)
@@ -405,28 +407,28 @@ class AlgorithmBlocks(AssemblyTools):
         else:
             #pull upward gently to move out of trouble hopefully.
             seeking_force = 20
-        self.force_cap_check(*self.cap_check_forces)
-        self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+        self.conntext.force_cap_check(*self.cap_check_forces)
+        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.full_compliance_position()
 
     def safety_retraction(self):
         #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
 
 
-        if(self.current_pose.transform.translation.z > self.restart_height+.05):
+        if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height+.05):
             #High enough, won't pull itself upward.
             seeking_force = 3.5
         else:
             #pull upward gently to move out of trouble.
             seeking_force = 10
-        self.wrench_vec  = self.get_command_wrench([0,0,seeking_force])
+        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
         self.pose_vec = self.full_compliance_position()
 
-        rospy.loginfo_throttle(1, Fore.RED + "Task suspended for safety. Freewheeling until low forces and height reset above " + str(self.restart_height) + ': ' + str(self.current_pose.transform.translation.z) + Style.RESET_ALL)
-        if( self.vectorRegionCompare_symmetrical(self.average_speed, [2,2,2]) 
-            and self.vectorRegionCompare_symmetrical(self.as_array(self._average_wrench_gripper.force), self.max_force_error)
-            and self.current_pose.transform.translation.z > self.restart_height):
-            self.completion_confidence = self.completion_confidence + 1/self._rate_selected
+        rospy.loginfo_throttle(1, Fore.RED + "Task suspended for safety. Freewheeling until low forces and height reset above " + str(self.conntext.restart_height) + ': ' + str(self.conntext.current_pose.transform.translation.z) + Style.RESET_ALL)
+        if( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, [2,2,2]) 
+            and self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self.conntext._average_wrench_gripper.force), self.max_force_error)
+            and self.conntext.current_pose.transform.translation.z > self.conntext.restart_height):
+            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
             rospy.loginfo_throttle(1, Fore.RED + "Static. Restarting confidence: " + str( np.round(self.completion_confidence, 2) ) + " out of 1." +Style.RESET_ALL)
             #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
             if(self.completion_confidence > 1):
@@ -434,33 +436,31 @@ class AlgorithmBlocks(AssemblyTools):
                     rospy.loginfo_throttle(1.0, "Restarting test!")
                     self.next_trigger, self.switch_state = self.post_action(RESTART_TEST_TRIGGER) 
         else:
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 90/self._rate_selected, .01]))
-            if(self.current_pose.transform.translation.z > self.restart_height):
+            self.completion_confidence = np.max( np.array([self.completion_confidence * 90/self.rate_selected, .01]))
+            if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height):
                 rospy.loginfo_throttle(1, Fore.RED + "That's high enough! Let robot stop and come to zero force." +Style.RESET_ALL)
 
-    #All state callbacks need to calculate this in a while loop
     def all_states_calc(self):
         #All once-per-loop functions
-        self.current_pose = self.get_current_pos()
-        self.curr_time = rospy.get_rostime() - self._start_time
+        self.conntext.current_pose = self.conntext.get_current_pos()
+        self.curr_time = rospy.get_rostime() - self.start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
         marked_state = 1; #returns to this state after a soft restart in state 99
-        # self.wrench_vec  = self.get_command_wrench([0,0,-2])
+        # self.wrench_vec  = self.conntext.get_command_wrench([0,0,-2])
         # self.pose_vec = self.full_compliance_position()
-        self.update_avg_speed()
-        self.update_average_wrench()
+        self.conntext.update_avg_speed()
+        self.conntext.update_average_wrench()
         # self._update_plots()
-        # rospy.loginfo_throttle(1, Fore.BLUE + "Average wrench in newtons  is force \n" + str(self._average_wrench_world.force)+ 
-        #     " and torque \n" + str(self._average_wrench_world.torque) + Style.RESET_ALL)
-        # rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.average_speed) +Style.RESET_ALL)
+        # rospy.loginfo_throttle(1, Fore.BLUE + "Average wrench in newtons  is force \n" + str(self.conntext._average_wrench_world.force)+ 
+        #     " and torque \n" + str(self.conntext._average_wrench_world.torque) + Style.RESET_ALL)
+        # rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.conntext.average_speed) +Style.RESET_ALL)
 
-        self.publish_plotted_values()
+        self.conntext.publish_plotted_values(('state', self.state))
 
     def checkForceCap(self):
-        if(not self.force_cap_check(*self.cap_check_forces)):   
+        if(not self.conntext.force_cap_check(*self.cap_check_forces)):   
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
-
 
 
 class AssemblyStep:
@@ -506,9 +506,9 @@ class AssemblyStep:
         '''Updates the commanded position and wrench. These are published in the AlgorithmBlocks main loop.
         '''
         #Command wrench
-        self.assembly.wrench_vec  = self.assembly.get_command_wrench(self.seeking_force)
+        self.assembly.wrench_vec  = self.assembly.conntext.get_command_wrench(self.seeking_force)
         #Command pose
-        self.assembly.pose_vec = self.assembly.arbitrary_axis_comply(self.comply_axes)
+        self.assembly.pose_vec = self.assembly.conntext.arbitrary_axis_comply(self.comply_axes)
 
 
     def checkCompletion(self):
@@ -517,7 +517,7 @@ class AssemblyStep:
 
         if(self.exitConditions()):
             if(self.completion_confidence < 1):
-                self.completion_confidence += 1/(self.assembly._rate_selected)
+                self.completion_confidence += 1/(self.assembly.rate_selected)
 
             if(self.completion_confidence > self.exitThreshold):
                 if(self.holdStartTime == 0):
@@ -533,7 +533,7 @@ class AssemblyStep:
         else:
             #Exit conditions not true
             if(self.completion_confidence>0.0):
-                self.completion_confidence -= 1/(self.assembly._rate_selected)
+                self.completion_confidence -= 1/(self.assembly.rate_selected)
 
         return False
 
@@ -541,16 +541,16 @@ class AssemblyStep:
         return self.noForce() 
 
     def static(self)->bool:
-        return self.assembly.checkIfStatic(np.array(self.assembly.speed_static)) 
+        return self.assembly.conntext.checkIfStatic(np.array(self.assembly.speed_static))
 
     def collision(self)->bool:
-        return self.assembly.checkIfColliding(np.array(self.seeking_force))
+        return self.assembly.conntext.checkIfColliding(np.array(self.seeking_force))
 
     def noForce(self)->bool:
         '''Checks the current forces against an expected force of zero, helpfully telling us if the robot is in free motion
         :return: (bool) whether the force is fairly close to zero.
         '''
-        return self.assembly.checkIfColliding(np.zeros(3))
+        return self.assembly.conntext.checkIfColliding(np.zeros(3))
 
     def onExit(self):
         """Executed once, when the change-state trigger is registered.
@@ -573,7 +573,7 @@ class findSurface(AssemblyStep):
         """
 
         #Measure flat surface height and report it to AssemblyBlocks:
-        self.assembly.surface_height = self.assembly.current_pose.transform.translation.z
+        self.assembly.conntext.surface_height = self.assembly.conntext.current_pose.transform.translation.z
 
         return super().onExit()
         

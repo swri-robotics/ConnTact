@@ -21,6 +21,7 @@ import yaml
 from conntact.conntact_interface import ConntactInterface
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
+from conntact.assembly_utils import AssemblyFilters
 
 class ToolData():
     def __init__(self):
@@ -74,18 +75,18 @@ class AssemblyTools():
         self.tool_data[*tool name*]["matrix"] = (np.array()) 4x4 homogeneous transformation matrix of same transform.
         """
 
-        time.sleep(10)
+        print(Fore.RED + Back.BLUE + "AssemblyTools sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
+        time.sleep(5)
         self.readYAML()
 
         # loop parameters
-        self.wrench_vec = self.get_command_wrench([0, 0, 0])
+        # self.wrench_vec = self.get_command_wrench([0, 0, 0])
         self.next_trigger = ''  # Empty to start. Each callback should decide what next trigger to implement in the main loop
         self.switch_state = False
 
         # initialize loop parameters
 
         self.current_pose = self.get_current_pos()
-        self.pose_vec = None
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
@@ -508,7 +509,7 @@ class AssemblyTools():
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
         :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
-        :return wrench_transformed: (np.Array) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
+        :return wrench_transformed: (geometry_msgs.msg.Wrench) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
 
         Ad_T = AssemblyTools.create_adjoint_representation(T_ab)
@@ -575,7 +576,7 @@ class AssemblyTools():
     def update_average_wrench(self) -> None:
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
         """
-        self.current_wrench = self.interface.current_wrench
+        self.current_wrench = self.interface.get_current_wrench()
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
         # Get current angle from gripper to hole:
@@ -618,15 +619,14 @@ class AssemblyTools():
                 self.interface.send_error("Speed too high, quitting.")
                 quit()
 
-
-    def publish_plotted_values(self) -> None:
+    def publish_plotted_values(self, stateInfo) -> None:
         """Publishes critical data for plotting node to process.
         """
 
         items = dict()
         # Send a dictionary as plain text to expose some additional info
         items["status_dict"] = dict(
-            {('state', self.state), ('tcp_name', str(self.toolData.frame_name))})
+            {stateInfo, ('tcp_name', str(self.toolData.frame_name))})
         if (self.surface_height != 0.0):
             # If we have located the work surface
             items["status_dict"]['surface_height'] = str(self.surface_height)
@@ -651,7 +651,6 @@ class AssemblyTools():
         # insist that we get a 1D array returned
         return np.array([vec.x, vec.y, vec.z]).reshape(-1, )
 
-    # See if the force/speed (any vector) is within a 3-d bound. Technically, it is a box, with sqrt(2)*bound okay at diagonals.
     def vectorRegionCompare_symmetrical(self, input: np.ndarray, bounds_max: list) -> bool:
         """See ``vectorRegionCompare``_. Compares an input to boundaries element-wise. Essentially checks whether a vector
          is within a rectangular region. This version assumes min values to be the negative of max values.
@@ -669,10 +668,9 @@ class AssemblyTools():
         bounds_min[2] = bounds_max[2] * -1.0
         return self.vectorRegionCompare(input, bounds_max, bounds_min)
 
-    # bounds_max and bounds_min let you set a range for each dimension. 
-    # This just compares if you are in the cube described above.
     def vectorRegionCompare(self, input: list, bounds_max: list, bounds_min: list) -> bool:
         """.. vectorRegionCompare Compares an input to boundaries element-wise. Essentially checks whether a vector is within a rectangular region.
+        # bounds_max and bounds_min let you set a range for each dimension.
         :param input: (list of floats) x,y,z of a vector to check.
         :param bounds_max: (list of floats) x,y,z max value of each element.
         :param bounds_min: (list of floats) x,y,z min value of each element.
@@ -754,84 +752,3 @@ class AssemblyTools():
             # Makes the system to stop for a second in hopes that it prevents higher forces/torques.
             # May not be helping.
         return True
-
-
-class AssemblyFilters():
-    """Averages a signal based on a history log of previous values. Window size is normallized to different
-    frequency values using _rate_selected; window should be for 100hz cycle time.
-    """
-
-    def __init__(self, window=15, rate_selected=100):
-
-        # Simple Moving Average Parameters
-        self._rate_selected = rate_selected
-        self._buffer_window = dict()
-        self._buffer_window[
-            "wrench"] = window  # should tie to self._rate_selected = 1/Hz since this variable is the rate of ROS commands
-        self._data_buffer = dict()
-        # self._moving_avg_data = np. #Empty to start. make larger than we need since np is contiguous memory. Will ignore NaN values.
-        # self._data_buffer = np.empty(self._buffer_window)
-        # self.avg_it = 0#iterator for allocating the first window in the moving average calculation
-        # self._data_buffer = np.zeros(self._buffer_window)
-        # self._moving_avg_data = [] #Empty to start
-
-    def average_wrench(self, input) -> np.ndarray:
-        # out = input
-        # Combine 
-        force = self.average_threes(input.force, 'force')
-        torque = self.average_threes(input.torque, 'torque')
-
-        return Wrench(self.dict_to_point(force), self.dict_to_point(torque))
-
-    def average_speed(self, input) -> np.ndarray:
-        """Takes speed as a list of components, returns smoothed version
-        :param input: (numpy.Array) Speed vector
-        :return: (numpy.Array) Smoothed speed vector
-        """
-
-        speed = self.average_threes(Point(input[0], input[1], input[2]), 'speed')
-        return np.array([speed['x'], speed['y'], speed['z']])
-
-    def average_threes(self, input, name):
-        """Returns the moving average of a dict of x,y,z values
-        :param input: (geometry_msgs.msg.Point) A point with x,y,z properties
-        :param name: (string) Name to use for buffer dictionary
-        :return: (dict) x,y,z dictionary of the averaged values.
-        """
-
-        vals = self.point_to_dict(input)
-        for k, v in vals.items():
-            vals[k] = self.simple_moving_average(v, 15, key=name + '_' + k)
-        return vals
-
-    def point_to_dict(self, input):
-        return {"x": input.x, "y": input.y, "z": input.z}
-
-    def dict_to_point(self, input):
-        return Point(input["x"], input["y"], input["z"])
-
-    def simple_moving_average(self, new_data_point, window=None, key="wrench"):
-
-        if not key in self._data_buffer:
-            self._data_buffer[key] = np.array([])
-            self._buffer_window[key] = window
-        window = int(np.floor(
-            self._buffer_window[key] * self._rate_selected / 100))  # Unless new input provided, use class member
-        # Fill up the first window while returning current value, else calculate moving average using constant window
-        if len(self._data_buffer[key]) < window:
-            self._data_buffer[key] = np.append(self._data_buffer[key], new_data_point)
-            avg = self.calc_moving_average(self._data_buffer[key], len(self._data_buffer[key]))
-        else:
-            self._data_buffer[key] = np.append(self._data_buffer[key],
-                                               new_data_point)  # append new datapoint to the end
-            self._data_buffer[key] = np.delete(self._data_buffer[key], 0)  # pop the first element
-            avg = self.calc_moving_average(self._data_buffer[key], window)
-
-        return avg
-
-    def calc_moving_average(self, buffered_data, w):  # w is the window
-        return np.convolve(buffered_data, np.ones(w), 'valid') / w
-
-
-# if __name__ == '__main__':
-#     rospy.init_node("demo_assembly_application_compliance")

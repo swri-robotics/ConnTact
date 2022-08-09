@@ -47,6 +47,8 @@ class ConntactROSInterface(ConntactInterface):
         self.curr_time = rospy.Time(0)
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
 
+        self.current_wrench = WrenchStamped()
+
     def get_unified_time(self):
         """
         :return: Current time. Conntact always measures periods relative to time since
@@ -59,15 +61,23 @@ class ConntactROSInterface(ConntactInterface):
 
     def get_package_path(self):
         """ Returns the position of `end` frame relative to `start` frame.
-                :return: (string) Path to the current package, under which /config/conntact_params can be found.
-                :rtype: :class:`string`
-                """
+        :return: (string) Path to the current package, under which /config/conntact_params can be found.
+        :rtype: :class:`string`
+        """
         return rospkg.RosPack().get_path("conntact")
 
     def callback_update_wrench(self, data: WrenchStamped):
         """Callback to update current wrench data whenever new data becomes available.
         """
         self.current_wrench = data
+
+    def get_current_wrench(self):
+        """ Returns the most recent wrench (force/torque) reading from the sensor.
+        :return: (WrenchStamped) Most recent wrench.
+        :rtype: :class:`geometry_msgs.msg.WrenchStamped`
+        """
+
+        return self.current_wrench
 
     def get_transform(self, frame, origin):
         """ Returns the position of `end` frame relative to `start` frame.

@@ -35,6 +35,14 @@ class ConntactInterface():
         self.print_not_found_error()
         pass
 
+    def get_current_wrench(self):
+        """ Returns the most recent wrench (force/torque) reading from the sensor.
+        :return: (WrenchStamped) Most recent wrench.
+        :rtype: :class:`geometry_msgs.msg.WrenchStamped`
+        """
+        self.print_not_found_error()
+        pass
+
     @abc.abstractmethod
     def get_transform(self, frame, origin):
         """ Returns the position of `end` frame relative to `start` frame.
