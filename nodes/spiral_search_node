@@ -10,13 +10,17 @@ from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamp
 from std_msgs.msg import String
 
 from conntact.spiral_search import SpiralSearch
+from conntact.ros_conntact_interface import ConntactROSInterface
+from conntact.assembly_tools import AssemblyTools
 
 if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
 
-    assembly_application = SpiralSearch()
+    refresh_rate    = 100
+    interface       = ConntactROSInterface(refresh_rate)
+    conntext        = AssemblyTools(interface, refresh_rate)
 
-    # Need to pass in methods to do all the ROS stuff. Prototype definitions are below the main method.
-
+    # do pathing stuff then:
+    assembly_application = SpiralSearch(refresh_rate, conntext, interface)
     assembly_application.main()
 
