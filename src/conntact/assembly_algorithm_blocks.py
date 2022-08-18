@@ -12,9 +12,7 @@ import numpy as np
 import rospy
 import tf.transformations as trfm
 from colorama import Back, Fore, Style, init
-from std_srvs.srv import Trigger
-from controller_manager_msgs.srv import (ListControllers, LoadController,
-                                         SwitchController)
+
 from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
                                TransformStamped, Vector3, Wrench,
                                WrenchStamped)
@@ -61,60 +59,6 @@ class AlgorithmBlocks():
         else:
             self.interface = interface
         self.start_time = self.interface.get_unified_time()
-        try:
-            rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
-            self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
-            self.print("connected to service zero_ftsensor")
-            self.zero_ft_sensor()
-        except(rospy.ROSException):
-            self.print("failed to find service zero_ftsensor")
-        try:
-            rospy.wait_for_service("/controller_manager/switch_controller", 5)
-            rospy.wait_for_service("/controller_manager/list_controllers", 5)
-            switch_ctrl_srv = rospy.ServiceProxy("/controller_manager/switch_controller", SwitchController)
-            controller_lister_srv = rospy.ServiceProxy("/controller_manager/list_controllers", ListControllers)
-
-            def get_cart_ctrl(ctrl_list) :
-                """
-                :param ctrl_list: List of controller objects
-                :return: either a ref. to the cartesian compliance controller object or None if none exists
-                """
-                for a in ctrl_list:
-                    if(a.name == "cartesian_compliance_controller"):
-                        return a
-                return None
-            start_controllers = ['cartesian_compliance_controller']
-            stop_controllers = ['pos_joint_traj_controller']
-            strictness = 2
-            start_asap = False
-            timeout = 1.0
-            # Let's try 3 times and then report error.
-            a = 100
-            while a > 0:
-                switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
-                                strictness=strictness, start_asap=start_asap, timeout=timeout)
-                ctrl_list = controller_lister_srv().controller
-                # self.print(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
-                if(len(ctrl_list) < 1):
-                    rospy.logerr("No controllers in controller list! Controller list manager not ready.")
-                    rospy.sleep(.5)
-                    continue
-                else:
-                    cart_ctrl = get_cart_ctrl(ctrl_list)
-                    if(cart_ctrl is not None):
-                        if cart_ctrl.state == 'running':
-                            self.print("Switched to cartesian_compliance_controller successfully.")
-                            break
-                    if(a>1):
-                        self.print("Trying again to switch to compliance_controller...")
-                        rospy.sleep(.5)
-                    else:
-                        self.print("Couldn't switch to compliance controller! Try switching manually.")
-                a -= 1
-
-
-        except(rospy.ROSException):
-            self.print("failed to find service switch_controller. Try switching manually to begin.")
 
         #Configuration variables, to be moved to a yaml file later:
         self.pose_vec = None
@@ -168,15 +112,8 @@ class AlgorithmBlocks():
         #Store a reference to the AssemblyStep class in use by the current State if it exists:
         self.step:AssemblyStep = None
 
-
-    def zero_ft_sensor(self):
-        if self.zeroForceService():
-            self.print("Successfully zeroed the force-torque sensor.")
-        else:
-            self.print("Warning: Unsuccessfully tried to zero the force-torque sensor.")
-
     def print(self, string: str):
-        rospy.loginfo(Fore.LIGHTBLUE_EX + string + Style.RESET_ALL)
+        self.interface.send_info(Fore.LIGHTBLUE_EX + string + Style.RESET_ALL)
 
     def post_action(self, trigger_name):
         """Defines the next trigger which the state machine should execute.
@@ -306,42 +243,10 @@ class AlgorithmBlocks():
                 rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
                 self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
 
-    # def finding_surface(self):
-    #     #seek in Z direction until we stop moving for about 1 second. 
-    #     # Also requires "seeking_force" to be compensated pretty exactly by a static surface.
-    #     #Take an average of static sensor reading to check that it's stable.
-    # 
-    #     seeking_force = [0,0,-7]
-    #     self.wrench_vec  = self.conntext.get_command_wrench(seeking_force)
-    #     self.pose_vec = self.linear_search_position([0,0,0]) #doesn't orbit, just drops straight downward
-    # 
-    # 
-    #     rospy.logwarn_throttle(1, "Running finding_surface method according to the old traditions")
-    #     # if(not self.conntext.force_cap_check(*self.cap_check_forces)):
-    #     #     self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
-    #     #     rospy.logerr("Force/torque unsafe; pausing application.")
-    #     # # elif( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, self.speed_static) 
-    #     # #     and self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [10,10,seeking_force*-1.5], [-10,-10,seeking_force*-.75])):
-    #     # el
-    #     if(self.checkIfStatic(np.array(self.speed_static)) and self.checkIfColliding(np.array(seeking_force))):
-    #         self.completion_confidence = self.completion_confidence + 1/self.rate_selected
-    #         # rospy.(1, "Monitoring for flat surface, confidence = " + str(self.completion_confidence))
-    #         #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
-    #         if(self.completion_confidence > .90):
-    #             #Stopped moving vertically and in contact with something that counters push force
-    #             self.print("Flat surface detected! Moving to spiral search!")
-    #             #Measure flat surface height:
-    #             self.conntext.surface_height = self.conntext.current_pose.transform.translation.z
-    #             self.next_trigger, self.switch_state = self.post_action(FIND_HOLE_TRIGGER) 
-    #             self.completion_confidence = 0.01
-    #     else:
-    #         self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .001]))
-
     def finding_hole(self):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
         #This triggers the hole position estimate to be updated to limit crazy
         #forces and oscillations. Also reduces spiral size.
-       
 
         seeking_force = -7.0
         self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])

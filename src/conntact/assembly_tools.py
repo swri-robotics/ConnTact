@@ -75,8 +75,8 @@ class AssemblyTools():
         self.tool_data[*tool name*]["matrix"] = (np.array()) 4x4 homogeneous transformation matrix of same transform.
         """
 
-        print(Fore.RED + Back.BLUE + "AssemblyTools sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
-        time.sleep(5)
+        # print(Fore.RED + Back.BLUE + "AssemblyTools sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
+        # time.sleep(5)
         self.readYAML()
 
         # loop parameters

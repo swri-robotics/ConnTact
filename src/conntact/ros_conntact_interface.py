@@ -11,6 +11,9 @@ import tf2_ros, rospkg
 from std_msgs.msg import String
 import tf2_geometry_msgs
 import tf.transformations as trfm
+from std_srvs.srv import Trigger
+from controller_manager_msgs.srv import (ListControllers, LoadController,
+                                         SwitchController)
 
 import numpy as np
 from colorama import Fore, Back, Style
@@ -34,9 +37,6 @@ class ConntactROSInterface(ConntactInterface):
 
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped,
                                                self.callback_update_wrench, queue_size=2)
-        # self._tcp_pub   = rospy.Publisher('target_hole_position', PoseStamped, queue_size=2, latch=True)
-
-        # Needed to get current pose of the robot
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0))  # tf buffer length
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.broadcaster = tf2_ros.StaticTransformBroadcaster()
@@ -46,8 +46,64 @@ class ConntactROSInterface(ConntactInterface):
         self._start_time = rospy.get_rostime()
         self.curr_time = rospy.Time(0)
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
-
         self.current_wrench = WrenchStamped()
+
+        # Set up services:
+        try:
+            rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
+            self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
+            self.send_info("connected to service zero_ftsensor")
+            self.zero_ft_sensor()
+        except(rospy.ROSException):
+            self.send_info("failed to find service zero_ftsensor")
+
+        # Set up controller:
+        try:
+            rospy.wait_for_service("/controller_manager/switch_controller", 5)
+            rospy.wait_for_service("/controller_manager/list_controllers", 5)
+            switch_ctrl_srv = rospy.ServiceProxy("/controller_manager/switch_controller", SwitchController)
+            controller_lister_srv = rospy.ServiceProxy("/controller_manager/list_controllers", ListControllers)
+            def get_cart_ctrl(ctrl_list):
+                """
+                :param ctrl_list: List of controller objects
+                :return: either a ref. to the cartesian compliance controller object or None if none exists
+                """
+                for a in ctrl_list:
+                    if (a.name == "cartesian_compliance_controller"):
+                        return a
+                return None
+
+            start_controllers = ['cartesian_compliance_controller']
+            stop_controllers = ['pos_joint_traj_controller']
+            strictness = 2
+            start_asap = False
+            timeout = 1.0
+            # Let's try 3 times and then report error.
+            a = 100
+            while a > 0:
+                switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
+                                strictness=strictness, start_asap=start_asap, timeout=timeout)
+                ctrl_list = controller_lister_srv().controller
+                # self.send_info(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
+                if (not ctrl_list):
+                    rospy.logerr("No controllers in controller list! Controller list manager not ready.")
+                    rospy.sleep(.5)
+                    continue
+                else:
+                    cart_ctrl = get_cart_ctrl(ctrl_list)
+                    if (cart_ctrl is not None):
+                        if cart_ctrl.state == 'running':
+                            self.send_info("Switched to cartesian_compliance_controller successfully.")
+                            break
+                    if (a > 1):
+                        self.send_info("Trying again to switch to compliance_controller...")
+                        rospy.sleep(.5)
+                    else:
+                        self.send_info("Couldn't switch to compliance controller! Try switching manually.")
+                a -= 1
+        except(rospy.ROSException):
+            self.send_info("failed to find service switch_controller. Try switching manually to begin.")
+        self.send_error("Completed controller-change routine.")
 
     def get_unified_time(self):
         """
@@ -179,6 +235,12 @@ class ConntactROSInterface(ConntactInterface):
 
     def sleep_until_next_loop(self):
         self._rate.sleep()
+
+    def zero_ft_sensor(self):
+        if self.zeroForceService():
+            self.send_info("Successfully zeroed the force-torque sensor.")
+        else:
+            self.send_info("Warning: Unsuccessfully tried to zero the force-torque sensor.")
 
     def print_not_found_error(self):
         """Whine about the abstract method not being overridden in the implementation.

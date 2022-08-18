@@ -102,7 +102,8 @@ class ConntactInterface():
     @abc.abstractmethod
     def publish_command_position(self, pose:PoseStamped):
         """
-        Returns a position command out of Conntact and into the calling environment so that the robot can act upon that command.
+        Returns a position command out of Conntact and into the calling environment
+        so that the robot can act upon that command.
         :param pos: (PoseStamped) commanded pose object.
         """
         self.print_not_found_error()
@@ -123,6 +124,15 @@ class ConntactInterface():
 
     @abc.abstractmethod
     def sleep_until_next_loop(self):
+        self.print_not_found_error()
+        pass
+
+    @abc.abstractmethod
+    def zero_ft_sensor(self):
+        """
+        Tares the force-torque sensor. Almost all load cells accumulate steady-state error.
+        Run this method when not in contact with anything to get more accurate readings for a while.
+        """
         self.print_not_found_error()
         pass
 
