@@ -33,14 +33,12 @@ class ToolData():
 
 class AssemblyTools():
 
-    def __init__(self, interface: ConntactInterface, rate: int):
-
-
+    def __init__(self, interface: ConntactInterface, conntact_params="conntact_params"):
         # Save a reference to the interface.
         self.interface = interface
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
-        self._start_time = rospy.get_rostime()
+        self._start_time = self.interface.get_unified_time()
         self.config = {}
 
         # Read in yaml config file
@@ -55,7 +53,7 @@ class AssemblyTools():
                 except yaml.YAMLError as exc:
                     print(exc)
 
-        load_yaml_file("conntact_config")
+        load_yaml_file(conntact_params)
         load_yaml_file("peg_in_hole_params")
 
         print("Full config dict: {}".format(self.config))
@@ -195,7 +193,7 @@ class AssemblyTools():
         # Inputs are in mm XYZ and degrees RPY
         # move to utils
         output_pose = PoseStamped()  # tf_task_board_to_hole
-        output_pose.header.stamp = rospy.get_rostime()
+        output_pose.header.stamp = self.interface.get_unified_time()
         output_pose.header.frame_id = base_frame
         tempQ = list(trfm.quaternion_from_euler(ori[0] * np.pi / 180, ori[1] * np.pi / 180, ori[2] * np.pi / 180))
         output_pose.pose = Pose(Point(pos[0] / 1000, pos[1] / 1000, pos[2] / 1000),
@@ -209,10 +207,6 @@ class AssemblyTools():
         # TODO: Make this a loop-run state to slowly slerp from one TCP to another using
         #  https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Slerp.html
 
-        # if (tool_name in list(self.tool_data)):
-        #     self.activeTCP = tool_name
-        #     self.reference_frames['tcp'] = self.tool_data[self.activeTCP]['transform']
-        #     self.send_reference_TFs()
         if tool_name in list(self.toolData.validToolsDict):
             self.toolData.name = tool_name
             self.toolData.frame_name = "peg_" + tool_name + "_position"
@@ -239,7 +233,7 @@ class AssemblyTools():
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
         """
-        curr_time = rospy.get_rostime() - self._start_time
+        curr_time = self.interface.get_unified_time() - self._start_time
         curr_time_numpy = np.double(curr_time.to_sec())
         curr_amp = min_amplitude + self.safe_clearance * np.mod(2.0 * np.pi * frequency * curr_time_numpy, max_cycles);
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
@@ -395,7 +389,7 @@ class AssemblyTools():
         goal_pose.pose.orientation = quaternion
 
         # Set header values
-        goal_pose.header.stamp = rospy.get_rostime()
+        goal_pose.header.stamp = self.interface.get_unified_time()
         goal_pose.header.frame_id = "base_link"
 
         if (self.activeTCP != "tool0"):
@@ -439,7 +433,7 @@ class AssemblyTools():
         :return: (geometry_msgs.PoseStamped) Pose based on input.
         """
         output = PoseStamped()
-        output.header.stamp = rospy.get_rostime()
+        output.header.stamp = self.interface.get_unified_time()
         output.header.frame_id = base_frame
 
         quat = trfm.quaternion_from_matrix(input)
@@ -566,7 +560,7 @@ class AssemblyTools():
         wrench.torque.x, wrench.torque.y, wrench.torque.z = torque
         # create header
         # wrench_stamped.header.seq = self._seq
-        wrench_stamped.header.stamp = rospy.get_rostime()
+        wrench_stamped.header.stamp = self.interface.get_unified_time()
         wrench_stamped.header.frame_id = "base_link"
         # self._seq+=1
         wrench_stamped.wrench = wrench

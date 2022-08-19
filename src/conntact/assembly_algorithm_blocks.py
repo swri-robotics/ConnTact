@@ -51,8 +51,8 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 # class AlgorithmBlocks(AssemblyTools):
 class AlgorithmBlocks():
 
-    def __init__(self, rate, conntext, interface):
-        self.rate_selected = rate
+    def __init__(self, conntext, interface, ):
+        self.rate_selected = conntext.rate
         self.conntext = conntext
         if interface is None:
             self.interface = self.conntext.interface

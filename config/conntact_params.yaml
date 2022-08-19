@@ -1,0 +1,15 @@
+#Config info needed for the hardware/software combination running Conntact.
+#We're running on a UR10e on a specific computer, so we need to tweak these
+#params to work well in our cell.
+framework: # Params to keep the data pipeline reliable
+  refresh_rate: 100 #Algorithm loop execution frequency, in hz
+robot: # Params to keep the robot safe and reliable
+  speed_static: [.001, .001, .001]
+  force_setpoints:
+    direct:
+      warning: [40, 40, 40]
+      dangerous: [55, 55, 65]
+    transverse:
+      warning: [20, 20, 20]
+      dangerous: [30, 30, 30]
+    max_error: [4, 4, 4]
