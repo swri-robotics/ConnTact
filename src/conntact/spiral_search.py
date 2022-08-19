@@ -52,6 +52,7 @@ class SpiralSearch(AlgorithmBlocks, Machine):
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
         self.tcp_selected = 'tip'
 
+
     def main(self):
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")

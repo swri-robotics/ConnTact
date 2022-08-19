@@ -51,35 +51,39 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 # class AlgorithmBlocks(AssemblyTools):
 class AlgorithmBlocks():
 
-    def __init__(self, conntext, interface, ):
-        self.rate_selected = conntext.rate
+    def __init__(self, conntext, interface, connfig_name):
         self.conntext = conntext
+        self.rate_selected = conntext.rate
         if interface is None:
             self.interface = self.conntext.interface
         else:
             self.interface = interface
+
+        self.connfig = self.interface.load_yaml_file(connfig_name)
+
         self.start_time = self.interface.get_unified_time()
+
 
         #Configuration variables, to be moved to a yaml file later:
         self.pose_vec = None
         self.wrench_vec = self.conntext.get_command_wrench([0, 0, 0])
-        self.speed_static = [1/1000,1/1000,1/1000] #Speed at which the system considers itself stopped. Rel. to target hole.
-        force_dangerous = [55,55,65]                        #Force value which kills the program. Rel. to gripper.
-        force_transverse_dangerous = np.array([30,30,30])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        force_warning = [40,40,50]                          #Force value which pauses the program. Rel. to gripper.
-        force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        self.max_force_error = [4, 4, 4]                #Allowable error force with no actual loads on the gripper.
-        self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning 
+        # self.speed_static = [1/1000,1/1000,1/1000] #Speed at which the system considers itself stopped. Rel. to target hole.
+        # force_dangerous = [55,55,65]                        #Force value which kills the program. Rel. to gripper.
+        # force_transverse_dangerous = np.array([30,30,30])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        # force_warning = [40,40,50]                          #Force value which pauses the program. Rel. to gripper.
+        # force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        # self.max_force_error = [4, 4, 4]                #Allowable error force with no actual loads on the gripper.
+        # self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning
         self._bias_wrench = self.conntext.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings.
 
         #List the official states here. Takes strings, but the tokens created above so typos are less likely from repeated typing of strings (unchecked by interpreter).
         states = [
-            IDLE_STATE, 
+            IDLE_STATE,
             CHECK_FEEDBACK_STATE,
-            APPROACH_STATE, 
-            FIND_HOLE_STATE, 
-            INSERTING_PEG_STATE, 
-            COMPLETION_STATE, 
+            APPROACH_STATE,
+            FIND_HOLE_STATE,
+            INSERTING_PEG_STATE,
+            COMPLETION_STATE,
             SAFETY_RETRACT_STATE
         ]
 
@@ -102,12 +106,12 @@ class AlgorithmBlocks():
         # self.conntext.surface_height = 0.0
 
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
-        
-        
+
+
         # AssemblyTools.__init__(self, interface, ROS_rate)
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
-        # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search 
+        # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search
         self.tcp_selected = 'tip'
         #Store a reference to the AssemblyStep class in use by the current State if it exists:
         self.step:AssemblyStep = None

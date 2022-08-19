@@ -17,8 +17,8 @@ if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
 
     refresh_rate    = 100
-    interface       = ConntactROSInterface(refresh_rate)
-    conntext        = AssemblyTools(interface, refresh_rate)
+    interface       = ConntactROSInterface()
+    conntext        = AssemblyTools(interface)
 
     # do pathing stuff then:
     assembly_application = SpiralSearch(refresh_rate, conntext, interface)

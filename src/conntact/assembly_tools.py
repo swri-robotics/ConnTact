@@ -36,29 +36,40 @@ class AssemblyTools():
     def __init__(self, interface: ConntactInterface, conntact_params="conntact_params"):
         # Save a reference to the interface.
         self.interface = interface
+        self.params = self.interface.load_yaml_file(conntact_params)
+
+        # save off the important stuff that's accessed every loop cycle
+        force_dangerous = [55, 55, 65]  # Force value which kills the program. Rel. to gripper.
+        force_transverse_dangerous = np.array([30, 30,
+                                               30])  # Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        force_warning = [40, 40, 50]  # Force value which pauses the program. Rel. to gripper.
+        force_transverse_warning = np.array([20, 20,
+                                             20])  # torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
+        self.max_force_error = [4, 4, 4]  # Allowable error force with no actual loads on the gripper.
+        self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning
+        # self.cap_check_forces = self.params["robot"]["force_setpoints"]
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
         self._start_time = self.interface.get_unified_time()
-        self.config = {}
+
 
         # Read in yaml config file
-        path = self.interface.get_package_path()
+        # path = self.interface.get_package_path()
+        #
+        # def load_yaml_file(filename):
+        #     with open(path + '/config/' + filename + '.yaml') as stream:
+        #         try:
+        #             info = yaml.safe_load(stream)
+        #             # print(info)
+        #             self.params.update(info)
+        #         except yaml.YAMLError as exc:
+        #             print(exc)
+        #
+        # load_yaml_file(conntact_params)
+        # load_yaml_file("peg_in_hole_params")
+        # print("Full config dict: {}".format(self.params))
 
-        def load_yaml_file(filename):
-            with open(path + '/config/' + filename + '.yaml') as stream:
-                try:
-                    info = yaml.safe_load(stream)
-                    # print(info)
-                    self.config.update(info)
-                except yaml.YAMLError as exc:
-                    print(exc)
-
-        load_yaml_file(conntact_params)
-        load_yaml_file("peg_in_hole_params")
-
-        print("Full config dict: {}".format(self.config))
-
-        self._rate_selected = rate
+        self._rate_selected = self.params["framework"]["rate"]
         self.highForceWarning = False
         # self._seq                   = 0
 
@@ -708,34 +719,36 @@ class AssemblyTools():
         # return self.vectorRegionCompare(self.as_array(self._average_wrench_world.force)-commandedForce, upperThresholds, lowerThresholds)
 
     # TODO: Make the parameters of function part of the constructor or something...
-    def force_cap_check(self, danger_force=[45, 45, 45], danger_transverse_force=[3.5, 3.5, 3.5],
-                        warning_force=[25, 25, 25], warning_transverse_force=[2, 2, 2]):
+    def force_cap_check(self):
         """Checks whether any forces or torques are dangerously high. There are two levels of response:
             *Elevated levels of force cause this program to pause for 1s. If forces remain high after pause, 
             the system will enter a freewheeling state
             *Dangerously high forces will kill this program immediately to prevent damage.
         :return: (Bool) True if all is safe; False if a warning stop is requested.
         """
-        # Calculate acceptable torque from transverse forces
+        force_limits = self.config['robot']['force_setpoints']
+        # Calculate acceptable torque from transverse forces by taking the moment arm to tcp:
         radius = np.linalg.norm(self.as_array(self.toolData.transform.transform.translation))
         # Set a minimum radius to always permit some torque
         radius = max(3, radius)
         rospy.loginfo_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))
-        warning_torque = [warning_transverse_force[a] * radius for a in range(3)]
-        danger_torque = [danger_transverse_force[b] * radius for b in range(3)]
+        warning_torque = [force_limits['transverse']['warning'][a] * radius for a in range(3)]
+        danger_torque = [force_limits['transverse']['dangerous'][b] * radius for b in range(3)]
         rospy.loginfo_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
+        force_array  = self.as_array(self.current_wrench.wrench.force)
+        torque_array = self.as_array(self.current_wrench.wrench.torque)
 
-        if (not (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), danger_force)
-                 and self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque),
-                                                          danger_torque))):
+        if (not (self.vectorRegionCompare_symmetrical(force_array, force_limits['direct']['dangerous'])
+                 and self.vectorRegionCompare_symmetrical(torque_array, danger_torque))):
             rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
             rospy.logerr("Killing program.")
             quit()  # kills the program. Since the node is required, it kills the ROS application.
-            return False
-        if (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.force), warning_force)):
-            if (self.vectorRegionCompare_symmetrical(self.as_array(self.current_wrench.wrench.torque), warning_torque)):
+            return True
+        if (self.vectorRegionCompare_symmetrical(force_array, force_limits['direct']['warning'])):
+            if (self.vectorRegionCompare_symmetrical(torque_array, warning_torque)):
                 return True
-        rospy.logerr("High force/torque detected! " + str(self.current_wrench.wrench))
+        rospy.logerr("High force/torque detected! \nForce: {}\nTorque: {}".format(force_array, torque_array))
+        # Forces and torques within acceptable levels. Reset highForceWarning
         if (self.highForceWarning):
             self.highForceWarning = False
             return False

@@ -6,10 +6,10 @@ framework: # Params to keep the data pipeline reliable
 robot: # Params to keep the robot safe and reliable
   speed_static: [.001, .001, .001]
   force_setpoints:
-    direct:
-      warning: [40, 40, 40]
-      dangerous: [55, 55, 65]
-    transverse:
-      warning: [20, 20, 20]
-      dangerous: [30, 30, 30]
+    direct: # Force at the gripper base
+      warning: [40, 40, 40]   # Force value which pauses the program. Rel. to gripper.
+      dangerous: [55, 55, 65] # Force value which kills the program. Rel. to gripper.
+    transverse: # Force at the TCP creating torques. Values are in `force/mm of tcp length`
+      warning: [20, 20, 20]   # Force value which pauses the program.
+      dangerous: [30, 30, 30] # Force value which kills the program.
     max_error: [4, 4, 4]

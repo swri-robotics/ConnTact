@@ -14,15 +14,19 @@ import tf.transformations as trfm
 from std_srvs.srv import Trigger
 from controller_manager_msgs.srv import (ListControllers, LoadController,
                                          SwitchController)
-
 import numpy as np
 from colorama import Fore, Back, Style
-
+import yaml
 from conntact.conntact_interface import ConntactInterface
 
-
 class ConntactROSInterface(ConntactInterface):
-    def __init__(self, ROS_rate=100):
+    def __init__(self, conntact_params="conntact_params"):
+        #read in conntact parameters
+
+        self.params = {}
+        self.path = self.get_package_path()
+        self.params.update(self.load_yaml_file(conntact_params))
+
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped,
                                            queue_size=10)
         self._pose_pub = rospy.Publisher('cartesian_compliance_controller/target_frame', PoseStamped, queue_size=2)
@@ -41,8 +45,8 @@ class ConntactROSInterface(ConntactInterface):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.broadcaster = tf2_ros.StaticTransformBroadcaster()
 
-        self._rate_selected = ROS_rate
-        self._rate = rospy.Rate(self._rate_selected)  # setup for sleeping in hz
+        rate_integer = self.params["framework"]["rate"]
+        self._rate = rospy.Rate(rate_integer)  # setup for sleeping in hz
         self._start_time = rospy.get_rostime()
         self.curr_time = rospy.Time(0)
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
@@ -103,7 +107,15 @@ class ConntactROSInterface(ConntactInterface):
                 a -= 1
         except(rospy.ROSException):
             self.send_info("failed to find service switch_controller. Try switching manually to begin.")
-        self.send_error("Completed controller-change routine.")
+
+    def load_yaml_file(self, filename):
+        with open(self.path + '/config/' + filename + '.yaml') as stream:
+            try:
+                info = yaml.safe_load(stream)
+                # print(info)
+                return info
+            except yaml.YAMLError as exc:
+                print(exc)
 
     def get_unified_time(self):
         """
