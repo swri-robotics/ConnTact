@@ -74,7 +74,8 @@ class AlgorithmBlocks():
         # force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
         # self.max_force_error = [4, 4, 4]                #Allowable error force with no actual loads on the gripper.
         # self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning
-        self._bias_wrench = self.conntext.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings.
+        # self._bias_wrench = self.conntext.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings.
+        self.next_trigger = ''  # Empty to start. Each callback should decide what next trigger to implement in the main loop
 
         #List the official states here. Takes strings, but the tokens created above so typos are less likely from repeated typing of strings (unchecked by interpreter).
         states = [
@@ -126,11 +127,6 @@ class AlgorithmBlocks():
 
     def is_already_retracting(self):
         return self.is_state_safety_retraction()
-    def on_enter_state_check_load_cell_feedback(self):
-        # self.conntext.select_tool('corner')
-        self.reset_on_state_enter()
-        self.conntext.select_tool(self.tcp_selected)
-        self._log_state_transition()
     def on_enter_state_finding_surface(self):
         # self.conntext.select_tool('corner')
         self.reset_on_state_enter()
@@ -200,7 +196,7 @@ class AlgorithmBlocks():
 
         self.completion_confidence = 0
         
-        self.next_trigger, self.switch_state = self.post_action(CHECK_FEEDBACK_TRIGGER)
+        self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER)
 
         rospy.loginfo(Fore.BLACK + Back.GREEN + "Beginning search algorithm. "+Style.RESET_ALL)
 
@@ -227,25 +223,25 @@ class AlgorithmBlocks():
             self.update_commands()
             self.interface.sleep_until_next_loop()
                     
-    def check_load_cell_feedback(self):
-        # self.switch_state = False
-        #Take an average of static sensor reading to check that it's stable.
-
-        if (self.curr_time_numpy > 1.5):
-            self._bias_wrench = self.conntext._average_wrench_gripper
-            rospy.loginfo("Measured bias wrench. Force: " + str(self.conntext.as_array(self._bias_wrench.force)) 
-                +" and Torque: " + str(self.conntext.as_array(self._bias_wrench.torque)))
-            
-            # acceptable = self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self._bias_wrench.force), np.ndarray(self.max_force_error))
-            acceptable = True
-
-            if(acceptable):
-                self.print("Starting linear search.")
-                self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER) 
-                
-            else:
-                rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
-                self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+    # def check_load_cell_feedback(self):
+    #     # self.switch_state = False
+    #     #Take an average of static sensor reading to check that it's stable.
+    #
+    #     if (self.curr_time_numpy > 1.5):
+    #         self._bias_wrench = self.conntext._average_wrench_gripper
+    #         rospy.loginfo("Measured bias wrench. Force: " + str(self.conntext.as_array(self._bias_wrench.force))
+    #             +" and Torque: " + str(self.conntext.as_array(self._bias_wrench.torque)))
+    #
+    #         # acceptable = self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self._bias_wrench.force), np.ndarray(self.max_force_error))
+    #         acceptable = True
+    #
+    #         if(acceptable):
+    #             self.print("Starting linear search.")
+    #             self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER)
+    #
+    #         else:
+    #             rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
+    #             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
 
     def finding_hole(self):
         #Spiral until we descend 1/3 the specified hole depth (provisional fraction)

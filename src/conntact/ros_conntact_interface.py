@@ -45,7 +45,7 @@ class ConntactROSInterface(ConntactInterface):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.broadcaster = tf2_ros.StaticTransformBroadcaster()
 
-        rate_integer = self.params["framework"]["rate"]
+        rate_integer = self.params["framework"]["refresh_rate"]
         self._rate = rospy.Rate(rate_integer)  # setup for sleeping in hz
         self._start_time = rospy.get_rostime()
         self.curr_time = rospy.Time(0)
@@ -53,61 +53,62 @@ class ConntactROSInterface(ConntactInterface):
         self.current_wrench = WrenchStamped()
 
         # Set up services:
-        try:
-            rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
-            self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
-            self.send_info("connected to service zero_ftsensor")
-            self.zero_ft_sensor()
-        except(rospy.ROSException):
-            self.send_info("failed to find service zero_ftsensor")
+        skip = True
+        if(not skip):
+            try:
+                rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
+                self.zeroForceService = rospy.ServiceProxy("/ur_hardware_interface/zero_ftsensor", Trigger)
+                self.send_info("connected to service zero_ftsensor")
+                self.zero_ft_sensor()
+            except(rospy.ROSException):
+                self.send_info("failed to find service zero_ftsensor")
 
-        # Set up controller:
-        try:
-            rospy.wait_for_service("/controller_manager/switch_controller", 5)
-            rospy.wait_for_service("/controller_manager/list_controllers", 5)
-            switch_ctrl_srv = rospy.ServiceProxy("/controller_manager/switch_controller", SwitchController)
-            controller_lister_srv = rospy.ServiceProxy("/controller_manager/list_controllers", ListControllers)
-            def get_cart_ctrl(ctrl_list):
-                """
-                :param ctrl_list: List of controller objects
-                :return: either a ref. to the cartesian compliance controller object or None if none exists
-                """
-                for a in ctrl_list:
-                    if (a.name == "cartesian_compliance_controller"):
-                        return a
-                return None
+            # Set up controller:
+            try:
+                rospy.wait_for_service("/controller_manager/switch_controller", 5)
+                rospy.wait_for_service("/controller_manager/list_controllers", 5)
+                switch_ctrl_srv = rospy.ServiceProxy("/controller_manager/switch_controller", SwitchController)
+                controller_lister_srv = rospy.ServiceProxy("/controller_manager/list_controllers", ListControllers)
+                def get_cart_ctrl(ctrl_list):
+                    """
+                    :param ctrl_list: List of controller objects
+                    :return: either a ref. to the cartesian compliance controller object or None if none exists
+                    """
+                    for a in ctrl_list:
+                        if (a.name == "cartesian_compliance_controller"):
+                            return a
+                    return None
 
-            start_controllers = ['cartesian_compliance_controller']
-            stop_controllers = ['pos_joint_traj_controller']
-            strictness = 2
-            start_asap = False
-            timeout = 1.0
-            # Let's try 3 times and then report error.
-            a = 100
-            while a > 0:
-                switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
-                                strictness=strictness, start_asap=start_asap, timeout=timeout)
-                ctrl_list = controller_lister_srv().controller
-                # self.send_info(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
-                if (not ctrl_list):
-                    rospy.logerr("No controllers in controller list! Controller list manager not ready.")
-                    rospy.sleep(.5)
-                    continue
-                else:
-                    cart_ctrl = get_cart_ctrl(ctrl_list)
-                    if (cart_ctrl is not None):
-                        if cart_ctrl.state == 'running':
-                            self.send_info("Switched to cartesian_compliance_controller successfully.")
-                            break
-                    if (a > 1):
-                        self.send_info("Trying again to switch to compliance_controller...")
+                start_controllers = ['cartesian_compliance_controller']
+                stop_controllers = ['pos_joint_traj_controller']
+                strictness = 2
+                start_asap = False
+                timeout = 1.0
+                # Let's try 3 times and then report error.
+                a = 100
+                while a > 0:
+                    switch_ctrl_srv(start_controllers=start_controllers, stop_controllers=stop_controllers,
+                                    strictness=strictness, start_asap=start_asap, timeout=timeout)
+                    ctrl_list = controller_lister_srv().controller
+                    # self.send_info(Back.LIGHTBLACK_EX +"Starting controller list: {}".format(ctrl_list))
+                    if (not ctrl_list):
+                        rospy.logerr("No controllers in controller list! Controller list manager not ready.")
                         rospy.sleep(.5)
+                        continue
                     else:
-                        self.send_info("Couldn't switch to compliance controller! Try switching manually.")
-                a -= 1
-        except(rospy.ROSException):
-            self.send_info("failed to find service switch_controller. Try switching manually to begin.")
-
+                        cart_ctrl = get_cart_ctrl(ctrl_list)
+                        if (cart_ctrl is not None):
+                            if cart_ctrl.state == 'running':
+                                self.send_info("Switched to cartesian_compliance_controller successfully.")
+                                break
+                        if (a > 1):
+                            self.send_info("Trying again to switch to compliance_controller...")
+                            rospy.sleep(.5)
+                        else:
+                            self.send_info("Couldn't switch to compliance controller! Try switching manually.")
+                    a -= 1
+            except(rospy.ROSException):
+                self.send_info("failed to find service switch_controller. Try switching manually to begin.")
     def load_yaml_file(self, filename):
         with open(self.path + '/config/' + filename + '.yaml') as stream:
             try:
@@ -194,7 +195,7 @@ class ConntactROSInterface(ConntactInterface):
         time_diff = (current_position.header.stamp - earlier_position.header.stamp).to_sec()
         return position_diff, time_diff
 
-    def register_frames(self, framesList):
+    def register_frames(self, framesDict):
         """ Adds one or more frames of reference to the environment.
         :param framesList: (List) List of `geometry_msgs.msg.TransformStamped` frames to be added to the environment for later reference with get_pose
         """
@@ -202,9 +203,9 @@ class ConntactROSInterface(ConntactInterface):
         #     # print("Broadcasting tfs: " + str(self.reference_frames))
         #     self._rate.sleep()
         #     self.broadcaster.sendTransform(list(self.reference_frames.values()))
-        namelist = [(jj.header.frame_id, jj.child_frame_id) for jj in framesList]
-        # print(Fore.MAGENTA + "Broadcasting tfs: {}".format(namelist) + Style.RESET_ALL)
-        self.broadcaster.sendTransform(framesList)
+
+        self.framesDict.update(framesDict)
+        self.broadcaster.sendTransform(list(self.framesDict.values()))
 
     def send_error(self, message, delay=0.0):
         """Displays an error message for the user.

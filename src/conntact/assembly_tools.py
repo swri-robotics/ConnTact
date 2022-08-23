@@ -38,51 +38,18 @@ class AssemblyTools():
         self.interface = interface
         self.params = self.interface.load_yaml_file(conntact_params)
 
-        # save off the important stuff that's accessed every loop cycle
-        force_dangerous = [55, 55, 65]  # Force value which kills the program. Rel. to gripper.
-        force_transverse_dangerous = np.array([30, 30,
-                                               30])  # Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        force_warning = [40, 40, 50]  # Force value which pauses the program. Rel. to gripper.
-        force_transverse_warning = np.array([20, 20,
-                                             20])  # torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        self.max_force_error = [4, 4, 4]  # Allowable error force with no actual loads on the gripper.
-        self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning
-        # self.cap_check_forces = self.params["robot"]["force_setpoints"]
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
         self._start_time = self.interface.get_unified_time()
 
-
-        # Read in yaml config file
-        # path = self.interface.get_package_path()
-        #
-        # def load_yaml_file(filename):
-        #     with open(path + '/config/' + filename + '.yaml') as stream:
-        #         try:
-        #             info = yaml.safe_load(stream)
-        #             # print(info)
-        #             self.params.update(info)
-        #         except yaml.YAMLError as exc:
-        #             print(exc)
-        #
-        # load_yaml_file(conntact_params)
-        # load_yaml_file("peg_in_hole_params")
-        # print("Full config dict: {}".format(self.params))
-
-        self._rate_selected = self.params["framework"]["rate"]
+        self._rate_selected = self.params["framework"]["refresh_rate"]
         self.highForceWarning = False
         # self._seq                   = 0
 
         # Initialize filtering class
         self.filters = AssemblyFilters(5, self._rate_selected)
 
-        self.tool_data = dict()
         self.toolData = ToolData()
-        """ Dictionary of transform/ matrix transformation dictionary which contains each TCP configuration loaded from the YAML. It is automatically populated in readYAML(). Access info by invoking: 
-
-        self.tool_data[*tool name*]["transform"] = (geometry_msgs.TransformStamped) Transform from tool0 (robot wrist flange) to tcp location.
-        self.tool_data[*tool name*]["matrix"] = (np.array()) 4x4 homogeneous transformation matrix of same transform.
-        """
 
         # print(Fore.RED + Back.BLUE + "AssemblyTools sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
         # time.sleep(5)
@@ -90,7 +57,6 @@ class AssemblyTools():
 
         # loop parameters
         # self.wrench_vec = self.get_command_wrench([0, 0, 0])
-        self.next_trigger = ''  # Empty to start. Each callback should decide what next trigger to implement in the main loop
         self.switch_state = False
 
         # initialize loop parameters
@@ -108,19 +74,19 @@ class AssemblyTools():
         # job parameters moved in from the peg_in_hole_params.yaml file
         # 'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
         # 'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
-        self.target_peg = self.config['task']['target_peg']
-        self.target_hole = self.config['task']['target_hole']
-        self.activeTCP = self.config['task']['starting_tcp']
+        self.target_peg = self.params['task']['target_peg']
+        self.target_hole = self.params['task']['target_hole']
+        self.activeTCP = self.params['task']['starting_tcp']
 
         self.read_board_positions()
 
         self.read_peg_hole_dimensions()
 
         # Spiral parameters
-        self._spiral_params = self.config['algorithm']['spiral_params']
+        self._spiral_params = self.params['algorithm']['spiral_params']
 
         # Calculate transform from TCP to peg corner
-        peg_locations = self.config['objects'][self.target_peg]['grasping_locations']
+        peg_locations = self.params['objects'][self.target_peg]['grasping_locations']
 
         # Set up tool_data.
         self.toolData.name = self.activeTCP
@@ -129,19 +95,19 @@ class AssemblyTools():
         self.select_tool(self.activeTCP)
         print("Select Tool successful!")
 
-        self.surface_height = self.config['task']['assumed_starting_height']  # Starting height assumption
-        self.restart_height = self.config['task']['restart_height']  # Height to restart
+        self.surface_height = self.params['task']['assumed_starting_height']  # Starting height assumption
+        self.restart_height = self.params['task']['restart_height']  # Height to restart
 
     def read_board_positions(self):
         """ Calculates pose of target hole relative to robot base frame.
         """
         temp_z_position_offset = 207  # Our robot is reading Z positions wrong on the pendant for some reason.
-        task_pos = list(np.array(self.config['environment_state']['task_frame']['position']))
+        task_pos = list(np.array(self.params['environment_state']['task_frame']['position']))
         task_pos[2] = task_pos[2] + temp_z_position_offset
-        task_ori = self.config['environment_state']['task_frame']['orientation']
-        hole_pos = list(np.array(self.config['objects'][self.target_hole]['local_position']))
+        task_ori = self.params['environment_state']['task_frame']['orientation']
+        hole_pos = list(np.array(self.params['objects'][self.target_hole]['local_position']))
         hole_pos[2] = hole_pos[2] + temp_z_position_offset
-        hole_ori = self.config['objects'][self.target_hole]['local_orientation']
+        hole_ori = self.params['objects'][self.target_hole]['local_orientation']
 
         # Set up target hole pose
         tf_robot_to_task_board = AssemblyTools.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
@@ -157,8 +123,8 @@ class AssemblyTools():
     def read_peg_hole_dimensions(self):
         """Read peg and hole data from YAML configuration file.
         """
-        peg_dims = self.config['objects'][self.target_peg]['dimensions']
-        hole_dims = self.config['objects'][self.target_hole]['dimensions']
+        peg_dims = self.params['objects'][self.target_peg]['dimensions']
+        hole_dims = self.params['objects'][self.target_hole]['dimensions']
         self.hole_depth = peg_dims['min_insertion_depth'] / 1000
         # setup, run to calculate useful values based on params:
         clearance_max = hole_dims['upper_tolerance'] - peg_dims['lower_tolerance']  # calculate the total error zone;
@@ -167,7 +133,7 @@ class AssemblyTools():
         self.safe_clearance = (hole_dims['diameter'] - peg_dims['diameter'] + clearance_min) / 2000;  # = .2 *radial* clearance i.e. on each side.
 
     def send_reference_TFs(self):
-        self.interface.register_frames(list(self.reference_frames.values()))
+        self.interface.register_frames(self.reference_frames)
 
 
     @staticmethod
@@ -726,7 +692,7 @@ class AssemblyTools():
             *Dangerously high forces will kill this program immediately to prevent damage.
         :return: (Bool) True if all is safe; False if a warning stop is requested.
         """
-        force_limits = self.config['robot']['force_setpoints']
+        force_limits = self.params['robot']['force_setpoints']
         # Calculate acceptable torque from transverse forces by taking the moment arm to tcp:
         radius = np.linalg.norm(self.as_array(self.toolData.transform.transform.translation))
         # Set a minimum radius to always permit some torque
