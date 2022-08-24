@@ -48,12 +48,12 @@ class ConntactROSInterface(ConntactInterface):
         rate_integer = self.params["framework"]["refresh_rate"]
         self._rate = rospy.Rate(rate_integer)  # setup for sleeping in hz
         self._start_time = rospy.get_rostime()
-        self.curr_time = rospy.Time(0)
-        self.curr_time_numpy = np.double(self.curr_time.to_sec())
+        self.framesDict = {}
         self.current_wrench = WrenchStamped()
 
         # Set up services:
-        skip = True
+        skip = False
+        # skip = True
         if(not skip):
             try:
                 rospy.wait_for_service("/ur_hardware_interface/zero_ftsensor", 5)
@@ -109,6 +109,7 @@ class ConntactROSInterface(ConntactInterface):
                     a -= 1
             except(rospy.ROSException):
                 self.send_info("failed to find service switch_controller. Try switching manually to begin.")
+
     def load_yaml_file(self, filename):
         with open(self.path + '/config/' + filename + '.yaml') as stream:
             try:
@@ -145,7 +146,6 @@ class ConntactROSInterface(ConntactInterface):
         :return: (WrenchStamped) Most recent wrench.
         :rtype: :class:`geometry_msgs.msg.WrenchStamped`
         """
-
         return self.current_wrench
 
     def get_transform(self, frame, origin):

@@ -60,9 +60,7 @@ class AlgorithmBlocks():
             self.interface = interface
 
         self.connfig = self.interface.load_yaml_file(connfig_name)
-
         self.start_time = self.interface.get_unified_time()
-
 
         #Configuration variables, to be moved to a yaml file later:
         self.pose_vec = None
@@ -101,8 +99,6 @@ class AlgorithmBlocks():
 
         ]
 
-        self.steps:dict = { APPROACH_STATE: (findSurface, []) }
-
         self.previousState = None #Store a reference to the previous state here.
         # self.conntext.surface_height = 0.0
 
@@ -112,8 +108,6 @@ class AlgorithmBlocks():
         # AssemblyTools.__init__(self, interface, ROS_rate)
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
-        # temporary selector for this algorithm's TCP; easily switch from tip to corner-centrered search
-        self.tcp_selected = 'tip'
         #Store a reference to the AssemblyStep class in use by the current State if it exists:
         self.step:AssemblyStep = None
 
@@ -243,34 +237,6 @@ class AlgorithmBlocks():
     #             rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
     #             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
 
-    def finding_hole(self):
-        #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
-        #This triggers the hole position estimate to be updated to limit crazy
-        #forces and oscillations. Also reduces spiral size.
-
-        seeking_force = -7.0
-        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.conntext.spiral_search_motion(self.conntext._spiral_params["frequency"], 
-            self.conntext._spiral_params["min_amplitude"], self.conntext._spiral_params["max_cycles"])
-
-        if(not self.conntext.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
-            rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - .0004):
-            #If we've descended at least 5mm below the flat surface detected, consider it a hole.
-            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
-            rospy.loginfo_throttle(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
-            if(self.completion_confidence > .90):
-                    #Descended from surface detection point. Updating hole location estimate.
-                    self.conntext.x_pos_offset = self.conntext.current_pose.transform.translation.x
-                    self.conntext.y_pos_offset = self.conntext.current_pose.transform.translation.y
-                    self.conntext._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
-                    #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
-                    self.print("Hole found, peg inserting...")
-                    self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER) 
-        else:
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
-
     def inserting_along_axis(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
         #horizontally. We keep going until vertical speed is very near to zero.
@@ -360,10 +326,8 @@ class AlgorithmBlocks():
         #     " and torque \n" + str(self.conntext._average_wrench_world.torque) + Style.RESET_ALL)
         # rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.conntext.average_speed) +Style.RESET_ALL)
 
-        self.conntext.publish_plotted_values(('state', self.state))
-
     def checkForceCap(self):
-        if(not self.conntext.force_cap_check(*self.cap_check_forces)):   
+        if(not self.conntext.force_cap_check()):
             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
             rospy.logerr("Force/torque unsafe; pausing application.")
 
@@ -401,6 +365,7 @@ class AssemblyStep:
 
         #Pass in a reference to the AlgorithmBlocks parent class; this reduces data copying in memory
         self.assembly:AlgorithmBlocks = algorithmBlocks
+        self.conntext = self.assembly.conntext
         
     def execute(self):
         '''Executed once per loop while this State is active. By default, just runs UpdateCommands to keep the compliance motion profile running.
@@ -411,9 +376,9 @@ class AssemblyStep:
         '''Updates the commanded position and wrench. These are published in the AlgorithmBlocks main loop.
         '''
         #Command wrench
-        self.assembly.wrench_vec  = self.assembly.conntext.get_command_wrench(self.seeking_force)
+        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
         #Command pose
-        self.assembly.pose_vec = self.assembly.conntext.arbitrary_axis_comply(self.comply_axes)
+        self.assembly.pose_vec = self.conntext.arbitrary_axis_comply(self.comply_axes)
 
 
     def checkCompletion(self):
@@ -446,16 +411,16 @@ class AssemblyStep:
         return self.noForce() 
 
     def static(self)->bool:
-        return self.assembly.conntext.checkIfStatic(np.array(self.assembly.speed_static))
+        return self.conntext.checkIfStatic()
 
     def collision(self)->bool:
-        return self.assembly.conntext.checkIfColliding(np.array(self.seeking_force))
+        return self.conntext.checkIfColliding(np.array(self.seeking_force))
 
     def noForce(self)->bool:
         '''Checks the current forces against an expected force of zero, helpfully telling us if the robot is in free motion
         :return: (bool) whether the force is fairly close to zero.
         '''
-        return self.assembly.conntext.checkIfColliding(np.zeros(3))
+        return self.conntext.checkIfColliding(np.zeros(3))
 
     def onExit(self):
         """Executed once, when the change-state trigger is registered.
@@ -463,22 +428,3 @@ class AssemblyStep:
         return STEP_COMPLETE_TRIGGER, True
 
 
-class findSurface(AssemblyStep):
-    
-    def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
-        AssemblyStep.__init__(self, algorithmBlocks)
-        self.comply_axes = [0,0,1]
-        self.seeking_force = [0,0,-7]
-
-    def exitConditions(self)->bool:
-        return self.static() and self.collision()
-
-    def onExit(self):
-        """Executed once, when the change-state trigger is registered.
-        """
-
-        #Measure flat surface height and report it to AssemblyBlocks:
-        self.assembly.conntext.surface_height = self.assembly.conntext.current_pose.transform.translation.z
-
-        return super().onExit()
-        

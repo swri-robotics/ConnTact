@@ -5,6 +5,8 @@ framework: # Params to keep the data pipeline reliable
   refresh_rate: 100 #Algorithm loop execution frequency, in hz
 robot: # Params to keep the robot safe and reliable
   speed_static: [.001, .001, .001]
+  max_pos_change_per_second: [.06,.06,.06] #in meters per second, this helps define the speed limit
+  hard_speed_limit: .1 #in meters per second
   force_setpoints:
     direct: # Force at the gripper base
       warning: [40, 40, 40]   # Force value which pauses the program. Rel. to gripper.

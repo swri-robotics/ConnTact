@@ -25,8 +25,8 @@ from conntact.assembly_utils import AssemblyFilters
 
 class ToolData():
     def __init__(self):
-        self.name = ""
-        self.frame_name = ""
+        self.name = "tool0"
+        self.frame_name = "tool0"
         self.transform = None
         self.matrix = None
         self.validToolsDict = None
@@ -39,25 +39,24 @@ class AssemblyTools():
         self.params = self.interface.load_yaml_file(conntact_params)
 
         # Instantiate the dictionary of frames which are always required for tasks.
-        self.reference_frames = {"tcp": TransformStamped(), "target_hole_position": TransformStamped()}
+        self.reference_frames = {"tcp": TransformStamped()}
         self._start_time = self.interface.get_unified_time()
 
-        self._rate_selected = self.params["framework"]["refresh_rate"]
+        self.rate = self.params["framework"]["refresh_rate"]
         self.highForceWarning = False
         # self._seq                   = 0
 
         # Initialize filtering class
-        self.filters = AssemblyFilters(5, self._rate_selected)
+        self.filters = AssemblyFilters(5, self.rate)
 
         self.toolData = ToolData()
 
         # print(Fore.RED + Back.BLUE + "AssemblyTools sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
         # time.sleep(5)
-        self.readYAML()
 
         # loop parameters
         # self.wrench_vec = self.get_command_wrench([0, 0, 0])
-        self.switch_state = False
+        # self.switch_state = False
 
         # initialize loop parameters
 
@@ -66,71 +65,6 @@ class AssemblyTools():
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
-
-    def readYAML(self):
-        """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
-        """
-
-        # job parameters moved in from the peg_in_hole_params.yaml file
-        # 'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
-        # 'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
-        self.target_peg = self.params['task']['target_peg']
-        self.target_hole = self.params['task']['target_hole']
-        self.activeTCP = self.params['task']['starting_tcp']
-
-        self.read_board_positions()
-
-        self.read_peg_hole_dimensions()
-
-        # Spiral parameters
-        self._spiral_params = self.params['algorithm']['spiral_params']
-
-        # Calculate transform from TCP to peg corner
-        peg_locations = self.params['objects'][self.target_peg]['grasping_locations']
-
-        # Set up tool_data.
-        self.toolData.name = self.activeTCP
-        self.toolData.validToolsDict = peg_locations
-
-        self.select_tool(self.activeTCP)
-        print("Select Tool successful!")
-
-        self.surface_height = self.params['task']['assumed_starting_height']  # Starting height assumption
-        self.restart_height = self.params['task']['restart_height']  # Height to restart
-
-    def read_board_positions(self):
-        """ Calculates pose of target hole relative to robot base frame.
-        """
-        temp_z_position_offset = 207  # Our robot is reading Z positions wrong on the pendant for some reason.
-        task_pos = list(np.array(self.params['environment_state']['task_frame']['position']))
-        task_pos[2] = task_pos[2] + temp_z_position_offset
-        task_ori = self.params['environment_state']['task_frame']['orientation']
-        hole_pos = list(np.array(self.params['objects'][self.target_hole]['local_position']))
-        hole_pos[2] = hole_pos[2] + temp_z_position_offset
-        hole_ori = self.params['objects'][self.target_hole]['local_orientation']
-
-        # Set up target hole pose
-        tf_robot_to_task_board = AssemblyTools.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
-        pose_task_board_to_hole = AssemblyTools.get_pose_from_yaml(hole_pos, hole_ori, "base_link")
-        self.target_hole_pose = tf2_geometry_msgs.do_transform_pose(pose_task_board_to_hole, tf_robot_to_task_board)
-        # self.target_broadcaster = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
-        targetHoleTF = AssemblyTools.swap_pose_tf(self.target_hole_pose, "target_hole_position")
-        self.reference_frames['target_hole_position'] = targetHoleTF
-        # self.send_reference_TFs()
-        self.x_pos_offset = self.target_hole_pose.pose.position.x
-        self.y_pos_offset = self.target_hole_pose.pose.position.y
-
-    def read_peg_hole_dimensions(self):
-        """Read peg and hole data from YAML configuration file.
-        """
-        peg_dims = self.params['objects'][self.target_peg]['dimensions']
-        hole_dims = self.params['objects'][self.target_hole]['dimensions']
-        self.hole_depth = peg_dims['min_insertion_depth'] / 1000
-        # setup, run to calculate useful values based on params:
-        clearance_max = hole_dims['upper_tolerance'] - peg_dims['lower_tolerance']  # calculate the total error zone;
-        clearance_min = hole_dims['lower_tolerance'] + peg_dims['upper_tolerance']  # calculate minimum clearance;     =0
-        clearance_avg = .5 * (clearance_max - clearance_min)  # provisional calculation of "wiggle room"
-        self.safe_clearance = (hole_dims['diameter'] - peg_dims['diameter'] + clearance_min) / 2000;  # = .2 *radial* clearance i.e. on each side.
 
     def send_reference_TFs(self):
         self.interface.register_frames(self.reference_frames)
@@ -170,7 +104,7 @@ class AssemblyTools():
         # Inputs are in mm XYZ and degrees RPY
         # move to utils
         output_pose = PoseStamped()  # tf_task_board_to_hole
-        output_pose.header.stamp = self.interface.get_unified_time()
+        # output_pose.header.stamp = self.interface.get_unified_time()
         output_pose.header.frame_id = base_frame
         tempQ = list(trfm.quaternion_from_euler(ori[0] * np.pi / 180, ori[1] * np.pi / 180, ori[2] * np.pi / 180))
         output_pose.pose = Pose(Point(pos[0] / 1000, pos[1] / 1000, pos[2] / 1000),
@@ -205,23 +139,6 @@ class AssemblyTools():
             self.interface.send_error("Tool selection key error! No key '" +
                                       tool_name + "' in tool dictionary.", 2)
 
-    def spiral_search_motion(self, frequency=.15, min_amplitude=.002, max_cycles=62.83185):
-        """Generates position, orientation offset vectors which describe a plane spiral about z; 
-        Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
-        x,y vector currently comes from x_ and y_pos_offset variables.
-        """
-        curr_time = self.interface.get_unified_time() - self._start_time
-        curr_time_numpy = np.double(curr_time.to_sec())
-        curr_amp = min_amplitude + self.safe_clearance * np.mod(2.0 * np.pi * frequency * curr_time_numpy, max_cycles);
-        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
-        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-        x_pos = x_pos + self.x_pos_offset
-        y_pos = y_pos + self.y_pos_offset
-        z_pos = self.current_pose.transform.translation.z
-        pose_position = [x_pos, y_pos, z_pos]
-        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
-
-        return [pose_position, pose_orientation]
 
     def linear_search_position(self, direction_vector=[0, 0, 0], desired_orientation=[0, 1, 0, 0]):
         """Generates a command pose vector which causes the robot to hold a certain orientation
@@ -291,12 +208,13 @@ class AssemblyTools():
         pose_position = Vector3()
         pose_position.x, pose_position.y, pose_position.z =\
             self.as_array(self.current_pose.transform.translation)
+        target_hole_pos = self.interface.get_transform("target_hole_position", "base_link").transform.translation
         if(not direction_vector[0]):
-            pose_position.x = self.target_hole_pose.pose.position.x
+            pose_position.x = target_hole_pos.x
         if(not direction_vector[1]):
-            pose_position.y = self.target_hole_pose.pose.position.y
+            pose_position.y = target_hole_pos.y
         if(not direction_vector[2]):
-            pose_position.z = self.target_hole_pose.pose.position.z
+            pose_position.z = target_hole_pos.z
         pose_orientation = [0, 1, 0, 0]
         # self.interface.send_info(
         #     Fore.CYAN + "\nArbitrary_axis_comply requested by: {}\nReturning:\n{}".format(
@@ -339,6 +257,19 @@ class AssemblyTools():
     def list_from_point(point):
         return [point.x, point.y, point.z]
 
+    def limit_speed(self, pose_stamped_vec):
+        limit = np.array(self.params['robot']['max_pos_change_per_second']) / self.rate
+        curr_pos = self.as_array(self.current_pose.transform.translation)
+        move = (np.array(pose_stamped_vec[0]) - curr_pos)
+        if not self.vectorRegionCompare_symmetrical(move, limit):
+            output = pose_stamped_vec
+            newMove = np.multiply(move / np.linalg.norm(move), limit)
+            output[0] = curr_pos + newMove
+            self.interface.send_info("Move command clipped from {} to {}.".format(
+                np.linalg.norm(move), np.linalg.norm(newMove)), 2)
+            return output
+        return pose_stamped_vec
+
     def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
@@ -346,10 +277,12 @@ class AssemblyTools():
         # Ensure controller is loaded
         # self.check_controller(self.controller_name)
 
+
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
 
+        pose_command = self.limit_speed(pose_stamped_vec)
 
         # Create poseStamped msg
         goal_pose = PoseStamped()
@@ -359,17 +292,17 @@ class AssemblyTools():
         quaternion = Quaternion()
 
         # point.x, point.y, point.z = position
-        point.x, point.y, point.z = pose_stamped_vec[0][:]
+        point.x, point.y, point.z = pose_command[0][:]
         goal_pose.pose.position = point
 
-        quaternion.w, quaternion.x, quaternion.y, quaternion.z = pose_stamped_vec[1][:]
+        quaternion.w, quaternion.x, quaternion.y, quaternion.z = pose_command[1][:]
         goal_pose.pose.orientation = quaternion
 
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
         goal_pose.header.frame_id = "base_link"
 
-        if (self.activeTCP != "tool0"):
+        if (self.toolData.name != "tool0"):
             # Convert pose in TCP coordinates to assign wrist "tool0" position for controller
 
             b_link = goal_pose.header.frame_id
@@ -410,7 +343,7 @@ class AssemblyTools():
         :return: (geometry_msgs.PoseStamped) Pose based on input.
         """
         output = PoseStamped()
-        output.header.stamp = self.interface.get_unified_time()
+        # output.header.stamp = self.interface.get_unified_time()
         output.header.frame_id = base_frame
 
         quat = trfm.quaternion_from_matrix(input)
@@ -586,33 +519,10 @@ class AssemblyTools():
             speedDiff = distance / time
             self.average_speed = self.filters.average_speed(speedDiff)
             self.interface.send_info("Speed is {}".format(self.average_speed), 2)
-            if (np.linalg.norm(self.average_speed) > .035):
-                self.interface.send_error("Speed too high, quitting.")
+            if (np.linalg.norm(self.average_speed) > self.params['robot']['hard_speed_limit']):
+                self.interface.send_error("Speed too high, quitting. Speed: {} \nTotal:{}".format(
+                    self.average_speed, np.linalg.norm(self.average_speed)))
                 quit()
-
-    def publish_plotted_values(self, stateInfo) -> None:
-        """Publishes critical data for plotting node to process.
-        """
-
-        items = dict()
-        # Send a dictionary as plain text to expose some additional info
-        items["status_dict"] = dict(
-            {stateInfo, ('tcp_name', str(self.toolData.frame_name))})
-        if (self.surface_height != 0.0):
-            # If we have located the work surface
-            items["status_dict"]['surface_height'] = str(self.surface_height)
-
-        # self.status_pub.publish(str(status_dict))
-
-        # self.avg_wrench_pub.publish(self._average_wrench_world)
-        items["_average_wrench_world"] = self._average_wrench_world
-
-        # self.avg_speed_pub.publish(Point(self.average_speed[0], self.average_speed[1], self.average_speed[2]))
-        items["average_speed"] = self.average_speed
-
-        items["current_pose"] = self.current_pose.transform.translation
-
-        self.interface.publish_plotting_values(items)
 
     def as_array(self, vec: Point) -> np.ndarray:
         """Takes a Point and returns a Numpy array.
@@ -660,7 +570,8 @@ class AssemblyTools():
                     return True
         return False
 
-    def checkIfStatic(self, maxSpeeds: np.ndarray) -> bool:
+    def checkIfStatic(self) -> bool:
+        maxSpeeds = np.array(self.params['robot']["speed_static"])
         res = np.allclose(abs(self.average_speed), np.zeros(3), atol=abs(maxSpeeds))
 
         return res
@@ -697,7 +608,7 @@ class AssemblyTools():
         radius = np.linalg.norm(self.as_array(self.toolData.transform.transform.translation))
         # Set a minimum radius to always permit some torque
         radius = max(3, radius)
-        rospy.loginfo_once("For TCP " + self.activeTCP + " moment arm is coming out to " + str(radius))
+        rospy.loginfo_once("For TCP " + self.toolData.name + " moment arm is coming out to " + str(radius))
         warning_torque = [force_limits['transverse']['warning'][a] * radius for a in range(3)]
         danger_torque = [force_limits['transverse']['dangerous'][b] * radius for b in range(3)]
         rospy.loginfo_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
