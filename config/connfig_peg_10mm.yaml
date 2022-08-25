@@ -9,7 +9,7 @@ task:
     frequency: 0.15 #Hz frequency in spiral_search_motion
     min_amplitude: .002  #meters amplitude in spiral_search_motion
     max_amplitude: .012 #mm
-    max_cycles: 10 #revolutions
+    max_cycles: 62.83 #2*pi*10 for 10 revolutions
 objects:
   stl_file: "file_location.stl"
   local_position: [ 36.5, -202, 7.5 ] #Starting position from kitting_frame

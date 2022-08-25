@@ -518,7 +518,7 @@ class AssemblyTools():
         if (time is not None and time > 0.0):  # Update only if we're using a new pose; also, avoid divide by zero
             speedDiff = distance / time
             self.average_speed = self.filters.average_speed(speedDiff)
-            self.interface.send_info("Speed is {}".format(self.average_speed), 2)
+            # self.interface.send_info("Speed is {}".format(self.average_speed), 2)
             if (np.linalg.norm(self.average_speed) > self.params['robot']['hard_speed_limit']):
                 self.interface.send_error("Speed too high, quitting. Speed: {} \nTotal:{}".format(
                     self.average_speed, np.linalg.norm(self.average_speed)))

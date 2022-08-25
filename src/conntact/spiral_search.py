@@ -68,7 +68,7 @@ class SpiralSearch(AlgorithmBlocks, Machine):
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
         """
-        
+
         activeTCP = self.connfig['task']['starting_tcp']
 
         self.read_board_positions()
@@ -98,34 +98,6 @@ class SpiralSearch(AlgorithmBlocks, Machine):
         # self.send_reference_TFs()
         self.x_pos_offset = self.target_hole_pose.transform.translation.x
         self.y_pos_offset = self.target_hole_pose.transform.translation.y
-
-    # def finding_hole(self):
-    #     #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
-    #     #This triggers the hole position estimate to be updated to limit crazy
-    #     #forces and oscillations. Also reduces spiral size.
-    #
-    #     seeking_force = -7.0
-    #     self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
-    #     self.pose_vec = self.spiral_search_motion(self._spiral_params["frequency"],
-    #         self._spiral_params["min_amplitude"], self._spiral_params["max_cycles"])
-    #
-    #     if(not self.conntext.force_cap_check(*self.cap_check_forces)):
-    #         self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
-    #         self.interface.send_error("Force/torque unsafe; pausing application.")
-    #     elif( self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - .0004):
-    #         #If we've descended at least 5mm below the flat surface detected, consider it a hole.
-    #         self.completion_confidence = self.completion_confidence + 1/self.rate_selected
-    #         self.interface.send_error(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
-    #         if(self.completion_confidence > .90):
-    #                 #Descended from surface detection point. Updating hole location estimate.
-    #                 self.conntext.x_pos_offset = self.conntext.current_pose.transform.translation.x
-    #                 self.conntext.y_pos_offset = self.conntext.current_pose.transform.translation.y
-    #                 self.conntext._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
-    #                 #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
-    #                 self.print("Hole found, peg inserting...")
-    #                 self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER)
-    #     else:
-    #         self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
 
     def all_states_calc(self):
         self.publish_plotted_values(('state', self.state))
@@ -237,7 +209,7 @@ class ExitStep(AssemblyStep):
     def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
         AssemblyStep.__init__(self, algorithmBlocks)
         self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, 7]
+        self.seeking_force = [0, 0, 15]
 
     def exitConditions(self) -> bool:
         return self.noForce() and self.above_restart_height()

@@ -16,6 +16,7 @@ from colorama import Back, Fore, Style, init
 from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
                                TransformStamped, Vector3, Wrench,
                                WrenchStamped)
+
 from transitions import Machine
 
 from conntact.assembly_tools import AssemblyTools
@@ -65,14 +66,7 @@ class AlgorithmBlocks():
         #Configuration variables, to be moved to a yaml file later:
         self.pose_vec = None
         self.wrench_vec = self.conntext.get_command_wrench([0, 0, 0])
-        # self.speed_static = [1/1000,1/1000,1/1000] #Speed at which the system considers itself stopped. Rel. to target hole.
-        # force_dangerous = [55,55,65]                        #Force value which kills the program. Rel. to gripper.
-        # force_transverse_dangerous = np.array([30,30,30])   #Force value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        # force_warning = [40,40,50]                          #Force value which pauses the program. Rel. to gripper.
-        # force_transverse_warning = np.array([20,20,20])     #torque value transverse to the line from the TCP to the force sensor which kills the program. Rel. to gripper.
-        # self.max_force_error = [4, 4, 4]                #Allowable error force with no actual loads on the gripper.
-        # self.cap_check_forces = force_dangerous, force_transverse_dangerous, force_warning, force_transverse_warning
-        # self._bias_wrench = self.conntext.create_wrench([0,0,0], [0,0,0]).wrench #Calculated to remove the steady-state error from wrench readings.
+
         self.next_trigger = ''  # Empty to start. Each callback should decide what next trigger to implement in the main loop
 
         #List the official states here. Takes strings, but the tokens created above so typos are less likely from repeated typing of strings (unchecked by interpreter).
@@ -122,23 +116,14 @@ class AlgorithmBlocks():
     def is_already_retracting(self):
         return self.is_state_safety_retraction()
     def on_enter_state_finding_surface(self):
-        # self.conntext.select_tool('corner')
-        self.reset_on_state_enter()
-        self.conntext.select_tool(self.tcp_selected)
         self._log_state_transition()
     def on_enter_state_finding_hole(self):
-        # self.conntext.select_tool('corner')
-        self.reset_on_state_enter()
-        self.conntext.select_tool(self.tcp_selected)
         self._log_state_transition()
     def on_enter_state_inserting_along_axis(self):
-        self.reset_on_state_enter()
         self._log_state_transition()
     def on_enter_state_completed_insertion(self):
-        self.reset_on_state_enter()
         self._log_state_transition()
     def on_enter_state_retracting_to_safety(self):
-        self.reset_on_state_enter()
         self._log_state_transition()
 
 
@@ -216,26 +201,6 @@ class AlgorithmBlocks():
             # Publish robot motion commands only once per loop, right at the end of the loop:
             self.update_commands()
             self.interface.sleep_until_next_loop()
-                    
-    # def check_load_cell_feedback(self):
-    #     # self.switch_state = False
-    #     #Take an average of static sensor reading to check that it's stable.
-    #
-    #     if (self.curr_time_numpy > 1.5):
-    #         self._bias_wrench = self.conntext._average_wrench_gripper
-    #         rospy.loginfo("Measured bias wrench. Force: " + str(self.conntext.as_array(self._bias_wrench.force))
-    #             +" and Torque: " + str(self.conntext.as_array(self._bias_wrench.torque)))
-    #
-    #         # acceptable = self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self._bias_wrench.force), np.ndarray(self.max_force_error))
-    #         acceptable = True
-    #
-    #         if(acceptable):
-    #             self.print("Starting linear search.")
-    #             self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER)
-    #
-    #         else:
-    #             rospy.logerr("Starting wrench is dangerously high. Suspending. Try restarting robot if values seem wrong.")
-    #             self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
 
     def inserting_along_axis(self):
         #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
@@ -316,19 +281,12 @@ class AlgorithmBlocks():
         self.conntext.current_pose = self.conntext.get_current_pos()
         self.curr_time = rospy.get_rostime() - self.start_time
         self.curr_time_numpy = np.double(self.curr_time.to_sec())
-        marked_state = 1; #returns to this state after a soft restart in state 99
-        # self.wrench_vec  = self.conntext.get_command_wrench([0,0,-2])
-        # self.pose_vec = self.full_compliance_position()
         self.conntext.update_avg_speed()
         self.conntext.update_average_wrench()
-        # self._update_plots()
-        # rospy.loginfo_throttle(1, Fore.BLUE + "Average wrench in newtons  is force \n" + str(self.conntext._average_wrench_world.force)+ 
-        #     " and torque \n" + str(self.conntext._average_wrench_world.torque) + Style.RESET_ALL)
-        # rospy.loginfo_throttle(1, Fore.CYAN + "\nAverage speed in mm/second is \n" + str(1000*self.conntext.average_speed) +Style.RESET_ALL)
 
     def checkForceCap(self):
         if(not self.conntext.force_cap_check()):
-            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
+            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
             rospy.logerr("Force/torque unsafe; pausing application.")
 
 
