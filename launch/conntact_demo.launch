@@ -2,8 +2,8 @@
 
 <launch>
   <arg name="algorithm_selected" default="spiral_search" doc="Select the algorithm to be used: spiral_search or corner_search"/>
-  <rosparam file="$(find conntact)/config/peg_in_hole_params.yaml" />
-  <rosparam file="$(find conntact)/config/conntact_config.yaml" />
+<!--   <rosparam file="$(find conntact)/config/peg_in_hole_params.yaml" /> -->
+<!--   <rosparam file="$(find conntact)/config/conntact_config.yaml" /> -->
   <remap from="/wrench" to="/cartesian_compliance_controller/ft_sensor_wrench"/>
   <!--   That's UR-specific! -->
 

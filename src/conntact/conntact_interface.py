@@ -19,7 +19,7 @@ class ConntactInterface():
     def get_unified_time(self):
         """
         :return: Current time. Conntact always measures periods relative to time since
-        AssemblyTools.__init__ ran by storing this value at that time; you can use this
+        Conntext.__init__ ran by storing this value at that time; you can use this
         method to make Conntact timestamps correspond with other elements of your system.
         :rtype: :class: `double`
         """

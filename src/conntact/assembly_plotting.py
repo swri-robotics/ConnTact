@@ -16,16 +16,16 @@ class PlotAssemblyData():
     def __init__(self):
         
         self.average_wrench = None
-        self.avg_wrench_sub = rospy.Subscriber("/assembly_tools/avg_wrench", Wrench, self.callback_update_wrench, queue_size=2)
+        self.avg_wrench_sub = rospy.Subscriber("/conntext/avg_wrench", Wrench, self.callback_update_wrench, queue_size=2)
 
         self.average_speed = None
-        self.avg_speed_sub = rospy.Subscriber("/assembly_tools/avg_speed", Point, self.callback_update_speed, queue_size=2)
+        self.avg_speed_sub = rospy.Subscriber("/conntext/avg_speed", Point, self.callback_update_speed, queue_size=2)
 
         self.pos = None
-        self.rel_position_sub = rospy.Subscriber("/assembly_tools/rel_position", Point, self.callback_update_pos, queue_size=2)
+        self.rel_position_sub = rospy.Subscriber("/conntext/rel_position", Point, self.callback_update_pos, queue_size=2)
 
         self.status = None
-        self.status_sub = rospy.Subscriber("/assembly_tools/status", String, self.callback_update_status, queue_size=2)
+        self.status_sub = rospy.Subscriber("/conntext/status", String, self.callback_update_status, queue_size=2)
         
         self.tf_buffer = tf2_ros.Buffer(rospy.Duration(1200.0))
         

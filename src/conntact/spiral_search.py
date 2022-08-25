@@ -1,12 +1,13 @@
 # Copyright 2021 Southwest Research Institute
 # Licensed under the Apache License, Version 2.0
 
-from conntact.assembly_algorithm_blocks import AlgorithmBlocks, AssemblyStep
+from conntact.conntask import ConnTask, AssemblyStep
 from conntact.conntact_interface import ConntactInterface
+from conntact.conntext import Conntext
+import numpy as np
 from transitions import Machine
 
 IDLE_STATE           = 'state_idle'
-CHECK_FEEDBACK_STATE = 'state_check_load_cell_feedback'
 APPROACH_STATE       = 'state_finding_surface'
 FIND_HOLE_STATE      = 'state_finding_hole'
 INSERTING_PEG_STATE  = 'state_inserting_along_axis'
@@ -15,7 +16,6 @@ EXIT_STATE           = 'state_exit'
 SAFETY_RETRACT_STATE = 'state_safety_retraction' 
 
 #Trigger names
-CHECK_FEEDBACK_TRIGGER     = 'check loadcell feedback'
 APPROACH_SURFACE_TRIGGER   = 'start approach'
 FIND_HOLE_TRIGGER          = 'surface found'
 INSERT_PEG_TRIGGER         = 'hole found'
@@ -25,33 +25,197 @@ SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 RESTART_TEST_TRIGGER       = 'restart test'
 RUN_LOOP_TRIGGER           = 'run looped code'
 
-class SpiralSearch(AlgorithmBlocks, Machine):
+class SpiralSearch(ConnTask, Machine):
     def __init__(self, ROS_rate, conntext, interface):
-        AlgorithmBlocks.__init__(self, ROS_rate, conntext, interface)
+        ConnTask.__init__(self, ROS_rate, conntext, interface)
         #Override Alg Blocks config variables:
         states = [
             IDLE_STATE, 
-            CHECK_FEEDBACK_STATE,
-            APPROACH_STATE, 
+            APPROACH_STATE,
             FIND_HOLE_STATE, 
             INSERTING_PEG_STATE, 
-            COMPLETION_STATE, 
+            COMPLETION_STATE,
+            EXIT_STATE,
             SAFETY_RETRACT_STATE
         ]
         transitions = [
-            {'trigger':CHECK_FEEDBACK_TRIGGER    , 'source':IDLE_STATE          , 'dest':CHECK_FEEDBACK_STATE   },
-            {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':CHECK_FEEDBACK_STATE, 'dest':APPROACH_STATE         },
+            {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':IDLE_STATE          , 'dest':APPROACH_STATE         },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
-            {'trigger':FIND_HOLE_TRIGGER         , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
-            {'trigger':INSERT_PEG_TRIGGER        , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
-            {'trigger':ASSEMBLY_COMPLETED_TRIGGER, 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':COMPLETION_STATE    , 'dest':EXIT_STATE             },
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
-            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
-            {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_loop'}
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
+            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*',                'dest':None, 'after': 'run_loop'}
         ]
+        self.steps:dict = { APPROACH_STATE:       (FindSurface, []),
+                            FIND_HOLE_STATE:      (SpiralToFindHole, []),
+                            INSERTING_PEG_STATE:  (FindSurfaceFullCompliant, []),
+                            SAFETY_RETRACT_STATE: (SafetyRetraction, []),
+                            COMPLETION_STATE:     (ExitStep, [])
+                            }
+
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
+
+        self.readYAML()
         self.tcp_selected = 'tip'
+        self.reset_height = self.connfig['task']['restart_height'] / 100
+
+    def read_peg_hole_dimensions(self):
+        """Read peg and hole data from YAML configuration file.
+        """
+        self.hole_depth = self.connfig['objects']['dimensions']['min_insertion_depth'] / 1000
+        self.safe_clearance = self.connfig['objects']['dimensions']['safe_clearance'] / 2000;  # = .2 *radial* clearance i.e. on each side.
+
+    def readYAML(self):
+        """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
+        """
+
+        activeTCP = self.connfig['task']['starting_tcp']
+
+        self.read_board_positions()
+
+        self.read_peg_hole_dimensions()
+
+        # Spiral parameters
+        self._spiral_params = self.connfig['task']['spiral_params']
+
+        # Calculate transform from TCP to peg corner
+        peg_locations = self.connfig['objects']['grasping_locations']
+
+        # Set up tool_data.
+        self.conntext.toolData.name = activeTCP
+        self.conntext.toolData.validToolsDict = peg_locations
+
+        self.conntext.select_tool(activeTCP)
+        print("Select Tool successful!")
+
+        self.surface_height = 0.0 # Starting height assumption
+        self.restart_height = self.connfig['task']['restart_height']  # Height to restart
+
+    def read_board_positions(self):
+        """ Calculates pose of target hole relative to robot base frame.
+        """
+        self.target_hole_pose = self.interface.get_transform("target_hole_position", "base_link")
+        # self.send_reference_TFs()
+        self.x_pos_offset = self.target_hole_pose.transform.translation.x
+        self.y_pos_offset = self.target_hole_pose.transform.translation.y
+
+    def all_states_calc(self):
+        self.publish_plotted_values(('state', self.state))
+        super().all_states_calc()
+
+    def publish_plotted_values(self, stateInfo) -> None:
+        """Publishes critical data for plotting node to process.
+        """
+
+        items = dict()
+        # Send a dictionary as plain text to expose some additional info
+        items["status_dict"] = dict(
+            {stateInfo, ('tcp_name', str(self.conntext.toolData.frame_name))})
+        if (self.surface_height != 0.0):
+            # If we have located the work surface
+            items["status_dict"]['surface_height'] = str(self.surface_height)
+        items["_average_wrench_world"] = self.conntext._average_wrench_world
+        items["average_speed"] = self.conntext.average_speed
+        items["current_pose"] = self.conntext.current_pose.transform.translation
+
+        self.interface.publish_plotting_values(items)
 
     def main(self):
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")
+
+
+class FindSurface(AssemblyStep):
+
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.comply_axes = [0, 0, 1]
+        self.seeking_force = [0, 0, -7]
+
+    def exitConditions(self) -> bool:
+        return self.static() and self.collision()
+
+    def onExit(self):
+        """Executed once, when the change-state trigger is registered.
+        """
+        # Measure flat surface height and report it to AssemblyBlocks:
+        self.assembly.surface_height = self.conntext.current_pose.transform.translation.z
+        return super().onExit()
+
+class FindSurfaceFullCompliant(AssemblyStep):
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.comply_axes = [1, 1, 1]
+        self.seeking_force = [0, 0, -5]
+
+    def exitConditions(self) -> bool:
+        return self.static() and self.collision()
+
+class SpiralToFindHole(AssemblyStep):
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.seeking_force = [0, 0, -7]
+        self.spiral_params = self.assembly.connfig['task']['spiral_params']
+        self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
+        self.start_time = self.conntext.interface.get_unified_time()
+
+    def updateCommands(self):
+        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
+        '''
+        #Command wrench
+        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
+        #Command pose
+        self.assembly.pose_vec = self.spiral_search_motion()
+
+    def exitConditions(self) -> bool:
+        return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
+
+    def spiral_search_motion(self):
+        """Generates position, orientation offset vectors which describe a plane spiral about z;
+        Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
+        x,y vector currently comes from x_ and y_pos_offset variables.
+        """
+        # frequency=.15, min_amplitude=.002, max_cycles=62.83185
+        curr_time = self.conntext.interface.get_unified_time() - self.start_time
+        curr_time_numpy = np.double(curr_time.to_sec())
+        frequency = self.spiral_params['frequency'] #because we refer to it a lot
+        curr_amp = self.spiral_params['min_amplitude'] + self.safe_clearance * \
+                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
+        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
+        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
+        x_pos = x_pos + self.assembly.x_pos_offset
+        y_pos = y_pos + self.assembly.y_pos_offset
+        z_pos = self.conntext.current_pose.transform.translation.z
+        pose_position = [x_pos, y_pos, z_pos]
+        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
+
+        return [pose_position, pose_orientation]
+
+
+class SafetyRetraction(AssemblyStep):
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.comply_axes = [1, 1, 1]
+        self.seeking_force = [0, 0, 7]
+
+    def exitConditions(self) -> bool:
+        return self.noForce() and self.above_restart_height()
+
+    def above_restart_height(self):
+        return self.conntext.current_pose.transform.translation.z > \
+               self.assembly.surface_height + self.assembly.reset_height
+
+class ExitStep(AssemblyStep):
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.comply_axes = [1, 1, 1]
+        self.seeking_force = [0, 0, 15]
+
+    def exitConditions(self) -> bool:
+        return self.noForce() and self.above_restart_height()
+
+    def above_restart_height(self):
+        return self.conntext.current_pose.transform.translation.z > \
+               self.assembly.surface_height + self.assembly.reset_height
