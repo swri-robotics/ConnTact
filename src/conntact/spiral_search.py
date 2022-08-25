@@ -34,7 +34,8 @@ class SpiralSearch(AlgorithmBlocks, Machine):
             APPROACH_STATE,
             FIND_HOLE_STATE, 
             INSERTING_PEG_STATE, 
-            COMPLETION_STATE, 
+            COMPLETION_STATE,
+            EXIT_STATE,
             SAFETY_RETRACT_STATE
         ]
         transitions = [
@@ -42,9 +43,10 @@ class SpiralSearch(AlgorithmBlocks, Machine):
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':COMPLETION_STATE    , 'dest':EXIT_STATE             },
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
-            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*', 'dest':None, 'after': 'run_loop'}
+            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*',                'dest':None, 'after': 'run_loop'}
         ]
         self.steps:dict = { APPROACH_STATE:       (FindSurface, []),
                             FIND_HOLE_STATE:      (SpiralToFindHole, []),
@@ -217,6 +219,3 @@ class ExitStep(AssemblyStep):
     def above_restart_height(self):
         return self.conntext.current_pose.transform.translation.z > \
                self.assembly.surface_height + self.assembly.reset_height
-
-    def onExit(self):
-        quit()

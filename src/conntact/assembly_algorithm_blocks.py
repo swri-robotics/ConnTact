@@ -77,6 +77,7 @@ class AlgorithmBlocks():
             FIND_HOLE_STATE,
             INSERTING_PEG_STATE,
             COMPLETION_STATE,
+            EXIT_STATE,
             SAFETY_RETRACT_STATE
         ]
 
@@ -201,80 +202,80 @@ class AlgorithmBlocks():
             # Publish robot motion commands only once per loop, right at the end of the loop:
             self.update_commands()
             self.interface.sleep_until_next_loop()
-
-    def inserting_along_axis(self):
-        #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
-        #horizontally. We keep going until vertical speed is very near to zero.
-
-
-        seeking_force = -5.0
-        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.conntext.full_compliance_position()
-
-        if(not self.conntext.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER) 
-            rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, self.speed_static) 
-            #and not self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [6,6,80], [-6,-6,-80])
-            and self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [1.5,1.5,seeking_force*-1.5], [-1.5,-1.5,seeking_force*-.75])
-            and self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - self.conntext.hole_depth):
-            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
-            rospy.loginfo_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.completion_confidence))
-            #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
-            if(self.completion_confidence > .90):
-                    #Stopped moving vertically and in contact with something that counters push force
-                    self.next_trigger, self.switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER) 
-        else:
-            #
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
-            if(self.conntext.current_pose.transform.translation.z >= self.conntext.surface_height - self.conntext.hole_depth):
-                rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.conntext.current_pose.transform.translation.z) 
-                    + " whereas we should drop down to " + str(self.conntext.surface_height - self.conntext.hole_depth) + Style.RESET_ALL)
-
-    def completed_insertion(self):
-        #Inserted properly.
-     
-        rospy.loginfo_throttle(1, Fore.RED + "Hole found, peg inserted! Done!" +Style.RESET_ALL)
-        if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height+.02):
-            #High enough, won't pull itself upward.
-            seeking_force = 5
-            rospy.loginfo_once(Back.GREEN + Fore.WHITE + Style.BRIGHT + "Completed Task!" + Style.RESET_ALL)
-            quit()
-        else:
-            #pull upward gently to move out of trouble hopefully.
-            seeking_force = 20
-        self.conntext.force_cap_check(*self.cap_check_forces)
-        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.full_compliance_position()
-
-    def safety_retraction(self):
-        #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
-
-
-        if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height+.05):
-            #High enough, won't pull itself upward.
-            seeking_force = 3.5
-        else:
-            #pull upward gently to move out of trouble.
-            seeking_force = 10
-        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.full_compliance_position()
-
-        rospy.loginfo_throttle(1, Fore.RED + "Task suspended for safety. Freewheeling until low forces and height reset above " + str(self.conntext.restart_height) + ': ' + str(self.conntext.current_pose.transform.translation.z) + Style.RESET_ALL)
-        if( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, [2,2,2]) 
-            and self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self.conntext._average_wrench_gripper.force), self.max_force_error)
-            and self.conntext.current_pose.transform.translation.z > self.conntext.restart_height):
-            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
-            rospy.loginfo_throttle(1, Fore.RED + "Static. Restarting confidence: " + str( np.round(self.completion_confidence, 2) ) + " out of 1." +Style.RESET_ALL)
-            #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
-            if(self.completion_confidence > 1):
-                    #Restart Search
-                    rospy.loginfo_throttle(1.0, "Restarting test!")
-                    self.next_trigger, self.switch_state = self.post_action(RESTART_TEST_TRIGGER) 
-        else:
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 90/self.rate_selected, .01]))
-            if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height):
-                rospy.loginfo_throttle(1, Fore.RED + "That's high enough! Let robot stop and come to zero force." +Style.RESET_ALL)
+    #
+    # def inserting_along_axis(self):
+    #     #Continue spiraling downward. Outward normal force is used to verify that the peg can't move
+    #     #horizontally. We keep going until vertical speed is very near to zero.
+    #
+    #
+    #     seeking_force = -5.0
+    #     self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
+    #     self.pose_vec = self.conntext.full_compliance_position()
+    #
+    #     if(not self.conntext.force_cap_check(*self.cap_check_forces)):
+    #         self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
+    #         rospy.logerr("Force/torque unsafe; pausing application.")
+    #     elif( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, self.speed_static)
+    #         #and not self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [6,6,80], [-6,-6,-80])
+    #         and self.conntext.vectorRegionCompare(self.conntext.as_array(self.conntext._average_wrench_world.force), [1.5,1.5,seeking_force*-1.5], [-1.5,-1.5,seeking_force*-.75])
+    #         and self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - self.conntext.hole_depth):
+    #         self.completion_confidence = self.completion_confidence + 1/self.rate_selected
+    #         rospy.loginfo_throttle(1, "Monitoring for peg insertion, confidence = " + str(self.completion_confidence))
+    #         #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
+    #         if(self.completion_confidence > .90):
+    #                 #Stopped moving vertically and in contact with something that counters push force
+    #                 self.next_trigger, self.switch_state = self.post_action(ASSEMBLY_COMPLETED_TRIGGER)
+    #     else:
+    #         #
+    #         self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
+    #         if(self.conntext.current_pose.transform.translation.z >= self.conntext.surface_height - self.conntext.hole_depth):
+    #             rospy.loginfo_throttle(1, Fore.YELLOW + "Height is still " + str(self.conntext.current_pose.transform.translation.z)
+    #                 + " whereas we should drop down to " + str(self.conntext.surface_height - self.conntext.hole_depth) + Style.RESET_ALL)
+    #
+    # def completed_insertion(self):
+    #     #Inserted properly.
+    #
+    #     rospy.loginfo_throttle(1, Fore.RED + "Hole found, peg inserted! Done!" +Style.RESET_ALL)
+    #     if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height+.02):
+    #         #High enough, won't pull itself upward.
+    #         seeking_force = 5
+    #         rospy.loginfo_once(Back.GREEN + Fore.WHITE + Style.BRIGHT + "Completed Task!" + Style.RESET_ALL)
+    #         quit()
+    #     else:
+    #         #pull upward gently to move out of trouble hopefully.
+    #         seeking_force = 20
+    #     self.conntext.force_cap_check(*self.cap_check_forces)
+    #     self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
+    #     self.pose_vec = self.full_compliance_position()
+    #
+    # def safety_retraction(self):
+    #     #Safety passivation; chill and pull out. Actually restarts itself if everything's chill enough.
+    #
+    #
+    #     if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height+.05):
+    #         #High enough, won't pull itself upward.
+    #         seeking_force = 3.5
+    #     else:
+    #         #pull upward gently to move out of trouble.
+    #         seeking_force = 10
+    #     self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
+    #     self.pose_vec = self.full_compliance_position()
+    #
+    #     rospy.loginfo_throttle(1, Fore.RED + "Task suspended for safety. Freewheeling until low forces and height reset above " + str(self.conntext.restart_height) + ': ' + str(self.conntext.current_pose.transform.translation.z) + Style.RESET_ALL)
+    #     if( self.conntext.vectorRegionCompare_symmetrical(self.conntext.average_speed, [2,2,2])
+    #         and self.conntext.vectorRegionCompare_symmetrical(self.conntext.as_array(self.conntext._average_wrench_gripper.force), self.max_force_error)
+    #         and self.conntext.current_pose.transform.translation.z > self.conntext.restart_height):
+    #         self.completion_confidence = self.completion_confidence + 1/self.rate_selected
+    #         rospy.loginfo_throttle(1, Fore.RED + "Static. Restarting confidence: " + str( np.round(self.completion_confidence, 2) ) + " out of 1." +Style.RESET_ALL)
+    #         #if((rospy.Time.now()-marked_time).to_sec() > .50): #if we've satisfied this condition for 1 second
+    #         if(self.completion_confidence > 1):
+    #                 #Restart Search
+    #                 rospy.loginfo_throttle(1.0, "Restarting test!")
+    #                 self.next_trigger, self.switch_state = self.post_action(RESTART_TEST_TRIGGER)
+    #     else:
+    #         self.completion_confidence = np.max( np.array([self.completion_confidence * 90/self.rate_selected, .01]))
+    #         if(self.conntext.current_pose.transform.translation.z > self.conntext.restart_height):
+    #             rospy.loginfo_throttle(1, Fore.RED + "That's high enough! Let robot stop and come to zero force." +Style.RESET_ALL)
 
     def all_states_calc(self):
         #All once-per-loop functions

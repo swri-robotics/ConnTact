@@ -5,10 +5,11 @@
 
 import rospy
 import numpy as np
-import tf2_ros
-import abc
-from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
-from std_msgs.msg import String
+from colorama import Back, Fore, Style, init
+
+# import tf2_ros
+# from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
+# from std_msgs.msg import String
 
 from conntact.spiral_search import SpiralSearch
 from conntact.ros_conntact_interface import ConntactROSInterface
@@ -63,5 +64,5 @@ if __name__ == '__main__':
     # Instantiate the task called for in the task_list:
     assembly_application = conntasks[task_info['task']](conntext, interface, task_info['connfig'])
     assembly_application.main()
-    interface.send_info("Node has control again!")
+    interface.send_info(Fore.MAGENTA + "Node has control again!" +Style.RESET_ALL)
 
