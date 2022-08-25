@@ -1,9 +1,9 @@
 # Copyright 2021 Southwest Research Institute
 # Licensed under the Apache License, Version 2.0
 
-from conntact.assembly_algorithm_blocks import AlgorithmBlocks, AssemblyStep
+from conntact.conntask import ConnTask, AssemblyStep
 from conntact.conntact_interface import ConntactInterface
-from conntact.assembly_tools import AssemblyTools
+from conntact.conntext import Conntext
 import numpy as np
 from transitions import Machine
 
@@ -25,9 +25,9 @@ SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
 RESTART_TEST_TRIGGER       = 'restart test'
 RUN_LOOP_TRIGGER           = 'run looped code'
 
-class SpiralSearch(AlgorithmBlocks, Machine):
+class SpiralSearch(ConnTask, Machine):
     def __init__(self, ROS_rate, conntext, interface):
-        AlgorithmBlocks.__init__(self, ROS_rate, conntext, interface)
+        ConnTask.__init__(self, ROS_rate, conntext, interface)
         #Override Alg Blocks config variables:
         states = [
             IDLE_STATE, 
@@ -129,8 +129,8 @@ class SpiralSearch(AlgorithmBlocks, Machine):
 
 class FindSurface(AssemblyStep):
 
-    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
-        AssemblyStep.__init__(self, algorithmBlocks)
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
         self.comply_axes = [0, 0, 1]
         self.seeking_force = [0, 0, -7]
 
@@ -145,8 +145,8 @@ class FindSurface(AssemblyStep):
         return super().onExit()
 
 class FindSurfaceFullCompliant(AssemblyStep):
-    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
-        AssemblyStep.__init__(self, algorithmBlocks)
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, -5]
 
@@ -154,15 +154,15 @@ class FindSurfaceFullCompliant(AssemblyStep):
         return self.static() and self.collision()
 
 class SpiralToFindHole(AssemblyStep):
-    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
-        AssemblyStep.__init__(self, algorithmBlocks)
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
         self.seeking_force = [0, 0, -7]
         self.spiral_params = self.assembly.connfig['task']['spiral_params']
         self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
 
     def updateCommands(self):
-        '''Updates the commanded position and wrench. These are published in the AlgorithmBlocks main loop.
+        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
         self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
@@ -195,8 +195,8 @@ class SpiralToFindHole(AssemblyStep):
 
 
 class SafetyRetraction(AssemblyStep):
-    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
-        AssemblyStep.__init__(self, algorithmBlocks)
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, 7]
 
@@ -208,8 +208,8 @@ class SafetyRetraction(AssemblyStep):
                self.assembly.surface_height + self.assembly.reset_height
 
 class ExitStep(AssemblyStep):
-    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
-        AssemblyStep.__init__(self, algorithmBlocks)
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, 15]
 

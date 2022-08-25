@@ -13,7 +13,7 @@ from colorama import Back, Fore, Style, init
 
 from conntact.spiral_search import SpiralSearch
 from conntact.ros_conntact_interface import ConntactROSInterface
-from conntact.assembly_tools import AssemblyTools
+from conntact.conntext import Conntext
 
 conntasks = {
     "SpiralSearch": SpiralSearch
@@ -34,12 +34,12 @@ def read_board_positions(target_hole: str, params: dict):
     hole_ori = params['objects'][target_hole]['local_orientation']
 
     # Set up target hole pose
-    tf_robot_to_task_board = AssemblyTools.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
-    tf_task_board_to_hole = AssemblyTools.get_tf_from_yaml(hole_pos, hole_ori, "task_board", "target_hole_position")
+    tf_robot_to_task_board = Conntext.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
+    tf_task_board_to_hole = Conntext.get_tf_from_yaml(hole_pos, hole_ori, "task_board", "target_hole_position")
 
     # target_hole_pose = tf2_geometry_msgs.do_transform_pose(pose_task_board_to_hole, tf_robot_to_task_board)
     # # self.target_broadcaster = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
-    # targetHoleTF = AssemblyTools.swap_pose_tf(target_hole_pose, "target_hole_position")
+    # targetHoleTF = Conntext.swap_pose_tf(target_hole_pose, "target_hole_position")
     # self.reference_frames['target_hole_position'] = targetHoleTF
 
 
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # rospy.sleep(10)
 
     interface       = ConntactROSInterface("conntact_params")
-    conntext        = AssemblyTools(interface)
+    conntext        = Conntext(interface)
     params = interface.load_yaml_file("peg_in_hole_params")
     task_info = params['conntact_info']['task_list']
     interface.register_frames(read_board_positions(task_info['position'], params))

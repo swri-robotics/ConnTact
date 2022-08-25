@@ -31,7 +31,7 @@ class ToolData():
         self.matrix = None
         self.validToolsDict = None
 
-class AssemblyTools():
+class Conntext():
 
     def __init__(self, interface: ConntactInterface, conntact_params="conntact_params"):
         # Save a reference to the interface.
@@ -51,7 +51,7 @@ class AssemblyTools():
 
         self.toolData = ToolData()
 
-        # print(Fore.RED + Back.BLUE + "AssemblyTools sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
+        # print(Fore.RED + Back.BLUE + "Conntext sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
         # time.sleep(5)
 
         # loop parameters
@@ -81,7 +81,7 @@ class AssemblyTools():
         :return: Geometry_Msgs.TransformStamped with linked parameters.
         """
 
-        output_pose = AssemblyTools.get_pose_from_yaml(pos, ori, base_frame)  # tf_task_board_to_hole
+        output_pose = Conntext.get_pose_from_yaml(pos, ori, base_frame)  # tf_task_board_to_hole
         output_tf = TransformStamped()
         output_tf.header = output_pose.header
         # output_tf.transform.translation = output_pose.pose.position
@@ -121,7 +121,7 @@ class AssemblyTools():
         if tool_name in list(self.toolData.validToolsDict):
             self.toolData.name = tool_name
             self.toolData.frame_name = "peg_" + tool_name + "_position"
-            gripper_to_tool_tip_transform = AssemblyTools.get_tf_from_yaml(
+            gripper_to_tool_tip_transform = Conntext.get_tf_from_yaml(
                 self.toolData.validToolsDict[tool_name]['pose'],
                 self.toolData.validToolsDict[tool_name]['orientation'],
                 "tool0_to_gripper_tip_link", self.toolData.frame_name)
@@ -129,7 +129,7 @@ class AssemblyTools():
             self.send_reference_TFs()
             # get the transform from tool0 (which CartesianControllers treats as the root frame) to the TCP
             self.toolData.transform = self.interface.get_transform(self.toolData.frame_name, "tool0")
-            self.toolData.matrix    = AssemblyTools.to_homogeneous(
+            self.toolData.matrix    = Conntext.to_homogeneous(
                 self.toolData.transform.transform.rotation,
                 self.toolData.transform.transform.translation
                 )
@@ -244,7 +244,7 @@ class AssemblyTools():
         transform_world_to_gripper.transform.translation = offset
 
         # Execute reinterpret-to-tcp and rotate-to-world simultaneously:
-        result_wrench.wrench = AssemblyTools.transform_wrench(transform_world_to_gripper,
+        result_wrench.wrench = Conntext.transform_wrench(transform_world_to_gripper,
                                                               result_wrench.wrench)  # This works
 
         self.interface.publish_command_wrench(result_wrench)
@@ -306,12 +306,12 @@ class AssemblyTools():
             # Convert pose in TCP coordinates to assign wrist "tool0" position for controller
 
             b_link = goal_pose.header.frame_id
-            goal_matrix = AssemblyTools.to_homogeneous(goal_pose.pose.orientation,
+            goal_matrix = Conntext.to_homogeneous(goal_pose.pose.orientation,
                                                        goal_pose.pose.position)  # tf from base_link to tcp_goal = bTg
             backing_mx = trfm.inverse_matrix(
                 self.toolData.matrix)  # tf from tcp_goal to wrist = gTw
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
-            goal_pose = AssemblyTools.matrix_to_pose(goal_matrix, b_link)
+            goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
 
         # self.interface.send_info(
         #     Fore.BLUE + "Pose_Stamped_Vec:\n{}\nPublishing goal pos:\n{}\n".format(
@@ -400,13 +400,13 @@ class AssemblyTools():
         :param invert: (bool) Whether to interpret the tansformation's inverse, i.e. transform "from child to parent" instead of "from parent to child"
         :return: (geometry.msgs.Wrench) changed wrench
         """
-        matrix = AssemblyTools.to_homogeneous(transform.transform.rotation, transform.transform.translation)
+        matrix = Conntext.to_homogeneous(transform.transform.rotation, transform.transform.translation)
         if log:
             print(Fore.RED + " Transform passed in is " + str(
                 transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL, 2)
         if invert:
             matrix = trfm.inverse_matrix(matrix)
-        return AssemblyTools.transform_wrench_by_matrix(matrix, AssemblyTools.wrenchToArray(wrench))
+        return Conntext.transform_wrench_by_matrix(matrix, Conntext.wrenchToArray(wrench))
 
     @staticmethod
     def transform_wrench_by_matrix(T_ab: np.ndarray, wrench: np.ndarray) -> np.ndarray:
@@ -416,9 +416,9 @@ class AssemblyTools():
         :return wrench_transformed: (geometry_msgs.msg.Wrench) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
 
-        Ad_T = AssemblyTools.create_adjoint_representation(T_ab)
+        Ad_T = Conntext.create_adjoint_representation(T_ab)
         wrench_transformed = np.matmul(Ad_T.T, wrench)
-        return AssemblyTools.arrayToWrench(wrench_transformed)
+        return Conntext.arrayToWrench(wrench_transformed)
 
     @staticmethod
     def matrix_to_tf(input: np.ndarray, base_frame: str, child_frame: str):
@@ -427,8 +427,8 @@ class AssemblyTools():
         :param base_frame: (string) base frame for new pose.
         :return: (geometry_msgs.TransformStamped) Transform based on input.
         """
-        pose = AssemblyTools.matrix_to_pose(input, base_frame)
-        output = AssemblyTools.swap_pose_tf(pose, child_frame)
+        pose = Conntext.matrix_to_pose(input, base_frame)
+        output = Conntext.swap_pose_tf(pose, child_frame)
         return output
 
     @staticmethod
@@ -497,7 +497,7 @@ class AssemblyTools():
         transform_world_rotation.transform.translation = offset
 
         # Execute reinterpret-to-tcp and rotate-to-world simultaneously:
-        self._average_wrench_world = AssemblyTools.transform_wrench(transform_world_rotation,
+        self._average_wrench_world = Conntext.transform_wrench(transform_world_rotation,
                                                                     self._average_wrench_gripper)  # This works
 
         # Output the wrench for debug visualization

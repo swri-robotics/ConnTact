@@ -19,7 +19,7 @@ from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
 
 from transitions import Machine
 
-from conntact.assembly_tools import AssemblyTools
+from conntact.conntext import Conntext
 
 """State names
 For loop purposes, the state name *must* be identical to "state_"+(loop method name)
@@ -49,8 +49,8 @@ RUN_LOOP_TRIGGER           = 'run looped code'
 
 
 
-# class AlgorithmBlocks(AssemblyTools):
-class AlgorithmBlocks():
+# class ConnTask(Conntext):
+class ConnTask():
 
     def __init__(self, conntext, interface, connfig_name):
         self.conntext = conntext
@@ -100,7 +100,7 @@ class AlgorithmBlocks():
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
 
 
-        # AssemblyTools.__init__(self, interface, ROS_rate)
+        # Conntext.__init__(self, interface, ROS_rate)
         # Set up Colorama for colorful terminal outputs on all platforms
         init(autoreset=True)
         #Store a reference to the AssemblyStep class in use by the current State if it exists:
@@ -295,20 +295,20 @@ class AssemblyStep:
     '''
     The default AssemblyStep provides a helpful structure to impliment discrete tasks in AssemblyBlocks. The default functionality below moves the TCP in a specified direction and ends when a rigid obstacle halts its motion. In general, the pattern goes thus:
 
-    ::init:: runs when the Step is created, normally right before the first loop of its associated Step. The parameters entered in the AlgorithmBlocks.steps dictionary will be sent to the init function.
+    ::init:: runs when the Step is created, normally right before the first loop of its associated Step. The parameters entered in the ConnTask.steps dictionary will be sent to the init function.
 
-    ::execute:: runs each time the AlgorithmBlocks instance runs its loop. The continuous behavior of the robot should be defined here.
+    ::execute:: runs each time the ConnTask instance runs its loop. The continuous behavior of the robot should be defined here.
 
-    ::checkCompletion:: runs each loop cycle, being triggered by the AlgorithmBlocks loop like 'execute' is. It checks the exitConditions method (below) to evaluate conditions, and gains/loses completion_confidence. The confidence behavior makes decision-making much more consistent, largely eliminating trouble from sensor noise, transient forces, and other disruptions. It returns a Boolean value; True should indicate that the exit conditions for the Step have been satisfied consistently and reliably. This triggers AlgorithmBlocks to run the Exit method. See below.
+    ::checkCompletion:: runs each loop cycle, being triggered by the ConnTask loop like 'execute' is. It checks the exitConditions method (below) to evaluate conditions, and gains/loses completion_confidence. The confidence behavior makes decision-making much more consistent, largely eliminating trouble from sensor noise, transient forces, and other disruptions. It returns a Boolean value; True should indicate that the exit conditions for the Step have been satisfied consistently and reliably. This triggers ConnTask to run the Exit method. See below.
 
     ::exitConditions:: is the boolean "check" which checkCompletion uses to build/lose confidence that it is finished. Gives an instantaneous evaluation of conditions. Prone to noise due to sensor/control/transient messiness.
 
-    ::onExit:: is run by the AlgorithmBlocks execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the AlgorithmBlocks state machine). Any other end-of-step actions, like saving information to the AlgorithmBlocks object for later steps, can be done here.
+    ::onExit:: is run by the ConnTask execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the ConnTask state machine). Any other end-of-step actions, like saving information to the ConnTask object for later steps, can be done here.
 
     '''
-    # from conntact.assembly_algorithm_blocks import AlgorithmBlocks
+    # from conntact.assembly_algorithm_blocks import ConnTask
 
-    def __init__(self, algorithmBlocks:(AlgorithmBlocks)) -> None:
+    def __init__(self, connTask:(ConnTask)) -> None:
         #set up the parameters for this step
         self.completion_confidence = 0.0
         self.seeking_force = [0,0,0]
@@ -322,8 +322,8 @@ class AssemblyStep:
         self.exitThreshold = .99    #Percentage of time for the last period
         self.holdStartTime = 0;
 
-        #Pass in a reference to the AlgorithmBlocks parent class; this reduces data copying in memory
-        self.assembly:AlgorithmBlocks = algorithmBlocks
+        #Pass in a reference to the ConnTask parent class; this reduces data copying in memory
+        self.assembly:ConnTask = connTask
         self.conntext = self.assembly.conntext
         
     def execute(self):
@@ -332,7 +332,7 @@ class AssemblyStep:
         self.updateCommands()
 
     def updateCommands(self):
-        '''Updates the commanded position and wrench. These are published in the AlgorithmBlocks main loop.
+        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
         self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)

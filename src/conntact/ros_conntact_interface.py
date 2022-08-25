@@ -33,11 +33,11 @@ class ConntactROSInterface(ConntactInterface):
         self._adj_wrench_pub = rospy.Publisher('adjusted_wrench_force', WrenchStamped, queue_size=2)
 
         # for plotting node
-        self.avg_wrench_pub = rospy.Publisher("/assembly_tools/avg_wrench", Wrench, queue_size=5)
-        self.avg_speed_pub = rospy.Publisher("/assembly_tools/avg_speed", Point, queue_size=5)
-        self.rel_position_pub = rospy.Publisher("/assembly_tools/rel_position", Point, queue_size=5)
+        self.avg_wrench_pub = rospy.Publisher("/conntext/avg_wrench", Wrench, queue_size=5)
+        self.avg_speed_pub = rospy.Publisher("/conntext/avg_speed", Point, queue_size=5)
+        self.rel_position_pub = rospy.Publisher("/conntext/rel_position", Point, queue_size=5)
 
-        self.status_pub = rospy.Publisher("/assembly_tools/status", String, queue_size=5)
+        self.status_pub = rospy.Publisher("/conntext/status", String, queue_size=5)
 
         self._ft_sensor_sub = rospy.Subscriber("/cartesian_compliance_controller/ft_sensor_wrench/", WrenchStamped,
                                                self.callback_update_wrench, queue_size=2)
@@ -122,7 +122,7 @@ class ConntactROSInterface(ConntactInterface):
     def get_unified_time(self):
         """
         :return: Current time. Conntact always measures periods relative to time since
-        AssemblyTools.__init__ ran by storing this value at that time; you can use this
+        Conntext.__init__ ran by storing this value at that time; you can use this
         method to make Conntact timestamps correspond with other elements of your system.
         :rtype: :class: `double`
         """
