@@ -258,7 +258,7 @@ class AssemblyTools():
         return [point.x, point.y, point.z]
 
     def limit_speed(self, pose_stamped_vec):
-        limit = np.array(self.params['robot']['max_pos_change_per_second']) / self.rate
+        limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
         move = (np.array(pose_stamped_vec[0]) - curr_pos)
         if not self.vectorRegionCompare_symmetrical(move, limit):

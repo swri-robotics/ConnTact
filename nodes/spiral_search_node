@@ -55,14 +55,9 @@ if __name__ == '__main__':
 
     interface       = ConntactROSInterface("conntact_params")
     conntext        = AssemblyTools(interface)
-
     params = interface.load_yaml_file("peg_in_hole_params")
-
-
     task_info = params['conntact_info']['task_list']
-
     interface.register_frames(read_board_positions(task_info['position'], params))
-
     # do pathing stuff
 
     # Instantiate the task called for in the task_list:

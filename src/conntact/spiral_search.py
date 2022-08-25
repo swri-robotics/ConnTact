@@ -8,7 +8,6 @@ import numpy as np
 from transitions import Machine
 
 IDLE_STATE           = 'state_idle'
-CHECK_FEEDBACK_STATE = 'state_check_load_cell_feedback'
 APPROACH_STATE       = 'state_finding_surface'
 FIND_HOLE_STATE      = 'state_finding_hole'
 INSERTING_PEG_STATE  = 'state_inserting_along_axis'
@@ -17,7 +16,6 @@ EXIT_STATE           = 'state_exit'
 SAFETY_RETRACT_STATE = 'state_safety_retraction' 
 
 #Trigger names
-CHECK_FEEDBACK_TRIGGER     = 'check loadcell feedback'
 APPROACH_SURFACE_TRIGGER   = 'start approach'
 FIND_HOLE_TRIGGER          = 'surface found'
 INSERT_PEG_TRIGGER         = 'hole found'
@@ -33,8 +31,7 @@ class SpiralSearch(AlgorithmBlocks, Machine):
         #Override Alg Blocks config variables:
         states = [
             IDLE_STATE, 
-            CHECK_FEEDBACK_STATE,
-            APPROACH_STATE, 
+            APPROACH_STATE,
             FIND_HOLE_STATE, 
             INSERTING_PEG_STATE, 
             COMPLETION_STATE, 
@@ -43,19 +40,24 @@ class SpiralSearch(AlgorithmBlocks, Machine):
         transitions = [
             {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':IDLE_STATE          , 'dest':APPROACH_STATE         },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
-            {'trigger':FIND_HOLE_TRIGGER         , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
-            {'trigger':INSERT_PEG_TRIGGER        , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
-            {'trigger':ASSEMBLY_COMPLETED_TRIGGER, 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
-            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
-            {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_loop'}
+            {'trigger':STEP_COMPLETE_TRIGGER     , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
+            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*', 'dest':None, 'after': 'run_loop'}
         ]
-        self.steps:dict = { APPROACH_STATE: (FindSurface, []) }
+        self.steps:dict = { APPROACH_STATE:       (FindSurface, []),
+                            FIND_HOLE_STATE:      (SpiralToFindHole, []),
+                            INSERTING_PEG_STATE:  (FindSurfaceFullCompliant, []),
+                            SAFETY_RETRACT_STATE: (SafetyRetraction, []),
+                            COMPLETION_STATE:     (ExitStep, [])
+                            }
 
         Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
 
         self.readYAML()
         self.tcp_selected = 'tip'
+        self.reset_height = self.connfig['task']['restart_height'] / 100
 
     def read_peg_hole_dimensions(self):
         """Read peg and hole data from YAML configuration file.
@@ -66,12 +68,7 @@ class SpiralSearch(AlgorithmBlocks, Machine):
     def readYAML(self):
         """Read data from job config YAML and make certain calculations for later use. Stores peg frames in dictionary tool_data
         """
-
-        # job parameters moved in from the peg_in_hole_params.yaml file
-        # 'peg_4mm' 'peg_8mm' 'peg_10mm' 'peg_16mm'
-        # 'hole_4mm' 'hole_8mm' 'hole_10mm' 'hole_16mm'
-        # self.target_peg = self.connfig['task']['target_peg']
-        # self.target_hole = self.connfig['task']['target_hole']
+        
         activeTCP = self.connfig['task']['starting_tcp']
 
         self.read_board_positions()
@@ -102,51 +99,33 @@ class SpiralSearch(AlgorithmBlocks, Machine):
         self.x_pos_offset = self.target_hole_pose.transform.translation.x
         self.y_pos_offset = self.target_hole_pose.transform.translation.y
 
-    def spiral_search_motion(self, frequency=.15, min_amplitude=.002, max_cycles=62.83185):
-        """Generates position, orientation offset vectors which describe a plane spiral about z;
-        Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
-        x,y vector currently comes from x_ and y_pos_offset variables.
-        """
-        curr_time = self.interface.get_unified_time() - self._start_time
-        curr_time_numpy = np.double(curr_time.to_sec())
-        curr_amp = min_amplitude + self.safe_clearance * np.mod(2.0 * np.pi * frequency * curr_time_numpy, max_cycles);
-        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
-        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-        x_pos = x_pos + self.x_pos_offset
-        y_pos = y_pos + self.y_pos_offset
-        z_pos = self.current_pose.transform.translation.z
-        pose_position = [x_pos, y_pos, z_pos]
-        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
-
-        return [pose_position, pose_orientation]
-
-    def finding_hole(self):
-        #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
-        #This triggers the hole position estimate to be updated to limit crazy
-        #forces and oscillations. Also reduces spiral size.
-
-        seeking_force = -7.0
-        self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
-        self.pose_vec = self.spiral_search_motion(self.conntext._spiral_params["frequency"],
-            self.conntext._spiral_params["min_amplitude"], self.conntext._spiral_params["max_cycles"])
-
-        if(not self.conntext.force_cap_check(*self.cap_check_forces)):
-            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
-            rospy.logerr("Force/torque unsafe; pausing application.")
-        elif( self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - .0004):
-            #If we've descended at least 5mm below the flat surface detected, consider it a hole.
-            self.completion_confidence = self.completion_confidence + 1/self.rate_selected
-            rospy.loginfo_throttle(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
-            if(self.completion_confidence > .90):
-                    #Descended from surface detection point. Updating hole location estimate.
-                    self.conntext.x_pos_offset = self.conntext.current_pose.transform.translation.x
-                    self.conntext.y_pos_offset = self.conntext.current_pose.transform.translation.y
-                    self.conntext._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
-                    #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
-                    self.print("Hole found, peg inserting...")
-                    self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER)
-        else:
-            self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
+    # def finding_hole(self):
+    #     #Spiral until we descend 1/3 the specified hole depth (provisional fraction)
+    #     #This triggers the hole position estimate to be updated to limit crazy
+    #     #forces and oscillations. Also reduces spiral size.
+    #
+    #     seeking_force = -7.0
+    #     self.wrench_vec  = self.conntext.get_command_wrench([0,0,seeking_force])
+    #     self.pose_vec = self.spiral_search_motion(self._spiral_params["frequency"],
+    #         self._spiral_params["min_amplitude"], self._spiral_params["max_cycles"])
+    #
+    #     if(not self.conntext.force_cap_check(*self.cap_check_forces)):
+    #         self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
+    #         self.interface.send_error("Force/torque unsafe; pausing application.")
+    #     elif( self.conntext.current_pose.transform.translation.z <= self.conntext.surface_height - .0004):
+    #         #If we've descended at least 5mm below the flat surface detected, consider it a hole.
+    #         self.completion_confidence = self.completion_confidence + 1/self.rate_selected
+    #         self.interface.send_error(1, "Monitoring for hole location, confidence = " + str(self.completion_confidence))
+    #         if(self.completion_confidence > .90):
+    #                 #Descended from surface detection point. Updating hole location estimate.
+    #                 self.conntext.x_pos_offset = self.conntext.current_pose.transform.translation.x
+    #                 self.conntext.y_pos_offset = self.conntext.current_pose.transform.translation.y
+    #                 self.conntext._amp_limit_cp = 2 * np.pi * 4 #limits to 3 spirals outward before returning to center.
+    #                 #TODO - Make these runtime changes pass as parameters to the "spiral_search_basic_compliance_control" function
+    #                 self.print("Hole found, peg inserting...")
+    #                 self.next_trigger, self.switch_state = self.post_action(INSERT_PEG_TRIGGER)
+    #     else:
+    #         self.completion_confidence = np.max( np.array([self.completion_confidence * 95/self.rate_selected, .01]))
 
     def all_states_calc(self):
         self.publish_plotted_values(('state', self.state))
@@ -195,10 +174,51 @@ class FindSurfaceFullCompliant(AssemblyStep):
     def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
         AssemblyStep.__init__(self, algorithmBlocks)
         self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, -7]
+        self.seeking_force = [0, 0, -5]
 
     def exitConditions(self) -> bool:
         return self.static() and self.collision()
+
+class SpiralToFindHole(AssemblyStep):
+    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
+        AssemblyStep.__init__(self, algorithmBlocks)
+        self.seeking_force = [0, 0, -7]
+        self.spiral_params = self.assembly.connfig['task']['spiral_params']
+        self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
+        self.start_time = self.conntext.interface.get_unified_time()
+
+    def updateCommands(self):
+        '''Updates the commanded position and wrench. These are published in the AlgorithmBlocks main loop.
+        '''
+        #Command wrench
+        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
+        #Command pose
+        self.assembly.pose_vec = self.spiral_search_motion()
+
+    def exitConditions(self) -> bool:
+        return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
+
+    def spiral_search_motion(self):
+        """Generates position, orientation offset vectors which describe a plane spiral about z;
+        Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
+        x,y vector currently comes from x_ and y_pos_offset variables.
+        """
+        # frequency=.15, min_amplitude=.002, max_cycles=62.83185
+        curr_time = self.conntext.interface.get_unified_time() - self.start_time
+        curr_time_numpy = np.double(curr_time.to_sec())
+        frequency = self.spiral_params['frequency'] #because we refer to it a lot
+        curr_amp = self.spiral_params['min_amplitude'] + self.safe_clearance * \
+                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
+        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
+        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
+        x_pos = x_pos + self.assembly.x_pos_offset
+        y_pos = y_pos + self.assembly.y_pos_offset
+        z_pos = self.conntext.current_pose.transform.translation.z
+        pose_position = [x_pos, y_pos, z_pos]
+        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
+
+        return [pose_position, pose_orientation]
+
 
 class SafetyRetraction(AssemblyStep):
     def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
@@ -213,4 +233,18 @@ class SafetyRetraction(AssemblyStep):
         return self.conntext.current_pose.transform.translation.z > \
                self.assembly.surface_height + self.assembly.reset_height
 
+class ExitStep(AssemblyStep):
+    def __init__(self, algorithmBlocks: (AlgorithmBlocks)) -> None:
+        AssemblyStep.__init__(self, algorithmBlocks)
+        self.comply_axes = [1, 1, 1]
+        self.seeking_force = [0, 0, 7]
 
+    def exitConditions(self) -> bool:
+        return self.noForce() and self.above_restart_height()
+
+    def above_restart_height(self):
+        return self.conntext.current_pose.transform.translation.z > \
+               self.assembly.surface_height + self.assembly.reset_height
+
+    def onExit(self):
+        quit()

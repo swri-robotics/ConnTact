@@ -8,7 +8,8 @@ task:
   spiral_params:
     frequency: 0.15 #Hz frequency in spiral_search_motion
     min_amplitude: .002  #meters amplitude in spiral_search_motion
-    max_cycles: 62.83185 #2 * 3.14159 * 10 = 10 revolutions
+    max_amplitude: .012 #mm
+    max_cycles: 10 #revolutions
 objects:
   stl_file: "file_location.stl"
   local_position: [ 36.5, -202, 7.5 ] #Starting position from kitting_frame
@@ -17,7 +18,7 @@ objects:
     diameter: 10 #mm
     length: 50 #mm
     min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
-    safe_clearance: .01
+    safe_clearance: .02      #mm : how far apart can each spiral pass be without missing the hole?
   material: "stainless steel"
   grasping_locations: #points of interest on the pin
     tip:
