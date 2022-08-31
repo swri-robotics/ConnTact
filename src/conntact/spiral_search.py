@@ -4,33 +4,36 @@
 from conntact.conntask import ConnTask, AssemblyStep
 from conntact.conntact_interface import ConntactInterface
 from conntact.conntext import Conntext
+from colorama import Back, Fore, Style
 import numpy as np
 from transitions import Machine
 
-IDLE_STATE           = 'state_idle'
-APPROACH_STATE       = 'state_finding_surface'
-FIND_HOLE_STATE      = 'state_finding_hole'
-INSERTING_PEG_STATE  = 'state_inserting_along_axis'
-COMPLETION_STATE     = 'state_completed_insertion'
-EXIT_STATE           = 'state_exit'
-SAFETY_RETRACT_STATE = 'state_safety_retraction' 
+START_STATE    = 'state_start'
+APPROACH_STATE = 'state_finding_surface'
+FIND_HOLE_STATE = 'state_finding_hole'
+INSERTING_PEG_STATE = 'state_inserting_along_axis'
+COMPLETION_STATE = 'state_completed_insertion'
+EXIT_STATE = 'state_exit'
+SAFETY_RETRACT_STATE = 'state_safety_retraction'
 
-#Trigger names
-APPROACH_SURFACE_TRIGGER   = 'start approach'
-FIND_HOLE_TRIGGER          = 'surface found'
-INSERT_PEG_TRIGGER         = 'hole found'
+# Trigger names
+APPROACH_SURFACE_TRIGGER = 'start approach'
+FIND_HOLE_TRIGGER = 'surface found'
+INSERT_PEG_TRIGGER = 'hole found'
 ASSEMBLY_COMPLETED_TRIGGER = 'assembly completed'
-STEP_COMPLETE_TRIGGER      = 'next step'
-SAFETY_RETRACTION_TRIGGER  = 'retract to safety'
-RESTART_TEST_TRIGGER       = 'restart test'
-RUN_LOOP_TRIGGER           = 'run looped code'
+STEP_COMPLETE_TRIGGER = 'next step'
+SAFETY_RETRACTION_TRIGGER = 'retract to safety'
+RESTART_TEST_TRIGGER = 'restart test'
+RUN_LOOP_TRIGGER = 'run looped code'
 
-class SpiralSearch(ConnTask, Machine):
-    def __init__(self, ROS_rate, conntext, interface):
-        ConnTask.__init__(self, ROS_rate, conntext, interface)
-        #Override Alg Blocks config variables:
+class SpiralSearch(ConnTask):
+
+
+    def __init__(self, conntext, interface, connfig_name):
+
+        #Declare the official states list here. These will be passed into the machine.
         states = [
-            IDLE_STATE, 
+            START_STATE,
             APPROACH_STATE,
             FIND_HOLE_STATE, 
             INSERTING_PEG_STATE, 
@@ -38,25 +41,34 @@ class SpiralSearch(ConnTask, Machine):
             EXIT_STATE,
             SAFETY_RETRACT_STATE
         ]
+
+        # Define the valid transitions from/to each state. Here's where you define the topology of the state machine.
+        # The Machine executes the first transition in this list which matches BOTH the trigger AND the CURRENT state.
+        # If no other trigger is set at "self.next_trigger", Conntact will automatically fill in "RUN_LOOP_TRIGGER"
+        # which runs the Execute method of the current Step object.
         transitions = [
-            {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':IDLE_STATE          , 'dest':APPROACH_STATE         },
+            {'trigger':APPROACH_SURFACE_TRIGGER  , 'source':START_STATE         , 'dest':APPROACH_STATE         },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':COMPLETION_STATE    , 'dest':EXIT_STATE             },
-            {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
+            {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE,
+              'unless':'is_already_retracting' },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
-            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*',                'dest':None, 'after': 'run_loop'}
+            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_loop'}
         ]
+
         self.steps:dict = { APPROACH_STATE:       (FindSurface, []),
                             FIND_HOLE_STATE:      (SpiralToFindHole, []),
                             INSERTING_PEG_STATE:  (FindSurfaceFullCompliant, []),
                             SAFETY_RETRACT_STATE: (SafetyRetraction, []),
                             COMPLETION_STATE:     (ExitStep, [])
                             }
+        # #Initialize the state machine "Machine" init in your Conntask instance
+        # Machine.__init__(self, states=states, transitions=transitions, initial=START_STATE)
+        ConnTask.__init__(self, conntext, interface, connfig_name, states, transitions)
 
-        Machine.__init__(self, states=states, transitions=transitions, initial=IDLE_STATE)
-
+        # set up the spiral_search parameters and read the connfig
         self.readYAML()
         self.tcp_selected = 'tip'
         self.reset_height = self.connfig['task']['restart_height'] / 100
@@ -72,9 +84,7 @@ class SpiralSearch(ConnTask, Machine):
         """
 
         activeTCP = self.connfig['task']['starting_tcp']
-
         self.read_board_positions()
-
         self.read_peg_hole_dimensions()
 
         # Spiral parameters
@@ -123,13 +133,16 @@ class SpiralSearch(ConnTask, Machine):
         self.interface.publish_plotting_values(items)
 
     def main(self):
+
+        self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER)
+        self.interface.send_info(Fore.BLACK + Back.GREEN + "Beginning search algorithm. "+Style.RESET_ALL)
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")
 
 
 class FindSurface(AssemblyStep):
 
-    def __init__(self, connTask: (ConnTask)) -> None:
+    def __init__(self, connTask: ConnTask) -> None:
         AssemblyStep.__init__(self, connTask)
         self.comply_axes = [0, 0, 1]
         self.seeking_force = [0, 0, -7]
@@ -214,7 +227,7 @@ class ExitStep(AssemblyStep):
         self.seeking_force = [0, 0, 15]
 
     def exitConditions(self) -> bool:
-        return self.noForce() and self.above_restart_height()
+        return self.above_restart_height()
 
     def above_restart_height(self):
         return self.conntext.current_pose.transform.translation.z > \

@@ -50,16 +50,6 @@ class Conntext():
         self.filters = AssemblyFilters(5, self.rate)
 
         self.toolData = ToolData()
-
-        # print(Fore.RED + Back.BLUE + "Conntext sleeping, estop now if you don't want motion..." + Style.RESET_ALL)
-        # time.sleep(5)
-
-        # loop parameters
-        # self.wrench_vec = self.get_command_wrench([0, 0, 0])
-        # self.switch_state = False
-
-        # initialize loop parameters
-
         self.current_pose = self.get_current_pos()
         self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench

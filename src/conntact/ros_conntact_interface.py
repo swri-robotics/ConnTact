@@ -119,7 +119,7 @@ class ConntactROSInterface(ConntactInterface):
             except yaml.YAMLError as exc:
                 print(exc)
 
-    def get_unified_time(self):
+    def get_unified_time(self, float=False):
         """
         :return: Current time. Conntact always measures periods relative to time since
         Conntext.__init__ ran by storing this value at that time; you can use this
@@ -127,7 +127,9 @@ class ConntactROSInterface(ConntactInterface):
         :rtype: :class: `double`
         """
         # return np.double(rospy.get_rostime().to_sec())
-        return rospy.get_rostime()
+        if not float:
+            return rospy.get_rostime()
+        return rospy.get_time()
 
     def get_package_path(self):
         """ Returns the position of `end` frame relative to `start` frame.

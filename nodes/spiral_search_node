@@ -37,22 +37,12 @@ def read_board_positions(target_hole: str, params: dict):
     tf_robot_to_task_board = Conntext.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
     tf_task_board_to_hole = Conntext.get_tf_from_yaml(hole_pos, hole_ori, "task_board", "target_hole_position")
 
-    # target_hole_pose = tf2_geometry_msgs.do_transform_pose(pose_task_board_to_hole, tf_robot_to_task_board)
-    # # self.target_broadcaster = tf2_geometry_msgs.do_transform_pose(self.pose_task_board_to_hole, self.tf_robot_to_task_board)
-    # targetHoleTF = Conntext.swap_pose_tf(target_hole_pose, "target_hole_position")
-    # self.reference_frames['target_hole_position'] = targetHoleTF
-
-
-    # self.send_reference_TFs()
-    # self.x_pos_offset = self.target_hole_pose.pose.position.x
-    # self.y_pos_offset = self.target_hole_pose.pose.position.y
-
     return {"target_hole_position": tf_robot_to_task_board, "task_board_position": tf_task_board_to_hole}
 
 
 if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
-    # rospy.sleep(10)
+    # rospy.sleep(7)
 
     interface       = ConntactROSInterface("conntact_params")
     conntext        = Conntext(interface)
