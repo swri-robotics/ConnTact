@@ -34,7 +34,34 @@ STEP_COMPLETE_TRIGGER      = 'next step'
 RUN_LOOP_TRIGGER           = 'run looped code'
 
 class ConnTask(Machine):
-    def __init__(self, conntext, interface, connfig_name, states, transitions):
+    """A parent class which contains a state machine which creates, processes, and destroys AssemblySteps
+    in concert with state transitions. When you create a child class to implement Conntask (hereafter referred to as your Task), that class needs to provide the following to ConnTask:
+    :param conntext: (Conntext) Reference to the Conntext object managing the environment.
+    :param interface: (ConntactInterface) Reference to the interface object managing hardware/software connections.
+    :param states: (List of str) state names. States in the state machine will be created based on these.
+    :param transitions: (List of dictionaries) Format example below. List the name, source, and destination of each valid transition between states. These transitions are passed by name from AssemblySteps back to Conntask to move to a new state.
+    :param connfig_name: (str) name of the YAML file where configuration data is stored. All uses of your Task-specific params will be in your Task file, but Conntask will load them for you if asked. It looks within (your workspace)/src/Conntact/config for a .yaml file with the given name.
+
+    # The following is an example of how to set up a state machine. Do this in your Task definition.
+    #Declare the official states list here. These will be passed into the machine. The minimum required states are shown :
+    states = [
+        START_STATE
+        EXIT_STATE,
+        SAFETY_RETRACT_STATE
+    ]
+    #Define the valid transitions from/to each state. Here's where you define the topology of the state machine. The Machine executes the first transition in this list which matches BOTH the trigger AND the CURRENT state. If no other trigger is set at "self.next_trigger", Conntact will automatically fill in "RUN_LOOP_TRIGGER" which runs the Execute method of the current Step object.
+    transitions = [
+        {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
+        {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':START_STATE   },
+        {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_step_actions'}
+    ]
+
+    #Store a reference to the AssemblyStep class in use by each State:
+    self.steps:dict = {
+        COMPLETION_STATE:     (ExitStep, [])
+    }
+    """
+    def __init__(self, conntext, interface, states, transitions, connfig_name = None ):
         self.conntext = conntext
         self.rate_selected = conntext.rate
         if interface is None:
@@ -52,29 +79,8 @@ class ConnTask(Machine):
         self.next_trigger = ''  # Empty to start. If no transition is assigned by the AssemblyStep
         # execution, Conntact fills in the default "RUN_LOOP_TRIGGER" which causes no transition
         # and simply executes the step.execute() method
+        self.switch_state = False #Triggers a state transition while preventing accidental repetitions
 
-
-        # The following is an example of how to set up a state machine.
-        """
-        #Declare the official states list here. These will be passed into the machine.
-        states = [
-            START_STATE
-            EXIT_STATE,
-            SAFETY_RETRACT_STATE
-        ]
-        
-        #Define the valid transitions from/to each state. Here's where you define the topology of the state machine. The Machine executes the first transition in this list which matches BOTH the trigger AND the CURRENT state. If no other trigger is set at "self.next_trigger", Conntact will automatically fill in "RUN_LOOP_TRIGGER" which runs the Execute method of the current Step object.
-        transitions = [
-            {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE, 'unless':'is_already_retracting' },
-            {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':START_STATE   },
-            {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_loop'}
-        ]
-
-        #Store a reference to the AssemblyStep class in use by each State:
-        self.steps:dict = { 
-            COMPLETION_STATE:     (ExitStep, [])
-        }
-        """
         self.step:AssemblyStep = None
 
         # Set up Colorama for colorful terminal outputs on all platforms
@@ -84,11 +90,6 @@ class ConnTask(Machine):
     def print(self, string: str):
         self.interface.send_info(Fore.LIGHTBLUE_EX + string + Style.RESET_ALL)
 
-    def post_action(self, trigger_name):
-        """Defines the next trigger which the state machine should execute.
-        """
-        return [trigger_name, True]
-
     def is_already_retracting(self):
         """This method makes use of the Machine's built-in
         "unless" feature. The named method is called and the boolean result
@@ -96,22 +97,19 @@ class ConnTask(Machine):
         state is skipped, the default RUN_LOOP_TRIGGER is used.
         """
         return self.is_state_safety_retraction()
-
     # Machine automatically creates on_enter methods for every step based
     # on the name ("on_enter_"+[state name]). These are triggered as soon
     # as the Machine enters that state, before the Step object has been initialized.
     def on_enter_state_start(self):
         self.log_state_transition()
-
     def log_state_transition(self):
         self.interface.send_info(Fore.BLACK + Back.WHITE +"State transition to " +
                       str(self.state) + " at time = " + str(self.interface.get_unified_time()) + Style.RESET_ALL )
-
     def update_commands(self):
         self.conntext.publish_pose(self.pose_vec)
         self.conntext.publish_wrench(self.wrench_vec)
 
-    def run_loop(self):
+    def run_step_actions(self):
         """Runs the AssemblyStep class associated with this state if one exists.
         It will fall back on a method with name matching the state name if no
         Step is listed.
@@ -125,7 +123,7 @@ class ConnTask(Machine):
                 self.interface.send_info( Fore.GREEN + "Created step object " + str(type(self.step)) + Style.RESET_ALL )
             else:
                 self.step.execute()
-            if (self.step.checkCompletion()):
+            if self.step.checkCompletion():
                 self.next_trigger, self.switch_state = self.step.onExit()
         else:
             # Fall back on calling a method matching the state name.
@@ -144,7 +142,6 @@ class ConnTask(Machine):
     def algorithm_execute(self):
         """Main execution loop. A True exit state will cause the buffered Trigger "self.next_trigger" to be run, changing the state. If using a state realized as an AssemblyStep class, we delete the old step here. Also executes the once-per-cycle non-step commands needed for continuous safe operation.
         """
-
         while self.state != EXIT_STATE:
             # Main program loop.
             # Refresh values, run process trigger (either loop-back to perform state actions or transition to new state), then output controller commands and wait for next loop time.
@@ -160,7 +157,6 @@ class ConnTask(Machine):
             else:
                 # If we're not switching states, we use RUN_LOOP_TRIGGER to execute this state's loop code.
                 self.next_trigger = RUN_LOOP_TRIGGER
-                
             # Execute the trigger chosen
             self.trigger(self.next_trigger)
 
@@ -171,14 +167,12 @@ class ConnTask(Machine):
     def all_states_calc(self):
         #All once-per-loop functions
         self.conntext.current_pose = self.conntext.get_current_pos()
-        self.curr_time = self.interface.get_unified_time() - self.start_time
-        self.curr_time_numpy = np.double(self.curr_time.to_sec())
         self.conntext.update_avg_speed()
         self.conntext.update_average_wrench()
 
     def checkForceCap(self):
         if(not self.conntext.force_cap_check()):
-            self.next_trigger, self.switch_state = self.post_action(SAFETY_RETRACTION_TRIGGER)
+            self.next_trigger = SAFETY_RETRACTION_TRIGGER
             self.interface.send_error("Force/torque unsafe; pausing application.")
 
 

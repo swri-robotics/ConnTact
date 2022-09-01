@@ -55,7 +55,7 @@ class SpiralSearch(ConnTask):
             {'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE,
               'unless':'is_already_retracting' },
             {'trigger':STEP_COMPLETE_TRIGGER     , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
-            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_loop'}
+            {'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}
         ]
 
         self.steps:dict = { APPROACH_STATE:       (FindSurface, []),
@@ -66,7 +66,7 @@ class SpiralSearch(ConnTask):
                             }
         # #Initialize the state machine "Machine" init in your Conntask instance
         # Machine.__init__(self, states=states, transitions=transitions, initial=START_STATE)
-        ConnTask.__init__(self, conntext, interface, connfig_name, states, transitions)
+        ConnTask.__init__(self, conntext, interface, states, transitions, connfig_name = connfig_name)
 
         # set up the spiral_search parameters and read the connfig
         self.readYAML()
@@ -134,7 +134,7 @@ class SpiralSearch(ConnTask):
 
     def main(self):
 
-        self.next_trigger, self.switch_state = self.post_action(APPROACH_SURFACE_TRIGGER)
+        self.next_trigger, self.switch_state = APPROACH_SURFACE_TRIGGER, True
         self.interface.send_info(Fore.BLACK + Back.GREEN + "Beginning search algorithm. "+Style.RESET_ALL)
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")
