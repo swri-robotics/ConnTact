@@ -55,19 +55,15 @@ class ConnTask(Machine):
         {'trigger':RESTART_TEST_TRIGGER      , 'source':SAFETY_RETRACT_STATE, 'dest':START_STATE   },
         {'trigger':RUN_LOOP_TRIGGER      , 'source':'*', 'dest':None, 'after': 'run_step_actions'}
     ]
-
     #Store a reference to the AssemblyStep class in use by each State:
-    self.steps:dict = {
+    self.step_list:dict = {
         COMPLETION_STATE:     (ExitStep, [])
     }
     """
-    def __init__(self, conntext, interface, states, transitions, connfig_name = None ):
+    def __init__(self, conntext, states, transitions, connfig_name=None ):
         self.conntext = conntext
         self.rate_selected = conntext.rate
-        if interface is None:
-            self.interface = self.conntext.interface
-        else:
-            self.interface = interface
+        self.interface = self.conntext.interface
 
         self.connfig = self.interface.load_yaml_file(connfig_name)
         self.start_time = self.interface.get_unified_time()
@@ -81,7 +77,7 @@ class ConnTask(Machine):
         # and simply executes the step.execute() method
         self.switch_state = False #Triggers a state transition while preventing accidental repetitions
 
-        self.step:AssemblyStep = None
+        self.current_step:AssemblyStep = None
 
         # Set up Colorama for colorful terminal outputs on all platforms
         colorama_init(autoreset=True)
@@ -97,11 +93,13 @@ class ConnTask(Machine):
         state is skipped, the default RUN_LOOP_TRIGGER is used.
         """
         return self.is_state_safety_retraction()
-    # Machine automatically creates on_enter methods for every step based
-    # on the name ("on_enter_"+[state name]). These are triggered as soon
-    # as the Machine enters that state, before the Step object has been initialized.
+
     def on_enter_state_start(self):
+        # Machine automatically creates on_enter methods for every step based
+        # on the name ("on_enter_"+[state name]). These are triggered as soon
+        # as the Machine enters that state, before the Step object has been initialized.
         self.log_state_transition()
+
     def log_state_transition(self):
         self.interface.send_info(Fore.BLACK + Back.WHITE +"State transition to " +
                       str(self.state) + " at time = " + str(self.interface.get_unified_time()) + Style.RESET_ALL )
@@ -115,16 +113,16 @@ class ConnTask(Machine):
         Step is listed.
         """
         state_name = str(self.state)
-        if(state_name in self.steps):
+        if(state_name in self.step_list):
             #This step has been realized as a Step class
-            if(not self.step):
+            if(not self.current_step):
                 #Set step to an instance of the referred class and pass in the parameters.
-                self.step = self.steps[state_name][0](self, *self.steps[state_name][1])
-                self.interface.send_info( Fore.GREEN + "Created step object " + str(type(self.step)) + Style.RESET_ALL )
+                self.current_step = self.step_list[state_name][0](self, *self.step_list[state_name][1])
+                self.interface.send_info( Fore.GREEN + "Created step object " + str(type(self.current_step)) + Style.RESET_ALL )
             else:
-                self.step.execute()
-            if self.step.checkCompletion():
-                self.next_trigger, self.switch_state = self.step.onExit()
+                self.current_step.execute()
+            if self.current_step.check_completion():
+                self.next_trigger, self.switch_state = self.current_step.on_exit()
         else:
             # Fall back on calling a method matching the state name.
             method_name = "self."+state_name[state_name.find('state_')+6:]+'()'
@@ -138,7 +136,6 @@ class ConnTask(Machine):
                 print("Unexpected error when trying to locate state loop name:", sys.exc_info()[0])
                 raise
 
-        
     def algorithm_execute(self):
         """Main execution loop. A True exit state will cause the buffered Trigger "self.next_trigger" to be run, changing the state. If using a state realized as an AssemblyStep class, we delete the old step here. Also executes the once-per-cycle non-step commands needed for continuous safe operation.
         """
@@ -147,19 +144,17 @@ class ConnTask(Machine):
             # Refresh values, run process trigger (either loop-back to perform state actions or transition to new state), then output controller commands and wait for next loop time.
             self.all_states_calc()
             self.checkForceCap()
-
             if(self.switch_state): #If the command to change states has come in:
                 self.switch_state = False
-                if(self.step):
+                if(self.current_step):
                     #If a Step class has been defined for the current State, we delete it to be tidy.
-                    del self.step
-                    self.step = None
+                    del self.current_step
+                    self.current_step = None
             else:
                 # If we're not switching states, we use RUN_LOOP_TRIGGER to execute this state's loop code.
                 self.next_trigger = RUN_LOOP_TRIGGER
             # Execute the trigger chosen
             self.trigger(self.next_trigger)
-
             # Publish robot motion commands only once per loop, right at the end of the loop:
             self.update_commands()
             self.interface.sleep_until_next_loop()
@@ -184,11 +179,11 @@ class AssemblyStep:
 
     ::execute:: runs each time the ConnTask instance runs its loop. The continuous behavior of the robot should be defined here.
 
-    ::checkCompletion:: runs each loop cycle, being triggered by the ConnTask loop like 'execute' is. It checks the exitConditions method (below) to evaluate conditions, and gains/loses completion_confidence. The confidence behavior makes decision-making much more consistent, largely eliminating trouble from sensor noise, transient forces, and other disruptions. It returns a Boolean value; True should indicate that the exit conditions for the Step have been satisfied consistently and reliably. This triggers ConnTask to run the Exit method. See below.
+    ::check_completion:: runs each loop cycle, being triggered by the ConnTask loop like 'execute' is. It checks the exit_conditions method (below) to evaluate conditions, and gains/loses completion_confidence. The confidence behavior makes decision-making much more consistent, largely eliminating trouble from sensor noise, transient forces, and other disruptions. It returns a Boolean value; True should indicate that the exit conditions for the Step have been satisfied consistently and reliably. This triggers ConnTask to run the Exit method. See below.
 
-    ::exitConditions:: is the boolean "check" which checkCompletion uses to build/lose confidence that it is finished. Gives an instantaneous evaluation of conditions. Prone to noise due to sensor/control/transient messiness.
+    ::exit_conditions:: is the boolean "check" which check_completion uses to build/lose confidence that it is finished. Gives an instantaneous evaluation of conditions. Prone to noise due to sensor/control/transient messiness.
 
-    ::onExit:: is run by the ConnTask execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the ConnTask state machine). Any other end-of-step actions, like saving information to the ConnTask object for later steps, can be done here.
+    ::on_exit:: is run by the ConnTask execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the ConnTask state machine). Any other end-of-step actions, like saving information to the ConnTask object for later steps, can be done here.
 
     '''
     # from conntact.assembly_algorithm_blocks import ConnTask
@@ -212,11 +207,11 @@ class AssemblyStep:
         self.conntext = self.assembly.conntext
         
     def execute(self):
-        '''Executed once per loop while this State is active. By default, just runs UpdateCommands to keep the compliance motion profile running.
+        '''Executed once per loop while this State is active. By default, just runs update_commands to keep the compliance motion profile running.
         '''
-        self.updateCommands()
+        self.update_commands()
 
-    def updateCommands(self):
+    def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
@@ -225,11 +220,11 @@ class AssemblyStep:
         self.assembly.pose_vec = self.conntext.arbitrary_axis_comply(self.comply_axes)
 
 
-    def checkCompletion(self):
-        """Check if the step is complete. Default behavior is to check the exit conditions and gain/lose confidence between 0 and 1. ExitConditions returning True adds a step toward 1; False steps down toward 0. Once confidence is above exitThreshold, a timer begins for duration exitPeriod.
+    def check_completion(self):
+        """Check if the step is complete. Default behavior is to check the exit conditions and gain/lose confidence between 0 and 1. exit_conditions returning True adds a step toward 1; False steps down toward 0. Once confidence is above exitThreshold, a timer begins for duration exitPeriod.
         """
 
-        if(self.exitConditions()):
+        if(self.exit_conditions()):
             if(self.completion_confidence < 1):
                 self.completion_confidence += 1/(self.assembly.rate_selected)
 
@@ -251,22 +246,22 @@ class AssemblyStep:
 
         return False
 
-    def exitConditions(self)->bool:
-        return self.noForce() 
+    def exit_conditions(self)->bool:
+        return self.no_force() 
 
-    def static(self)->bool:
+    def is_static(self)->bool:
         return self.conntext.checkIfStatic()
 
-    def collision(self)->bool:
+    def in_collision(self)->bool:
         return self.conntext.checkIfColliding(np.array(self.seeking_force))
 
-    def noForce(self)->bool:
+    def no_force(self)->bool:
         '''Checks the current forces against an expected force of zero, helpfully telling us if the robot is in free motion
         :return: (bool) whether the force is fairly close to zero.
         '''
         return self.conntext.checkIfColliding(np.zeros(3))
 
-    def onExit(self):
+    def on_exit(self):
         """Executed once, when the change-state trigger is registered.
         """
         return STEP_COMPLETE_TRIGGER, True

@@ -58,15 +58,15 @@ class SpiralSearch(ConnTask):
             {'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}
         ]
 
-        self.steps:dict = { APPROACH_STATE:       (FindSurface, []),
-                            FIND_HOLE_STATE:      (SpiralToFindHole, []),
-                            INSERTING_PEG_STATE:  (FindSurfaceFullCompliant, []),
-                            SAFETY_RETRACT_STATE: (SafetyRetraction, []),
-                            COMPLETION_STATE:     (ExitStep, [])
-                            }
+        self.step_list:dict = { APPROACH_STATE:       (FindSurface, []),
+                                FIND_HOLE_STATE:      (SpiralToFindHole, []),
+                                INSERTING_PEG_STATE:  (FindSurfaceFullCompliant, []),
+                                SAFETY_RETRACT_STATE: (SafetyRetraction, []),
+                                COMPLETION_STATE:     (ExitStep, [])
+                                }
         # #Initialize the state machine "Machine" init in your Conntask instance
         # Machine.__init__(self, states=states, transitions=transitions, initial=START_STATE)
-        ConnTask.__init__(self, conntext, interface, states, transitions, connfig_name = connfig_name)
+        ConnTask.__init__(self, conntext, states, transitions, connfig_name=connfig_name)
 
         # set up the spiral_search parameters and read the connfig
         self.readYAML()
@@ -133,12 +133,10 @@ class SpiralSearch(ConnTask):
         self.interface.publish_plotting_values(items)
 
     def main(self):
-
         self.next_trigger, self.switch_state = APPROACH_SURFACE_TRIGGER, True
         self.interface.send_info(Fore.BLACK + Back.GREEN + "Beginning search algorithm. "+Style.RESET_ALL)
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")
-
 
 class FindSurface(AssemblyStep):
 
@@ -147,15 +145,15 @@ class FindSurface(AssemblyStep):
         self.comply_axes = [0, 0, 1]
         self.seeking_force = [0, 0, -7]
 
-    def exitConditions(self) -> bool:
-        return self.static() and self.collision()
+    def exit_conditions(self) -> bool:
+        return self.is_static() and self.in_collision()
 
-    def onExit(self):
+    def on_exit(self):
         """Executed once, when the change-state trigger is registered.
         """
         # Measure flat surface height and report it to AssemblyBlocks:
         self.assembly.surface_height = self.conntext.current_pose.transform.translation.z
-        return super().onExit()
+        return super().on_exit()
 
 class FindSurfaceFullCompliant(AssemblyStep):
     def __init__(self, connTask: (ConnTask)) -> None:
@@ -163,8 +161,8 @@ class FindSurfaceFullCompliant(AssemblyStep):
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, -5]
 
-    def exitConditions(self) -> bool:
-        return self.static() and self.collision()
+    def exit_conditions(self) -> bool:
+        return self.is_static() and self.in_collision()
 
 class SpiralToFindHole(AssemblyStep):
     def __init__(self, connTask: (ConnTask)) -> None:
@@ -174,7 +172,7 @@ class SpiralToFindHole(AssemblyStep):
         self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
 
-    def updateCommands(self):
+    def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
@@ -182,7 +180,7 @@ class SpiralToFindHole(AssemblyStep):
         #Command pose
         self.assembly.pose_vec = self.spiral_search_motion()
 
-    def exitConditions(self) -> bool:
+    def exit_conditions(self) -> bool:
         return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
 
     def spiral_search_motion(self):
@@ -213,8 +211,8 @@ class SafetyRetraction(AssemblyStep):
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, 7]
 
-    def exitConditions(self) -> bool:
-        return self.noForce() and self.above_restart_height()
+    def exit_conditions(self) -> bool:
+        return self.no_force() and self.above_restart_height()
 
     def above_restart_height(self):
         return self.conntext.current_pose.transform.translation.z > \
@@ -226,7 +224,7 @@ class ExitStep(AssemblyStep):
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, 15]
 
-    def exitConditions(self) -> bool:
+    def exit_conditions(self) -> bool:
         return self.above_restart_height()
 
     def above_restart_height(self):
