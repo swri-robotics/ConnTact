@@ -1,14 +1,32 @@
+
+         ____\_
+        |______\_____
+  _____/_____\_______\_________
+ |       > > >                /
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ConnTact
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+              |_
+         _____|~ |____
+        (  --         ~~~~--_,
+        --------------------'` 
+
 
 Software framework to enable agile robotic assembly applications.
 
-(Connect + Tactile)
+> Conn (intransitive verb)
+> : to conduct or direct the steering of (a vessel, such as a ship) ~ Merriam-Webster
+
+>Tact (noun)
+> : Careful delicacy to achieve a purpose without causing harm
+
+(Alternate etymology: Connect + Tactile)
 
 ## Overview
 
 ![Framework diagram](resource/framework.png)
 
-The ConnTact package provide a efficient framework for assembly algorithm development for compliant robots. It allows the user to define fully tactile methods for making tight-tolerance connections in a human-like way.
+The ConnTact package provide an efficient framework for assembly algorithm development for compliant robots. It allows the user to define fully tactile methods for making tight-tolerance connections in a human-like way.
 
 ConnTact includes an implementation of the [transitions](https://github.com/pytransitions/transitions) state machine package to define the steps and decisions critical to your algorithm. It also provides a suite of tools and examples to sense the environment based on force feedback - detecting collision, hard surfaces, and position changes. Finally we define some basic motion profiles which can be used to probe the environment and align the tool to the workpiece.
 
@@ -30,32 +48,31 @@ Development of framework was done under Ubuntu Focal (20.04) using [ROS Noetic](
 
 ### Structure
 
-Conntact is structured with 3 levels of functionality:
+Conntact is structured with 4 levels of functionality:
+
+#### ConntactInterface
+
+ The Interface defines the complete list of abstract functions which Conntact uses to interact with a computer-robot system (hardware and software environment). As long as these functions are implemented as intended, Conntact will run on any hardware and will command any robot. We provide working Interface examples for the UR10e running in both ROS and ROS 2 (coming soon).
 
 #### Conntext
 
-> *Do the following job* ***here*** *and at* ***this*** *angle*
-
-  The Conntext package provides a bunch of utility functions. These translate data from hardware into **task space**: the frame-of-reference of the task to be accomplished. This way, an algorithm developed at a given position and orientation is automatically reoriented and repositioned when a new task position is fed into the system. Conntext also provides useful data, such as speed estimation and sensor data filtering.
+  The Conntext package acts as a wrapper which translates world-space data from the interface into the **task space**: the frame-of-reference of the task to be accomplished. This way, an algorithm developed at a given position and orientation is automatically reoriented and repositioned when a new task position is fed into the system. Conntext also provides useful data utilities, such as speed estimation and sensor data filtering.
 
 #### ConnTask
 
-> *First do* ***this*** *and then do* ***this*** *and then* ***this***
-
-  The ConnTask program is an implimentation of the pytransitions Machine package. It comprises example functions which run according to an easily-reconfigurable state machine. By breaking a task down into sequential tasks, you can use ConnTask to sequence these tasks and add decision-making/redundancy/fallback functionality.
+  To use Conntact, the user creates a ConnTask implementation. Conntask is an easily-reconfigurable state machine which automatically associates an AssemblyStep behavior (see below) with each state and transition. Once you break a job down into sequential tasks, you can quickly build the functional skeleton of the algorithm.
 
 #### AssemblyStep
 
-> *Move like* ***this*** *until you feel* ***this*** *happen*
-
-  ConnTask can run *functions* for simple tasks, but for tactile sensing you often need a lot of specific variable and flags to track conditions. These tasks are streamlined with the AssemblyStep class. Each Step object provides all the basic functions for a sensing task - setup, loop behavior, completion checking - and can be easily expanded or overriden to accomplish a wide variety of tasks.
+  ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *motion profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. The motion profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
+  The AssemblyStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the AssemblyStep instructs ConnTask's state machine which specific next step to which to transition.
 
 ### Development
 
 We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of driving a machine screw into a threaded hole to illustrate each step.
 
 #### 1. Choose the frame-of-reference for your task.
-  * The threaded hole is vertical. We'll establish the Z axis to be vertical, concentric with the hole. The screw's Z axis goes along its axis pointing from the head to the threads.
+  * The threaded hole is vertical. We'll establish the Z axis to be vertical, concentric with the hole. We also establish the screw's Z axis along its axis pointing from the head to the threads.
 
 #### 2. Break the human task down into a sequence of tactile *steps* and *decisions*.
   * Roughly align the Z axes of the screw and hole.
@@ -70,13 +87,23 @@ We suggest the following workflow to take a task from a human and give it to a r
       * Apply the specified torque to finalize the connection.
       * Release and retract and we're done.
 
-#### 3. Analyze each *step* and determine the *continuous* and *end conditions.*
+#### 3. Analyze each *step* and determine the *motion profile* and *end conditions.*
 
 For each step above, identify the *force directions* and *free movement directions* required. 
 
-Force: The end effector will comply with outside forces, but will add the specified force to create continuous motion until impeded.
+ - `Conntext.arbitrary_axis_comply`
+ <details><summary>Click to expand</summary>
 
-Free movement directions: The end effector can be disturbed from its desired position by outside forces. For each dimension (X,Y, and Z), you can specify whether it tries to *return to its assigned position* or *update its assigned posiiton to the new position*. This allows the robot to continuously move in a predictable way.
+ AssemblySteps by default use a simple motion profile definition:
+
+ ``
+
+ Force: The end effector will comply with outside forces, but will add the specified force to create continuous motion until impeded.
+ Free movement directions: The end effector can be disturbed from its desired position by outside forces. For each dimension (X,Y, and Z), you can  specify whether it tries to *return to its assigned position* or *update its assigned position to the new position*. 
+ 
+ This allows the robot to continuously move in a predictable way.
+
+</details>
 
 * To move the screw downward in free space until it hits a hard surface:
   * Apply a small downward force to move the robot downward.
