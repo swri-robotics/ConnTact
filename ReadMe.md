@@ -21,6 +21,14 @@ ConnTact includes an implementation of the [transitions](https://github.com/pytr
 
 ![Framework diagram](resource/Conntact_Overview_Diagram_small.png)
 
+The above diagram illustrates the topology of a Conntact implementation. The user's main program sets up the ConnTact environment by starting up persistent Conntext and ConntactInterface objects. These manage environment communication and interpretation. Then, the user program can run sequential ConnTasks in this prepared environment to carry out different manipulation tasks.
+
+The ConnTask is the basic unit of ConnTact implementation: it's a user-created state machine describing an algorithmic solution to a problem. ConnTasks are easy to build and test in ConnTact as long as you can break down the human method into discrete motions and decisions. Here we show that the user has developed a screw-driving Task, a plug-insertion Task, and a gear-assembling Task.  
+
+We show that the ConnTask has a few ConnStep objects inside. These are simple definitions of motion and end conditions which give executable meaning to the ConnTask state machine states.
+
+Above the InsertScrew ConnTask we show some Connfig files, each for a different size of screw. ConnTasks are, at least by default, easy to parameterize. If the algorithm stays the same, any numerical values should be easily tweakable for different workpieces.
+
 ## Installation
 
 Development of framework was done under Ubuntu Focal (20.04) using [ROS Noetic](http://wiki.ros.org/noetic).
