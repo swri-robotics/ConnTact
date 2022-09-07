@@ -269,21 +269,7 @@ class FindSurfaceFullCompliant(AssemblyStep):
 </details>
 
 
-
-
-
-
-
-
-
-
-### Setting up a workcell
-  
-  TBD 
-
-### Configuring a new application
-
-  TBD
+That's the majority of the custom programming involved. With this state machine and these Steps, the system can execute the proposed task. You can read through the rest of `SpiralSearch.py` to see how we added plotting capability and used a Connfig to store info about each of the cylindrical pegs in the task board. You can also read through `spiral_search_node.py` to see how we instantiate and run the ConnTask for our ROS+UR10e workcell.
 
 ## Running _SpiralSearch_ Example
 
