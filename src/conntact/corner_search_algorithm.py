@@ -34,7 +34,7 @@ import tf2_geometry_msgs
 
 from threading import Lock
 
-from conntact.assembly_algorithm_blocks import AlgorithmBlocks
+from conntact.assembly_algorithm_blocks import ConnTask
 
 from transitions import Machine
 
@@ -63,7 +63,7 @@ class testing():
     def __init__(self):
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped, queue_size=10)
 
-class CornerSearch(AlgorithmBlocks, Machine):
+class CornerSearch(ConnTask, Machine):
 
     def __init__(self):
         
@@ -73,7 +73,7 @@ class CornerSearch(AlgorithmBlocks, Machine):
         ROS_rate = 100 #setup for sleeping in hz
         start_time = rospy.get_rostime() 
         
-        AlgorithmBlocks.__init__(self, ROS_rate, start_time)
+        ConnTask.__init__(self, ROS_rate, start_time)
 
         #Override Alg Blocks config variables:
         states = [

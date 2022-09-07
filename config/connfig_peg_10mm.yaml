@@ -1,0 +1,37 @@
+#This file conntains all the info specific to the conntask. It can be as specific
+#as needed; the conntask creator will always be writing the code that interprets it.
+#For "SpiralSearch", whose purpose is to insert a peg into a hole, this supplies
+#params for the spiral and dimensions of the peg to be inserted.
+task:
+  starting_tcp: "tip"
+  restart_height: 5 #cm. how far we retreat above detected surface to restart
+  spiral_params:
+    frequency: 0.15 #Hz frequency in spiral_search_motion
+    min_amplitude: .002  #meters amplitude in spiral_search_motion
+    max_amplitude: .012 #mm
+    max_cycles: 62.83 #2*pi*10 for 10 revolutions
+objects:
+  stl_file: "file_location.stl"
+  local_position: [ 36.5, -202, 7.5 ] #Starting position from kitting_frame
+  local_orientation: [ 90, 0, 0 ]     #Starting rotation from kitting frame
+  dimensions:
+    diameter: 10 #mm
+    length: 50 #mm
+    min_insertion_depth: 7.5 #mm : minimum depth the item must insert before considering job complete; "feeling" it stop is the end condition
+    safe_clearance: .02      #mm : how far apart can each spiral pass be without missing the hole?
+  material: "stainless steel"
+  grasping_locations: #points of interest on the pin
+    tip:
+      pose: [ 0, 0, 50 ] #location relative to peg root frame
+      orientation: [ 0, 0, 0 ] #transformation relative to peg root frame
+      #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+    corner:
+      pose: [ -3.5, -3.5, 100 ] #location relative to peg/hole local_part_pose being grasped
+      #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
+      orientation: [ 35.26, -30, -9.74 ] #orientation relative to tcp is 45 degrees in 2 rpy axes
+      #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
+      #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
+    middle:
+      pose: [ 0, 0, 25 ] #location relative to peg/hole local_part_pose being grasped
+      #- grasp_name: "middle"
+      orientation: [ 0, 0, 0 ] #Orientation relative to peg root frame
