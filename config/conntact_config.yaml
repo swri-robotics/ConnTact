@@ -1,7 +1,0 @@
-framework:
-  refresh_rate: 100
-algorithm: 
-  spiral_params:
-    frequency: 0.15 #Hz frequency in spiral_search_motion
-    min_amplitude: .002  #meters amplitude in spiral_search_motion
-    max_cycles: 62.83185 #2 * 3.14159 * 10 = 10 revolutions
