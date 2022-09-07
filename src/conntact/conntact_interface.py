@@ -8,6 +8,9 @@ from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamp
 
 # class ConntactInterface():
 class ConntactInterface(metaclass=abc.ABCMeta):
+    """
+    An interface definition to connect your solution to your workcell's hardware/software combination.
+    """
 
     @abc.abstractmethod
     def get_unified_time(self):

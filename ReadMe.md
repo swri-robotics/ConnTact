@@ -50,12 +50,12 @@ ConnTact is structured with 4 levels of functionality:
 
 #### ConnTask
 
-  To use ConnTact, the user creates a ConnTask implementation. Conntask is an easily-reconfigurable state machine which automatically associates an AssemblyStep behavior (see below) with each state and transition. Once you break a job down into sequential tasks, you can quickly build the functional skeleton of the algorithm.
+  To use ConnTact, the user creates a ConnTask implementation. Conntask is an easily-reconfigurable state machine which automatically associates an ConnStep behavior (see below) with each state and transition. Once you break a job down into sequential tasks, you can quickly build the functional skeleton of the algorithm.
 
-#### AssemblyStep
+#### ConnStep
 
   ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *motion profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. The motion profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
-  The AssemblyStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the AssemblyStep instructs ConnTask's state machine which specific next step to which to transition.
+  The ConnStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the ConnStep instructs ConnTask's state machine which specific next step to which to transition.
 
 ## Development
 
@@ -78,7 +78,7 @@ We suggest the following workflow to take a task from a human and give it to a r
   The pytransitions package makes state machine setup very straightforward, and Conntact doesn't need much more information to carry out its job.
 
   The SpiralSearch example follows the steps laid out in **2** very closely; however, there are a few items not discussed above which we have built into ConnTact.
-  - There is one required transition for all ConnTask state machines, shown below. This is a _reflexive_ transition; that is, it leads from any state back to the same state. This permits every loop cycle to end by returning a trigger. This reflexive trigger also activates the current AssemblyStep's `execute` code through the `run_step_actions` callback, creating the motion behavior commanded. Don't leave this out!
+  - There is one required transition for all ConnTask state machines, shown below. This is a _reflexive_ transition; that is, it leads from any state back to the same state. This permits every loop cycle to end by returning a trigger. This reflexive trigger also activates the current ConnStep's `execute` code through the `run_step_actions` callback, creating the motion behavior commanded. Don't leave this out!
     `{'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}`
   - ConnTact is currently equipped with a safety retraction feature. This feature protects the robot and workcell from damage from unexpected robot motion or runaway feedback oscillation, with which our robot has had problems. If forces rise above a specified level for a specified time, the state machine receives a `SAFETY_RETRACTION_TRIGGER` which cancels the current task and moves to a `SAFETY_RETRACT_STATE` where the robot complies gently with the environment and tries to pull up and away from the surface. This transition, and the transition back to the start of the task, have to be included in any state machine you create in order to retain this functionality. See the code snippet below.
   - Conntact provides `EXIT_STATE` as an easy way to leave the command loop and return control to the user program (that which instantiated the ConnTask). To use this function, always define this state and a transition to it.
@@ -131,7 +131,7 @@ transitions = [
 For each step above, identify the *force directions* and *free movement directions* required. 
 
 <details><summary>Some info about our basic motion profile function, `arbitrary_axis_comply`</summary>
-AssemblySteps by default use a simple motion profile definition.
+ConnSteps by default use a simple motion profile definition.
 
 First, it establishes a force command and a compliance policy. These are simply X, Y, and Z axes.
 
@@ -168,10 +168,10 @@ This allows the robot to continuously move in a predictable way.
   * Exit when a static obstacle stops the robot's motion
   * Save the Z position of the surface so that, later, we can determine if we pass it by falling into the hole.
 
-To realize this behavior in an AssemblyStep, you only need override the `seeking_force` and `comply_axes` that are initialized by the base classes. 
+To realize this behavior in an ConnStep, you only need override the `seeking_force` and `comply_axes` that are initialized by the base classes. 
 
 ```
-AssemblyStep.__init__(self, connTask)
+ConnStep.__init__(self, connTask)
 self.comply_axes = [0, 0, 1]
 self.seeking_force = [0, 0, -7]
 ```
@@ -180,13 +180,13 @@ To end the step when collision is detected, simply override the `exit_conditions
 
 `return self.is_static() and self.in_collision()`
 
-<details><summary>Full solution as AssemblyStep</summary>
+<details><summary>Full solution as ConnStep</summary>
 
 ```
-class FindSurface(AssemblyStep):
+class FindSurface(ConnStep):
 
     def __init__(self, connTask: ConnTask) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.comply_axes = [0, 0, 1]
         self.seeking_force = [0, 0, -7]
 
@@ -205,12 +205,12 @@ class FindSurface(AssemblyStep):
 
 The spiral search pattern is realized by changing the command position according to a formula. The robot is sent to the commanded position repeatedly, so it moves smoothly outward. The underlying active compliance is still enabled, and we permit total compliance in `z` so that the peg can drop into the hole.
 
-<details><summary>Spiral motion AssemblyStep</summary>
+<details><summary>Spiral motion ConnStep</summary>
 
 ```
-class SpiralToFindHole(AssemblyStep):
+class SpiralToFindHole(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.seeking_force = [0, 0, -7]
         self.spiral_params = self.assembly.connfig['task']['spiral_params']
         self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
@@ -253,12 +253,12 @@ class SpiralToFindHole(AssemblyStep):
 
 Finally, to follow the peg into the hole, we use a similar setup to the `FindSurface` Step above. This time we allow all axes to comply fully so that the peg experiences minimal friction and aligns more perfectly.
 
-<details><summary>Hole insertion AssemblyStep</summary>
+<details><summary>Hole insertion ConnStep</summary>
 
 ```
-class FindSurfaceFullCompliant(AssemblyStep):
+class FindSurfaceFullCompliant(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, -5]
 

@@ -1,7 +1,7 @@
 # Copyright 2021 Southwest Research Institute
 # Licensed under the Apache License, Version 2.0
 
-from conntact.conntask import ConnTask, AssemblyStep
+from conntact.conntask import ConnTask, ConnStep
 from conntact.conntact_interface import ConntactInterface
 from conntact.conntext import Conntext
 from colorama import Back, Fore, Style
@@ -136,10 +136,10 @@ class SpiralSearch(ConnTask):
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")
 
-class FindSurface(AssemblyStep):
+class FindSurface(ConnStep):
 
     def __init__(self, connTask: ConnTask) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.comply_axes = [0, 0, 1]
         self.seeking_force = [0, 0, -7]
 
@@ -153,18 +153,18 @@ class FindSurface(AssemblyStep):
         self.task.surface_height = self.conntext.current_pose.transform.translation.z
         return super().on_exit()
 
-class FindSurfaceFullCompliant(AssemblyStep):
+class FindSurfaceFullCompliant(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, -5]
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
 
-class SpiralToFindHole(AssemblyStep):
+class SpiralToFindHole(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.seeking_force = [0, 0, -7]
         self.spiral_params = self.task.connfig['task']['spiral_params']
         self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
@@ -203,9 +203,9 @@ class SpiralToFindHole(AssemblyStep):
         return [pose_position, pose_orientation]
 
 
-class SafetyRetraction(AssemblyStep):
+class SafetyRetraction(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, 7]
 
@@ -216,9 +216,9 @@ class SafetyRetraction(AssemblyStep):
         return self.conntext.current_pose.transform.translation.z > \
                self.task.surface_height + self.task.reset_height
 
-class ExitStep(AssemblyStep):
+class ExitStep(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        AssemblyStep.__init__(self, connTask)
+        ConnStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, 15]
 
