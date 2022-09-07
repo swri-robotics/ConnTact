@@ -1,16 +1,25 @@
 # ConnTact
 
-Software framework to enable agile robotic assembly applications.
+**A software framework to enable agile robotic assembly applications.**
 
-(Connect + Tactile)
+
+Etymology:
+
+**_Conn_** (intransitive verb)
+ to conduct or direct the steering of (a vessel, such as a ship)
+
+**_Tact_** (noun)
+ Careful delicacy to achieve a purpose without causing harm
+
+_Alternative etymology: Connect + Tactile_
 
 ## Overview
 
-![Framework diagram](resource/framework.png)
-
-The ConnTact package provide a efficient framework for assembly algorithm development for compliant robots. It allows the user to define fully tactile methods for making tight-tolerance connections in a human-like way.
+The ConnTact package provide an efficient framework for assembly algorithm development for compliant robots. It allows the user to define fully tactile methods for making tight-tolerance connections in a human-like way.
 
 ConnTact includes an implementation of the [transitions](https://github.com/pytransitions/transitions) state machine package to define the steps and decisions critical to your algorithm. It also provides a suite of tools and examples to sense the environment based on force feedback - detecting collision, hard surfaces, and position changes. Finally we define some basic motion profiles which can be used to probe the environment and align the tool to the workpiece.
+
+![Framework diagram](resource/Conntact_Overview_Diagram_small.png)
 
 ## Installation
 
@@ -25,74 +34,244 @@ Development of framework was done under Ubuntu Focal (20.04) using [ROS Noetic](
   - Install ROS package dependencies: `rosdep install --rosdistro noetic --ignore-src --from-paths .`
   - Source ROS and build the workspace: `. /opt/ros/noetic/setup.bash`, `catkin build`
 
+## Structure
 
-## Usage
+![Detailed block diagram](resource/Conntact_Detail_Diagram.png)
 
-### Structure
+ConnTact is structured with 4 levels of functionality:
 
-Conntact is structured with 3 levels of functionality:
+#### ConntactInterface
+
+ The Interface defines the complete list of abstract functions which ConnTact uses to interact with a computer-robot system (hardware and software environment). As long as these functions are implemented as intended, ConnTact will run on any hardware and will command any robot. We provide working Interface examples for the UR10e running in both ROS and ROS 2 (coming soon).
 
 #### Conntext
 
-> *Do the following job* ***here*** *and at* ***this*** *angle*
-
-  The Conntext package provides a bunch of utility functions. These translate data from hardware into **task space**: the frame-of-reference of the task to be accomplished. This way, an algorithm developed at a given position and orientation is automatically reoriented and repositioned when a new task position is fed into the system. Conntext also provides useful data, such as speed estimation and sensor data filtering.
+  The Conntext package acts as a wrapper which translates world-space data from the interface into the _task space_: the frame-of-reference of the task to be accomplished. This way, an algorithm is automatically reoriented and repositioned to each job, i.e. different hole positions and orientations for a screw-driving application. Conntext also provides useful data utilities, such as speed estimation and sensor data filtering.
 
 #### ConnTask
 
-> *First do* ***this*** *and then do* ***this*** *and then* ***this***
-
-  The ConnTask program is an implimentation of the pytransitions Machine package. It comprises example functions which run according to an easily-reconfigurable state machine. By breaking a task down into sequential tasks, you can use ConnTask to sequence these tasks and add decision-making/redundancy/fallback functionality.
+  To use ConnTact, the user creates a ConnTask implementation. Conntask is an easily-reconfigurable state machine which automatically associates an AssemblyStep behavior (see below) with each state and transition. Once you break a job down into sequential tasks, you can quickly build the functional skeleton of the algorithm.
 
 #### AssemblyStep
 
-> *Move like* ***this*** *until you feel* ***this*** *happen*
+  ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *motion profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. The motion profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
+  The AssemblyStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the AssemblyStep instructs ConnTask's state machine which specific next step to which to transition.
 
-  ConnTask can run *functions* for simple tasks, but for tactile sensing you often need a lot of specific variable and flags to track conditions. These tasks are streamlined with the AssemblyStep class. Each Step object provides all the basic functions for a sensing task - setup, loop behavior, completion checking - and can be easily expanded or overriden to accomplish a wide variety of tasks.
+## Development
 
-### Development
-
-We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of driving a machine screw into a threaded hole to illustrate each step.
+We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of inserting a peg into a hole to illustrate each step. This is the task for which the included `SpiralSearch` example was developed. Snippets of code from `SpiralSearch` are included in collapsed sections to illustrate how little user programming is needed.  
 
 #### 1. Choose the frame-of-reference for your task.
-  * The threaded hole is vertical. We'll establish the Z axis to be vertical, concentric with the hole. The screw's Z axis goes along its axis pointing from the head to the threads.
+  * The hole is vertical. We'll establish the Z axis to be vertical, concentric with the hole. All positions from here onward will be measured relative to the hole's position and orientation. We also establish the peg's Z axis along its axis pointing away from the robot flange. 
 
 #### 2. Break the human task down into a sequence of tactile *steps* and *decisions*.
-  * Roughly align the Z axes of the screw and hole.
-  * Move the screw downward until it hits the surface where the hole is bored.
-  * Try moving the screw around. If it catches, it's already partway into the hole. If it moves freely, it's hit the surface instead.
-    * If sliding on the surface, move the screw outward in a spiral until it catches in the hole and develops a strong horizontal reaction force.
-    * Let it settle downward as far as possible.
-  * Turn the screw counter-clockwise applying light downward pressure and complying in the Z direction. Continue until it settles one thread-pitch distance in the Z direction, around .8mm for an M6 screw. This will register on the force sensor as a "click": a very brief drop to zero reaction force, and then a sudden rise back to the applied force. If either of these occurs, we are pretty certain the thread is ready to engage.
-  * Try turning clockwise, applying light downward pressure and complying in the Z direction.
-    * If the torque required to turn rises sharply, or the screw stops turning before it has moved the expected distance, we may have  the screw cross-threaded. Unscrew it and restart from the previous step.
-    * If the torque only rises until we move downward the length of the screw:
-      * Apply the specified torque to finalize the connection.
-      * Release and retract and we're done.
+  * Roughly align the Z axes of the peg with the expected hole position by sending it to the task-space position (x, y, z) = (0,0,10). We specify that the robot begin to search for the surface of the assembly board from a safe height (10 cm) to prevent accidental collision. 
+  * Move the peg downward (-z) until it hits the surface where the hole is bored.
+  * Measure the exact surface height for later reference.
+  * Slide the peg along the surface in an outward spiral until it catches in the hole and falls below the detected surface by 1 mm. If not detected, return to the center and try again.
+  * Once the hole location is found, push the peg downward as far as possible, complying in all axes. The compliant robot will automatically align with the hole in orientation and position.
+  * When the robot reaches a static obstacle that stops the peg's motion, the insertion is complete!
+  * Retract the robot to reset the test.
 
-#### 3. Analyze each *step* and determine the *continuous* and *end conditions.*
+#### 3. Define the state machine based on this plan.
+
+  The pytransitions package makes state machine setup very straightforward, and Conntact doesn't need much more information to carry out its job.
+
+  The SpiralSearch example follows the steps laid out in **2** very closely; however, there are a few items not discussed above which we have built into ConnTact.
+  - There is one required transition for all ConnTask state machines, shown below. This is a _reflexive_ transition; that is, it leads from any state back to the same state. This permits every loop cycle to end by returning a trigger. This reflexive trigger also activates the current AssemblyStep's `execute` code through the `run_step_actions` callback, creating the motion behavior commanded. Don't leave this out!
+    `{'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}`
+  - ConnTact is currently equipped with a safety retraction feature. This feature protects the robot and workcell from damage from unexpected robot motion or runaway feedback oscillation, with which our robot has had problems. If forces rise above a specified level for a specified time, the state machine receives a `SAFETY_RETRACTION_TRIGGER` which cancels the current task and moves to a `SAFETY_RETRACT_STATE` where the robot complies gently with the environment and tries to pull up and away from the surface. This transition, and the transition back to the start of the task, have to be included in any state machine you create in order to retain this functionality. See the code snippet below.
+  - Conntact provides `EXIT_STATE` as an easy way to leave the command loop and return control to the user program (that which instantiated the ConnTask). To use this function, always define this state and a transition to it.
+  
+
+
+##### First define the state machine states:
+<details><summary>Click to view SpiralSearch example</summary>
+
+```
+states = [
+START_STATE,
+APPROACH_STATE,
+FIND_HOLE_STATE, 
+INSERTING_PEG_STATE, 
+COMPLETION_STATE,
+EXIT_STATE,
+SAFETY_RETRACT_STATE
+]
+```
+
+
+
+</details>
+
+##### Next define the valid transitions between these states. 
+
+<details><summary>Click to view SpiralSearch example</summary>
+
+```
+transitions = [
+{'trigger':APPROACH_SURFACE_TRIGGER  , 'source':START_STATE         , 'dest':APPROACH_STATE         },
+{'trigger':STEP_COMPLETE_TRIGGER     , 'source':APPROACH_STATE      , 'dest':FIND_HOLE_STATE        },
+{'trigger':STEP_COMPLETE_TRIGGER     , 'source':FIND_HOLE_STATE     , 'dest':INSERTING_PEG_STATE    },
+{'trigger':STEP_COMPLETE_TRIGGER     , 'source':INSERTING_PEG_STATE , 'dest':COMPLETION_STATE       },
+{'trigger':STEP_COMPLETE_TRIGGER     , 'source':COMPLETION_STATE    , 'dest':EXIT_STATE             },
+{'trigger':SAFETY_RETRACTION_TRIGGER , 'source':'*'                 , 'dest':SAFETY_RETRACT_STATE,
+'unless':'is_already_retracting' },
+{'trigger':STEP_COMPLETE_TRIGGER     , 'source':SAFETY_RETRACT_STATE, 'dest':APPROACH_STATE         },
+{'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}
+]
+```
+
+
+
+</details>
+
+#### 3. Analyze each *step* and determine the *motion profile* and *end conditions.*
 
 For each step above, identify the *force directions* and *free movement directions* required. 
 
-Force: The end effector will comply with outside forces, but will add the specified force to create continuous motion until impeded.
+<details><summary>Some info about our basic motion profile function, `arbitrary_axis_comply`</summary>
+AssemblySteps by default use a simple motion profile definition.
 
-Free movement directions: The end effector can be disturbed from its desired position by outside forces. For each dimension (X,Y, and Z), you can specify whether it tries to *return to its assigned position* or *update its assigned posiiton to the new position*. This allows the robot to continuously move in a predictable way.
+First, it establishes a force command and a compliance policy. These are simply X, Y, and Z axes.
 
-* To move the screw downward in free space until it hits a hard surface:
+```
+self.seeking_force = [0,0,0]
+self.comply_axes = [1,1,1]
+```
+
+Each loop cycle, it uses these commands to output the position and orientation instructions which will be published for robot execution.
+
+```
+def update_commands(self):
+    '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
+    '''
+    #Command wrench
+    self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
+    #Command pose
+    self.assembly.pose_vec = self.conntext.arbitrary_axis_comply(self.comply_axes)
+```
+
+The force command described by seeking_force here is used to guide robot motion. If a force is commanded, the robot will move until that force is cancelled by an external collision force of equal magnitude. This slowly moves the robot along a compliant direction.
+
+The robot will comply along each axis marked with a 1 in `comply_axes`. The robot will attempt to match axes marked with a 0 to a commanded target position, normally the position of the hole. This is useful, for example, when first seeking a hole at a given position. The robot aligns in X and Y with the hole, and moves compliantly in Z in order to collide perpendicularly with the surface.
+
+This allows the robot to continuously move in a predictable way.
+
+</details>
+
+* To move the peg downward in free space until it hits a hard surface:
   * Apply a small downward force to move the robot downward.
   * Comply in the vertical (z) direction - move as the force assigned above dictates.
   * Do not comply in horizontal directions (x and y); assign the expected hole location to these dimensions.
   * Do not comply in orientation.
+  * Exit when a static obstacle stops the robot's motion
+  * Save the Z position of the surface so that, later, we can determine if we pass it by falling into the hole.
 
-### Setting up a workcell
-  
-  TBD 
+To realize this behavior in an AssemblyStep, you only need override the `seeking_force` and `comply_axes` that are initialized by the base classes. 
 
-### Configuring a new application
+```
+AssemblyStep.__init__(self, connTask)
+self.comply_axes = [0, 0, 1]
+self.seeking_force = [0, 0, -7]
+```
 
-  TBD
+To end the step when collision is detected, simply override the `exit_conditions` method.
 
-## Running Examples
+`return self.is_static() and self.in_collision()`
+
+<details><summary>Full solution as AssemblyStep</summary>
+
+```
+class FindSurface(AssemblyStep):
+
+    def __init__(self, connTask: ConnTask) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.comply_axes = [0, 0, 1]
+        self.seeking_force = [0, 0, -7]
+
+    def exit_conditions(self) -> bool:
+        return self.is_static() and self.in_collision()
+
+    def on_exit(self):
+        """Executed once, when the change-state trigger is registered.
+        """
+        # Measure flat surface height and report it to AssemblyBlocks:
+        self.assembly.surface_height = self.conntext.current_pose.transform.translation.z
+        return super().on_exit()
+```
+
+</details>
+
+The spiral search pattern is realized by changing the command position according to a formula. The robot is sent to the commanded position repeatedly, so it moves smoothly outward. The underlying active compliance is still enabled, and we permit total compliance in `z` so that the peg can drop into the hole.
+
+<details><summary>Spiral motion AssemblyStep</summary>
+
+```
+class SpiralToFindHole(AssemblyStep):
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.seeking_force = [0, 0, -7]
+        self.spiral_params = self.assembly.connfig['task']['spiral_params']
+        self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
+        self.start_time = self.conntext.interface.get_unified_time()
+
+    def update_commands(self):
+        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
+        '''
+        #Command wrench
+        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
+        #Command pose
+        self.assembly.pose_vec = self.spiral_search_motion()
+
+    def exit_conditions(self) -> bool:
+        return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
+
+    def spiral_search_motion(self):
+        """Generates position, orientation offset vectors which describe a plane spiral about z;
+        Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
+        x,y vector currently comes from x_ and y_pos_offset variables.
+        """
+        # frequency=.15, min_amplitude=.002, max_cycles=62.83185
+        curr_time = self.conntext.interface.get_unified_time() - self.start_time
+        curr_time_numpy = np.double(curr_time.to_sec())
+        frequency = self.spiral_params['frequency'] #because we refer to it a lot
+        curr_amp = self.spiral_params['min_amplitude'] + self.safe_clearance * \
+                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
+        x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
+        y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
+        x_pos = x_pos + self.assembly.x_pos_offset
+        y_pos = y_pos + self.assembly.y_pos_offset
+        z_pos = self.conntext.current_pose.transform.translation.z
+        pose_position = [x_pos, y_pos, z_pos]
+        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
+
+        return [pose_position, pose_orientation]
+```
+
+</details>
+
+Finally, to follow the peg into the hole, we use a similar setup to the `FindSurface` Step above. This time we allow all axes to comply fully so that the peg experiences minimal friction and aligns more perfectly.
+
+<details><summary>Hole insertion AssemblyStep</summary>
+
+```
+class FindSurfaceFullCompliant(AssemblyStep):
+    def __init__(self, connTask: (ConnTask)) -> None:
+        AssemblyStep.__init__(self, connTask)
+        self.comply_axes = [1, 1, 1]
+        self.seeking_force = [0, 0, -5]
+
+    def exit_conditions(self) -> bool:
+        return self.is_static() and self.in_collision()
+```
+
+</details>
+
+
+That's the majority of the custom programming involved. With this state machine and these Steps, the system can execute the proposed task. You can read through the rest of `SpiralSearch.py` to see how we added plotting capability and used a Connfig to store info about each of the cylindrical pegs in the task board. You can also read through `spiral_search_node.py` to see how we instantiate and run the ConnTask for our ROS+UR10e workcell.
+
+## Running _SpiralSearch_ Example
 
 The repository is currently set up with examples that demonstrate assembly tasks for the [NIST assembly task board](https://www.nist.gov/el/intelligent-systems-division-73500/robotic-grasping-and-manipulation-assembly/assembly) using a Universal Robots UR10e. The system can insert any of the circular pegs into their respective holes. Relative locations of these holes on the board are already recorded in *config/peg_in_hole_params.yaml*.
 
@@ -123,15 +302,11 @@ task:
     assumed_starting_height: 0.0
     restart_height: -0.1
 ```
-Currently two algorithms are implemented that perform peg insertion tasks: a vertical searching method and a corner-contact searching method.
 
-To run these examples, open a terminals sourced to the built project workspace and run:
+To run the example, open a terminals sourced to the built project workspace and run:
 
-    roslaunch conntact ur10e_upload_compliance.launch algorithm_selected:=<algorithm>
+    roslaunch conntact conntact_demo.launch
 
-Where `<algorithm>` is either `spiral_search_node` or `corner_search_node`*.
-
-> ⚠ **Note:** Corner Search mode is WIP. This program, or any other which changes the robot TCP orientation, currently causes a rapid motion to assume the specified orientation which can cause collision or damage or just scare you out of your pants. We recommend leaving the orientation vertical until this problem is solved.  
 
 ## Acknowledgements
 
