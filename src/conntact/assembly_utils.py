@@ -19,11 +19,7 @@ class AssemblyFilters():
         self._buffer_window[
             "wrench"] = window  # should tie to self._rate_selected = 1/Hz since this variable is the rate of ROS commands
         self._data_buffer = dict()
-        # self._moving_avg_data = np. #Empty to start. make larger than we need since np is contiguous memory. Will ignore NaN values.
-        # self._data_buffer = np.empty(self._buffer_window)
-        # self.avg_it = 0#iterator for allocating the first window in the moving average calculation
-        # self._data_buffer = np.zeros(self._buffer_window)
-        # self._moving_avg_data = [] #Empty to start
+
 
     def average_wrench(self, input) -> np.ndarray:
         # out = input

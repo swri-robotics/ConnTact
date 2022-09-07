@@ -80,7 +80,7 @@ We suggest the following workflow to take a task from a human and give it to a r
   The SpiralSearch example follows the steps laid out in **2** very closely; however, there are a few items not discussed above which we have built into ConnTact.
   - There is one required transition for all ConnTask state machines, shown below. This is a _reflexive_ transition; that is, it leads from any state back to the same state. This permits every loop cycle to end by returning a trigger. This reflexive trigger also activates the current ConnStep's `execute` code through the `run_step_actions` callback, creating the motion behavior commanded. Don't leave this out!
     `{'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}`
-  - ConnTact is currently equipped with a safety retraction feature. This feature protects the robot and workcell from damage from unexpected robot motion or runaway feedback oscillation, with which our robot has had problems. If forces rise above a specified level for a specified time, the state machine receives a `SAFETY_RETRACTION_TRIGGER` which cancels the current task and moves to a `SAFETY_RETRACT_STATE` where the robot complies gently with the environment and tries to pull up and away from the surface. This transition, and the transition back to the start of the task, have to be included in any state machine you create in order to retain this functionality. See the code snippet below.
+  - ConnTact is currently equipped with a safety retraction feature. This feature protects the robot and workcell from damage from unexpected robot motion or runaway feedback oscillation, which is always a danger when running a robot with realtime control rather than planned paths. If forces rise above a specified level for a specified time, the state machine receives a `SAFETY_RETRACTION_TRIGGER` which cancels the current task and moves to a `SAFETY_RETRACT_STATE` where the robot complies gently with the environment and tries to pull up and away from the surface. This transition, and the transition back to the start of the task, have to be included in any state machine you create in order to retain this functionality. See the "SpiralSearch example" code snippets below.
   - Conntact provides `EXIT_STATE` as an easy way to leave the command loop and return control to the user program (that which instantiated the ConnTask). To use this function, always define this state and a transition to it.
   
 
@@ -126,7 +126,7 @@ transitions = [
 
 </details>
 
-#### 3. Analyze each *step* and determine the *motion profile* and *end conditions.*
+#### 4. Analyze each *step* and determine the *motion profile* and *end conditions.*
 
 For each step above, identify the *force directions* and *free movement directions* required. 
 
@@ -180,7 +180,7 @@ To end the step when collision is detected, simply override the `exit_conditions
 
 `return self.is_static() and self.in_collision()`
 
-<details><summary>Full solution as ConnStep</summary>
+<details><summary>FindSurface as ConnStep</summary>
 
 ```
 class FindSurface(ConnStep):
@@ -205,7 +205,7 @@ class FindSurface(ConnStep):
 
 The spiral search pattern is realized by changing the command position according to a formula. The robot is sent to the commanded position repeatedly, so it moves smoothly outward. The underlying active compliance is still enabled, and we permit total compliance in `z` so that the peg can drop into the hole.
 
-<details><summary>Spiral motion ConnStep</summary>
+<details><summary>SpiralToFindHole ConnStep</summary>
 
 ```
 class SpiralToFindHole(ConnStep):
