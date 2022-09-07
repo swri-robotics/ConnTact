@@ -222,12 +222,12 @@ class SpiralToFindHole(AssemblyStep):
         #Command wrench
         self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
         #Command pose
-        self.assembly.pose_vec = self.spiral_search_motion()
+        self.assembly.pose_vec = self.get_spiral_search_pose()
 
     def exit_conditions(self) -> bool:
         return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
 
-    def spiral_search_motion(self):
+    def get_spiral_search_pose(self):
         """Generates position, orientation offset vectors which describe a plane spiral about z;
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.

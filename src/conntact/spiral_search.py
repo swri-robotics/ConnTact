@@ -65,7 +65,6 @@ class SpiralSearch(ConnTask):
                                 COMPLETION_STATE:     (ExitStep, [])
                                 }
         # #Initialize the state machine "Machine" init in your Conntask instance
-        # Machine.__init__(self, states=states, transitions=transitions, initial=START_STATE)
         ConnTask.__init__(self, conntext, states, transitions, connfig_name=connfig_name)
 
         # set up the spiral_search parameters and read the connfig
@@ -107,7 +106,6 @@ class SpiralSearch(ConnTask):
         """ Calculates pose of target hole relative to robot base frame.
         """
         self.target_hole_pose = self.interface.get_transform("target_hole_position", "base_link")
-        # self.send_reference_TFs()
         self.x_pos_offset = self.target_hole_pose.transform.translation.x
         self.y_pos_offset = self.target_hole_pose.transform.translation.y
 
@@ -152,7 +150,7 @@ class FindSurface(AssemblyStep):
         """Executed once, when the change-state trigger is registered.
         """
         # Measure flat surface height and report it to AssemblyBlocks:
-        self.assembly.surface_height = self.conntext.current_pose.transform.translation.z
+        self.task.surface_height = self.conntext.current_pose.transform.translation.z
         return super().on_exit()
 
 class FindSurfaceFullCompliant(AssemblyStep):
@@ -168,22 +166,22 @@ class SpiralToFindHole(AssemblyStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         AssemblyStep.__init__(self, connTask)
         self.seeking_force = [0, 0, -7]
-        self.spiral_params = self.assembly.connfig['task']['spiral_params']
-        self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
+        self.spiral_params = self.task.connfig['task']['spiral_params']
+        self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
 
     def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
-        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
+        self.task.wrench_command_vector  = self.conntext.get_command_wrench(self.seeking_force)
         #Command pose
-        self.assembly.pose_vec = self.spiral_search_motion()
+        self.task.pose_command_vector = self.get_spiral_search_pose()
 
     def exit_conditions(self) -> bool:
-        return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
+        return self.conntext.current_pose.transform.translation.z <= self.task.surface_height - .0004
 
-    def spiral_search_motion(self):
+    def get_spiral_search_pose(self):
         """Generates position, orientation offset vectors which describe a plane spiral about z;
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
@@ -196,8 +194,8 @@ class SpiralToFindHole(AssemblyStep):
                    np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
         y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-        x_pos = x_pos + self.assembly.x_pos_offset
-        y_pos = y_pos + self.assembly.y_pos_offset
+        x_pos = x_pos + self.task.x_pos_offset
+        y_pos = y_pos + self.task.y_pos_offset
         z_pos = self.conntext.current_pose.transform.translation.z
         pose_position = [x_pos, y_pos, z_pos]
         pose_orientation = [0, 1, 0, 0]  # w, x, y, z
@@ -216,7 +214,7 @@ class SafetyRetraction(AssemblyStep):
 
     def above_restart_height(self):
         return self.conntext.current_pose.transform.translation.z > \
-               self.assembly.surface_height + self.assembly.reset_height
+               self.task.surface_height + self.task.reset_height
 
 class ExitStep(AssemblyStep):
     def __init__(self, connTask: (ConnTask)) -> None:
@@ -229,4 +227,4 @@ class ExitStep(AssemblyStep):
 
     def above_restart_height(self):
         return self.conntext.current_pose.transform.translation.z > \
-               self.assembly.surface_height + self.assembly.reset_height
+               self.task.surface_height + self.task.reset_height

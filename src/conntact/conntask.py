@@ -69,8 +69,8 @@ class ConnTask(Machine):
         self.start_time = self.interface.get_unified_time()
 
         #Configuration variables, to be moved to a yaml file later:
-        self.pose_vec = None
-        self.wrench_vec = self.conntext.get_command_wrench([0, 0, 0])
+        self.pose_command_vector = None
+        self.wrench_command_vector = self.conntext.get_command_wrench([0, 0, 0])
 
         self.next_trigger = ''  # Empty to start. If no transition is assigned by the AssemblyStep
         # execution, Conntact fills in the default "RUN_LOOP_TRIGGER" which causes no transition
@@ -103,9 +103,16 @@ class ConnTask(Machine):
     def log_state_transition(self):
         self.interface.send_info(Fore.BLACK + Back.WHITE +"State transition to " +
                       str(self.state) + " at time = " + str(self.interface.get_unified_time()) + Style.RESET_ALL )
+
     def update_commands(self):
-        self.conntext.publish_pose(self.pose_vec)
-        self.conntext.publish_wrench(self.wrench_vec)
+        self.conntext.publish_pose(self.pose_command_vector)
+        self.conntext.publish_wrench(self.wrench_command_vector)
+
+    def set_command_wrench(self, force_vec):
+        self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
+
+    def set_command_pose(self, pose_vec):
+        self.pose_command_vector = self.conntext.arbitrary_axis_comply(pose_vec)
 
     def run_step_actions(self):
         """Runs the AssemblyStep class associated with this state if one exists.
@@ -124,13 +131,16 @@ class ConnTask(Machine):
             if self.current_step.check_completion():
                 self.next_trigger, self.switch_state = self.current_step.on_exit()
         else:
-            # Fall back on calling a method matching the state name.
+            # Fall back on calling a method matching the state name. This is still allowed but discouraged.
+            # consider using if you want to tie a State with a one-time action.
             method_name = "self."+state_name[state_name.find('state_')+6:]+'()'
             try:
-                self.interface.send_info(2, Fore.WHITE + "In state "+state_name + Style.RESET_ALL + ", now executing " + method_name)
+                self.interface.send_info(2, Fore.WHITE + "In state "+state_name + Style.RESET_ALL +
+                                         ", now executing " + method_name)
                 exec(method_name)
             except (NameError, AttributeError):
-                self.interface.send_info(2, "State name " + method_name + " does not match 'state_'+(state loop method name) in algorithm!")
+                self.interface.send_info(2, "State name " + method_name + " does not match 'state_'+"
+                                                                          "(state loop method name) in algorithm!")
                 pass
             except:
                 print("Unexpected error when trying to locate state loop name:", sys.exc_info()[0])
@@ -141,7 +151,8 @@ class ConnTask(Machine):
         """
         while self.state != EXIT_STATE:
             # Main program loop.
-            # Refresh values, run process trigger (either loop-back to perform state actions or transition to new state), then output controller commands and wait for next loop time.
+            # Refresh values, run process trigger (either loop-back to perform state actions or transition to
+            # new state), then output controller commands and wait for next loop time.
             self.all_states_calc()
             self.checkForceCap()
             if(self.switch_state): #If the command to change states has come in:
@@ -173,18 +184,25 @@ class ConnTask(Machine):
 
 class AssemblyStep:
     '''
-    The default AssemblyStep provides a helpful structure to impliment discrete tasks in AssemblyBlocks. The default functionality below moves the TCP in a specified direction and ends when a rigid obstacle halts its motion. In general, the pattern goes thus:
-
-    ::init:: runs when the Step is created, normally right before the first loop of its associated Step. The parameters entered in the ConnTask.steps dictionary will be sent to the init function.
-
-    ::execute:: runs each time the ConnTask instance runs its loop. The continuous behavior of the robot should be defined here.
-
-    ::check_completion:: runs each loop cycle, being triggered by the ConnTask loop like 'execute' is. It checks the exit_conditions method (below) to evaluate conditions, and gains/loses completion_confidence. The confidence behavior makes decision-making much more consistent, largely eliminating trouble from sensor noise, transient forces, and other disruptions. It returns a Boolean value; True should indicate that the exit conditions for the Step have been satisfied consistently and reliably. This triggers ConnTask to run the Exit method. See below.
-
-    ::exit_conditions:: is the boolean "check" which check_completion uses to build/lose confidence that it is finished. Gives an instantaneous evaluation of conditions. Prone to noise due to sensor/control/transient messiness.
-
-    ::on_exit:: is run by the ConnTask execution loop right before this Step object is Deleted. It should output the switch_state boolean (normally True since the step is done) and the trigger for the next step (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the ConnTask state machine). Any other end-of-step actions, like saving information to the ConnTask object for later steps, can be done here.
-
+    The default AssemblyStep provides a helpful structure to impliment discrete tasks in AssemblyBlocks.
+    The default functionality below moves the TCP in a specified direction and ends when a rigid obstacle halts its
+    motion. In general, the pattern goes thus:
+    ::init:: runs when the Step is created, normally right before the first loop of its associated Step. The parameters
+    entered in the ConnTask.steps dictionary will be sent to the init function.
+    ::execute:: runs each time the ConnTask instance runs its loop. The continuous behavior of the robot should be
+    defined here.
+    ::check_completion:: runs each loop cycle, being triggered by the ConnTask loop like 'execute' is. It checks the
+    exit_conditions method (below) to evaluate conditions, and gains/loses completion_confidence. The confidence
+    behavior makes decision-making much more consistent, largely eliminating trouble from sensor noise, transient
+    forces, and other disruptions. It returns a Boolean value; True should indicate that the exit conditions for the
+    Step have been satisfied consistently and reliably. This triggers ConnTask to run the Exit method. See below.
+    ::exit_conditions:: is the boolean "check" which check_completion uses to build/lose confidence that it is finished.
+     Gives an instantaneous evaluation of conditions. Prone to noise due to sensor/control/transient messiness.
+    ::on_exit:: is run by the ConnTask execution loop right before this Step object is Deleted. It should output the
+    switch_state boolean (normally True since the step is done) and the trigger for the next step
+    (normally STEP_COMPLETE_TRIGGER which simply moves us to the next Step in sequence, as dictated by the
+    ConnTask state machine). Any other end-of-step actions, like saving information to the ConnTask object for
+    later steps, can be done here.
     '''
     # from conntact.assembly_algorithm_blocks import ConnTask
 
@@ -203,37 +221,39 @@ class AssemblyStep:
         self.holdStartTime = 0
 
         #Pass in a reference to the ConnTask parent class; this reduces data copying in memory
-        self.assembly:ConnTask = connTask
-        self.conntext = self.assembly.conntext
+        self.task:ConnTask = connTask
+        self.conntext = self.task.conntext
         
     def execute(self):
-        '''Executed once per loop while this State is active. By default, just runs update_commands to keep the compliance motion profile running.
+        '''
+        Executed once per loop while this State is active. By default, just runs update_commands to keep the compliance
+        motion profile running.
         '''
         self.update_commands()
 
     def update_commands(self):
-        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
+        '''
+        Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
-        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
+        self.task.set_command_wrench(self.seeking_force)
         #Command pose
-        self.assembly.pose_vec = self.conntext.arbitrary_axis_comply(self.comply_axes)
-
+        self.task.set_command_pose(self.comply_axes)
 
     def check_completion(self):
-        """Check if the step is complete. Default behavior is to check the exit conditions and gain/lose confidence between 0 and 1. exit_conditions returning True adds a step toward 1; False steps down toward 0. Once confidence is above exitThreshold, a timer begins for duration exitPeriod.
+        """Check if the step is complete. Default behavior is to check the exit conditions and gain/lose confidence
+        between 0 and 1. exit_conditions returning True adds a step toward 1; False steps down toward 0.
+        Once confidence is above exitThreshold, a timer begins for duration exitPeriod.
         """
-
         if(self.exit_conditions()):
             if(self.completion_confidence < 1):
-                self.completion_confidence += 1/(self.assembly.rate_selected)
-
+                self.completion_confidence += 1/(self.task.rate_selected)
             if(self.completion_confidence > self.exitThreshold):
                 if(self.holdStartTime == 0):
                     #Start counting down to completion as long as we don't drop below threshold again:
-                    self.holdStartTime = self.assembly.interface.get_unified_time(float=True)
+                    self.holdStartTime = self.task.interface.get_unified_time(float=True)
 
-                elif(self.holdStartTime < self.assembly.interface.get_unified_time(float=True) - self.exitPeriod ):
+                elif(self.holdStartTime < self.task.interface.get_unified_time(float=True) - self.exitPeriod ):
                     #it's been long enough, exit loop
                     return True 
             else:
@@ -242,7 +262,7 @@ class AssemblyStep:
         else:
             #Exit conditions not true
             if(self.completion_confidence>0.0):
-                self.completion_confidence -= 1/(self.assembly.rate_selected)
+                self.completion_confidence -= 1/(self.task.rate_selected)
 
         return False
 

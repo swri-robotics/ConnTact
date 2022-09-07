@@ -129,47 +129,6 @@ class Conntext():
             self.interface.send_error("Tool selection key error! No key '" +
                                       tool_name + "' in tool dictionary.", 2)
 
-
-    def linear_search_position(self, direction_vector=[0, 0, 0], desired_orientation=[0, 1, 0, 0]):
-        """Generates a command pose vector which causes the robot to hold a certain orientation
-         and comply in z while maintaining the approach vector along x_ and y_pos_offset.
-        :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion in z.
-        :param desired_orientation: (list of floats) quaternion parameters for orientation. 
-        """
-        # pose_position = self.current_pose.transform.translation
-        pose_position = Vector3()
-        pose_position.x, pose_position.y, pose_position.z = \
-            self.as_array(self.current_pose.transform.translation)
-
-        pose_position.x = self.x_pos_offset + direction_vector[0]
-        pose_position.y = self.y_pos_offset + direction_vector[1]
-        pose_position.z = pose_position.z + direction_vector[2]
-        pose_orientation = desired_orientation
-
-        # self.interface.send_info(
-        #     Fore.CYAN + "\nlinear_search_position requested by: {}\nReturning:\n{}".format(
-        #         inspect.stack()[1][3],
-        #         pose_position
-        #     ) + Style.RESET_ALL)
-
-        return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
-
-    def full_compliance_position(self, direction_vector=[0, 0, 0], desired_orientation=[0, 1, 0, 0]):
-        """Generates a command pose vector which causes the robot to hold a certain orientation
-         and comply translationally in all directions.
-        :param direction_vector: (list of floats) vector directional offset from normal position. Causes constant motion.
-        :param desired_orientation: (list of floats) quaternion parameters for orientation. 
-        """
-        # pose_position = self.current_pose.transform.translation
-        pose_position = Vector3()
-        pose_position.x, pose_position.y, pose_position.z = \
-            self.as_array(self.current_pose.transform.translation)
-        pose_position.x = pose_position.x + direction_vector[0]
-        pose_position.y = pose_position.y + direction_vector[1]
-        pose_position.z = pose_position.z + direction_vector[2]
-        pose_orientation = desired_orientation
-        return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
-
     def get_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
         """
@@ -185,15 +144,17 @@ class Conntext():
         return transform
 
     def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
-        """Generates a command pose vector which causes the robot to hold a certain orientation
-         and comply in one dimension while staying on track in the others.
+        """Generates a command pose vector which causes the robot to comply in certain dimensions while staying on track
+         in the others.
         :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
-        :param direction_vector: (array-like list of bools) vector of bools or 0/1 values to indicate which axes comply and which try to stay the same as those of the target hole position.
-        :param desired_orientation: (list of floats) quaternion parameters for orientation; currently disabled because changes in orientation are dangerous and unpredictable. Use TCPs instead.
+        :param direction_vector: (array-like list of bools) vector of bools or 0/1 values to indicate which axes comply
+        and which try to stay the same as those of the target hole position.
+        :param desired_orientation: (list of floats) quaternion parameters for orientation; currently disabled because
+        changes in orientation are dangerous and unpredictable. Use TCPs instead.
+        :return: (np.array) pose params for the new command pose
         """
-
-        #initially set the new command position to be the current physical (disturbed) position
-        #This allows movement allowed by outside/command forces to move the robot at a steady rate.
+        #We initially set the new command position to be the current physical (disturbed) position
+        #This uses disturbance by outside/command forces to move the robot at a steady rate.
 
         pose_position = Vector3()
         pose_position.x, pose_position.y, pose_position.z =\
@@ -206,11 +167,6 @@ class Conntext():
         if(not direction_vector[2]):
             pose_position.z = target_hole_pos.z
         pose_orientation = [0, 1, 0, 0]
-        # self.interface.send_info(
-        #     Fore.CYAN + "\nArbitrary_axis_comply requested by: {}\nReturning:\n{}".format(
-        #         inspect.stack()[1][3],
-        #         pose_position
-        #     ) + Style.RESET_ALL)
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
@@ -302,13 +258,6 @@ class Conntext():
                 self.toolData.matrix)  # tf from tcp_goal to wrist = gTw
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
-
-        # self.interface.send_info(
-        #     Fore.BLUE + "Pose_Stamped_Vec:\n{}\nPublishing goal pos:\n{}\n".format(
-        #         pose_stamped_vec,
-        #         goal_pose.pose.position
-        #     ) + Style.RESET_ALL)
-
         self.interface.publish_command_position(goal_pose)
 
     @staticmethod
@@ -378,7 +327,6 @@ class Conntext():
         :param wrench: (np.Array) 1x6 numpy array 
         :return: (geometry_msgs.Wrench) Return wrench.
         """
-
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
@@ -459,7 +407,6 @@ class Conntext():
         wrench.force.x, wrench.force.y, wrench.force.z = force
         wrench.torque.x, wrench.torque.y, wrench.torque.z = torque
         # create header
-        # wrench_stamped.header.seq = self._seq
         wrench_stamped.header.stamp = self.interface.get_unified_time()
         wrench_stamped.header.frame_id = "base_link"
         # self._seq+=1
@@ -477,8 +424,9 @@ class Conntext():
         transform_world_rotation: TransformStamped = self.interface.get_transform('tool0', 'target_hole_position')
 
         # We want to rotate this only, not reinterpret F/T components.
-        # We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward. We have to undo that transformation to get accurate transformation.
-
+        # We reinterpret based on the position of the TCP (but ignore the relative rotation). In addition, the wrench
+        # is internally measured at the load cell and has a built-in transformation to tool0 which is 5cm forward.
+        # We have to undo that transformation to get accurate transformation.
         relative_translation = self.toolData.transform.transform.translation
         offset = Point(relative_translation.x,
                        relative_translation.y,
@@ -571,19 +519,9 @@ class Conntext():
                          relativeScaling: float = .1) -> bool:
         """Checks if  an equal and opposite reaction force is stopping acceleration in all directions - this would indicate there is a static obstacle in collision with the tcp.
         """
-
         force = self.as_array(self._average_wrench_world.force).reshape(3)
-        # self.interface.send_info("Commanded force: {}\n Perceived force:{}".format(
-        #     commandedForce, force)
-        # )
         res = np.allclose(force, -1 * commandedForce, atol=deadzoneRadius, rtol=relativeScaling)
-
-        # rospy.loginfo_throttle(1,Fore.BLUE +  "Collision checking force " + str(force) + " against command " + str(commandedForce*-1) + ' with a result of ' + str(res) + " and the difference is " + str(force + commandedForce) + Style.RESET_ALL)
-
         return res
-        # if(type(lowerThresholds) == type(None)):
-        #     lowerThresholds = -1 * upperThresholds
-        # return self.vectorRegionCompare(self.as_array(self._average_wrench_world.force)-commandedForce, upperThresholds, lowerThresholds)
 
     # TODO: Make the parameters of function part of the constructor or something...
     def force_cap_check(self):

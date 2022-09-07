@@ -15,6 +15,7 @@ from conntact.spiral_search import SpiralSearch
 from conntact.ros_conntact_interface import ConntactROSInterface
 from conntact.conntext import Conntext
 
+
 conntasks = {
     "SpiralSearch": SpiralSearch
 }
@@ -42,17 +43,23 @@ def read_board_positions(target_hole: str, params: dict):
 
 if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
-    # rospy.sleep(7)
 
-    interface       = ConntactROSInterface("conntact_params")
-    conntext        = Conntext(interface)
-    params = interface.load_yaml_file("peg_in_hole_params")
+    # initialize the Conntact environment by starting up the interface and conntext
+    interface = ConntactROSInterface("conntact_params")
+    conntext  = Conntext(interface)
+
+    # Load the params for this example from the params file and process them in.
+    params    = interface.load_yaml_file("peg_in_hole_params")
     task_info = params['conntact_info']['task_list']
     interface.register_frames(read_board_positions(task_info['position'], params))
-    # do pathing stuff
+
+    # The below could be run in a loop to execute all tasks specified in the task_list. Not currently implemented.
 
     # Instantiate the task called for in the task_list:
-    assembly_application = conntasks[task_info['task']](conntext, interface, task_info['connfig'])
-    assembly_application.main()
+    task = conntasks[task_info['task']](conntext, interface, task_info['connfig'])
+
+    # ** here's where you would do pathing stuff to move the robot close to the task location.
+    # Begin the Task:
+    task.main()
     interface.send_info(Fore.MAGENTA + "Node has control again!" +Style.RESET_ALL)
 

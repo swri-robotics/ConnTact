@@ -246,7 +246,6 @@ class ConntactROSInterface(ConntactInterface):
         :param pos: (PoseStamped) commanded pose object.
         """
         self._pose_pub.publish(pose)
-        # print("Command position is {}".format(pose.pose))
 
     def sleep_until_next_loop(self):
         self._rate.sleep()
