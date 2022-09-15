@@ -41,10 +41,11 @@ class Conntext():
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped()}
         self._start_time = self.interface.get_unified_time()
-
         self.rate = self.params["framework"]["refresh_rate"]
         self.highForceWarning = False
-        # self._seq                   = 0
+        # self.target_frame_name = "base_link"
+        self.target_frame_name = "tool0"
+        self.motion_permitted = True
 
         # Initialize filtering class
         self.filters = AssemblyFilters(5, self.rate)
@@ -56,9 +57,15 @@ class Conntext():
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
 
+        self.conntask = None #A reference to the Conntask. If it stops existing, we stop sending robot motion commands.
+
     def send_reference_TFs(self):
         self.interface.register_frames(self.reference_frames)
 
+    def set_target_frame_name(self, name):
+        self.target_frame_name = name
+        self.interface.send_info("Changing target frame, watch out!")
+        time.sleep(10)
 
     @staticmethod
     def get_tf_from_yaml(pos, ori, base_frame,
@@ -134,7 +141,7 @@ class Conntext():
         """
         transform = TransformStamped()
         transform = self.interface.get_transform(self.toolData.frame_name,
-                                                 "base_link")
+                                                 self.target_frame_name)
         # To help debug:
         # self.interface.send_info(
         #     Fore.BLUE + "\nCurrent pos: \n{}\nRequested by:\n{}\n".format(
@@ -159,13 +166,16 @@ class Conntext():
         pose_position = Vector3()
         pose_position.x, pose_position.y, pose_position.z =\
             self.as_array(self.current_pose.transform.translation)
-        target_hole_pos = self.interface.get_transform("target_hole_position", "base_link").transform.translation
+        # target_hole_pos = self.interface.get_transform("target_hole_position", "base_link").transform.translation
         if(not direction_vector[0]):
-            pose_position.x = target_hole_pos.x
+            # pose_position.x = target_hole_pos.x
+            pose_position.x = 0
         if(not direction_vector[1]):
-            pose_position.y = target_hole_pos.y
+            # pose_position.y = target_hole_pos.y
+            pose_position.y = 0
         if(not direction_vector[2]):
-            pose_position.z = target_hole_pos.z
+            # pose_position.z = target_hole_pos.z
+            pose_position.z = 0
         pose_orientation = [0, 1, 0, 0]
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
@@ -192,8 +202,8 @@ class Conntext():
         # Execute reinterpret-to-tcp and rotate-to-world simultaneously:
         result_wrench.wrench = Conntext.transform_wrench(transform_world_to_gripper,
                                                               result_wrench.wrench)  # This works
-
-        self.interface.publish_command_wrench(result_wrench)
+        if(self.motion_permitted):
+            self.interface.publish_command_wrench(result_wrench)
 
     @staticmethod
     def list_from_quat(quat):
@@ -207,12 +217,16 @@ class Conntext():
         limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
         move = (np.array(pose_stamped_vec[0]) - curr_pos)
+        moveDist = np.linalg.norm(move)
+        if moveDist > .15: #15 cm is the max dist away we can publish a pose
+            self.interface.send_error("Move command is far from current pos! Use planned motion instead. Killing pgm.")
+            quit()
         if not self.vectorRegionCompare_symmetrical(move, limit):
             output = pose_stamped_vec
-            newMove = np.multiply(move / np.linalg.norm(move), limit)
+            newMove = np.multiply(move / moveDist, limit)
             output[0] = curr_pos + newMove
             self.interface.send_info("Move command clipped from {} to {}.".format(
-                np.linalg.norm(move), np.linalg.norm(newMove)), 2)
+                moveDist, np.linalg.norm(newMove)), 2)
             return output
         return pose_stamped_vec
 
@@ -220,14 +234,10 @@ class Conntext():
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
-        # Ensure controller is loaded
-        # self.check_controller(self.controller_name)
-
-
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
-
+        # TODO: Add pose_stamped_vec to current position here.
         pose_command = self.limit_speed(pose_stamped_vec)
 
         # Create poseStamped msg
@@ -246,7 +256,10 @@ class Conntext():
 
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
-        goal_pose.header.frame_id = "base_link"
+        goal_pose.header.frame_id = self.target_frame_name
+        # goal_pose.header.frame_id = "base_link"
+
+        goal_pose = self.interface.do_transform(goal_pose, "base_link")
 
         if (self.toolData.name != "tool0"):
             # Convert pose in TCP coordinates to assign wrist "tool0" position for controller
@@ -258,7 +271,9 @@ class Conntext():
                 self.toolData.matrix)  # tf from tcp_goal to wrist = gTw
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
-        self.interface.publish_command_position(goal_pose)
+
+        if self.motion_permitted:
+            self.interface.publish_command_position(goal_pose)
 
     @staticmethod
     def to_homogeneous(quat, point):

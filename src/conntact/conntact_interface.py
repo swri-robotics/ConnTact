@@ -49,6 +49,14 @@ class ConntactInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def do_transform(self, input, target_frame):
+        """Convert transform into the given frame-of-reference.
+        :param input: (PoseStamped) Transform from a frame in the TF tree to a point of interest
+        :param target_frame: (string) Frame in which to represent the input position
+        """
+        pass
+
+    @abc.abstractmethod
     def register_frames(self, framesList):
         """ Adds one or more frames of reference to the environment.
         :param framesList: (List) List of `geometry_msgs.msg.TransformStamped` frames to be added to the environment

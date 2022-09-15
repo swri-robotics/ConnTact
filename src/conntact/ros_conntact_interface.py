@@ -150,6 +150,14 @@ class ConntactROSInterface(ConntactInterface):
         """
         return self.current_wrench
 
+    def do_transform(self, input, target_frame):
+        """Convert transform into the given frame-of-reference.
+        :param input: (PoseStamped) Transform from a frame in the TF tree to a point of interest
+        :param target_frame: (string) Frame in which to represent the input position
+        """
+        return self.tf_buffer.transform(input, target_frame, rospy.Duration(.1))
+
+
     def get_transform(self, frame, origin):
         """ Returns the position of `end` frame relative to `start` frame.
         :param frame: (string) name of target frame
