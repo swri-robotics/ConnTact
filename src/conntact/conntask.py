@@ -212,7 +212,6 @@ class ConnStep:
         self.completion_confidence = 0.0
         self.seeking_force = [0,0,0]
         self.comply_axes = [1,1,1]
-        # self.desiredOrientation = trfm.quaternion_from_euler(0,0,-90)
         self.desiredOrientation = trfm.quaternion_from_euler(0,0,0)
         self.done = False
 

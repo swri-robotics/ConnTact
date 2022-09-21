@@ -69,7 +69,6 @@ class SpiralSearch(ConnTask):
 
         # set up the spiral_search parameters and read the connfig
         self.readYAML()
-        self.tcp_selected = 'tip'
         self.reset_height = self.connfig['task']['restart_height'] / 100
 
     def read_peg_hole_dimensions(self):
@@ -200,7 +199,8 @@ class SpiralToFindHole(ConnStep):
         # y_pos = y_pos + self.task.y_pos_offset
         z_pos = self.conntext.current_pose.transform.translation.z
         pose_position = [x_pos, y_pos, z_pos]
-        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
+        # pose_orientation = [0, 1, 0, 0]  #w, x, y, z equiv to XYZ = 180,0,0
+        pose_orientation = [1, 0, 0, 0]  #w, x, y, z equiv to XYZ = 0,0,0
 
         return [pose_position, pose_orientation]
 

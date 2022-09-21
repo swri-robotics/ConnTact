@@ -45,7 +45,8 @@ class Conntext():
         self.highForceWarning = False
         # self.target_frame_name = "base_link"
         self.target_frame_name = "tool0"
-        self.motion_permitted = True
+        # self.motion_permitted = True
+        self.motion_permitted = False
 
         # Initialize filtering class
         self.filters = AssemblyFilters(5, self.rate)
@@ -176,7 +177,10 @@ class Conntext():
         if(not direction_vector[2]):
             # pose_position.z = target_hole_pos.z
             pose_position.z = 0
-        pose_orientation = [0, 1, 0, 0]
+
+        # pose_orientation = [0, 1, 0, 0]
+        pose_orientation = Conntext.quat_from_euler_deg([0,0,0])
+
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
@@ -214,7 +218,7 @@ class Conntext():
         return [point.x, point.y, point.z]
 
     def limit_speed(self, pose_stamped_vec):
-        limit = np.array(self.params['robot']['max_pos_change_per_second'])
+        limit = np.array(self.params['robot']['max_pos_change_per_second']) / self.rate
         curr_pos = self.as_array(self.current_pose.transform.translation)
         move = (np.array(pose_stamped_vec[0]) - curr_pos)
         moveDist = np.linalg.norm(move)
@@ -252,7 +256,10 @@ class Conntext():
         goal_pose.pose.position = point
 
         quaternion.w, quaternion.x, quaternion.y, quaternion.z = pose_command[1][:]
+        # quaternion.w, quaternion.x, quaternion.y, quaternion.z = [1,0,0,0]
+        # quaternion.x, quaternion.y, quaternion.z,  quaternion.w = trfm.quaternion_from_euler(5* np.pi /180 ,0,0)
         goal_pose.pose.orientation = quaternion
+        self.interface.send_info("Publishing goal tcp in task frame: {}".format(goal_pose.pose), 1)
 
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
@@ -272,6 +279,7 @@ class Conntext():
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
 
+        self.interface.send_info("Publishing goal tool0 in base_link: {}".format(goal_pose.pose), 1)
         if self.motion_permitted:
             self.interface.publish_command_position(goal_pose)
 
@@ -360,6 +368,12 @@ class Conntext():
         if invert:
             matrix = trfm.inverse_matrix(matrix)
         return Conntext.transform_wrench_by_matrix(matrix, Conntext.wrenchToArray(wrench))
+
+    @staticmethod
+    def quat_from_euler_deg(array: np.ndarray):
+        q_tf = trfm.quaternion_from_euler(*np.radians(array)) # converting to radians and unpacking into 3 args
+        # Transformations returns x,y,z,w, but TF2 and ROS want w,x,y,z:
+        return [q_tf[3], *q_tf[:3]]
 
     @staticmethod
     def transform_wrench_by_matrix(T_ab: np.ndarray, wrench: np.ndarray) -> np.ndarray:
