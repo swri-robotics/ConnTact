@@ -31,6 +31,44 @@ class ToolData():
         self.matrix = None
         self.validToolsDict = None
 
+class MovePolicy():
+    """
+    Data wrapper for XYZ move and sXYZ rotation policy
+    TRUE:  Seek the attached position
+    FALSE: Freely comply.
+    NONE:  Hold the current position.
+    """
+    def __init__(self, position = [None, None, None], rotation = [None, None, None]):
+        self.position = position
+        self.rotation = rotation
+
+class conntroller():
+    """
+    This class manages movement by interpolating between the robot's current pose (position and rotation)
+    and a command pose. The distance permitted is related to maximum speed setpoints along each axis.
+    The command can also be left None in any axis, permitting free motion.
+    """
+    def __init__(self, speed_limits=None):
+        self.speed_limits = speed_limits
+        self.policy = MovePolicy()
+
+    def clear_policy(self):
+        """
+        Set everything to full compliance.
+        """
+        self.policy = MovePolicy()
+
+    def update_policy(self):
+        """
+        Change the policy
+        """
+        pass
+    def update_goal(self):
+        """
+        Change the goal position.
+        """
+        pass
+
 class Conntext():
 
     def __init__(self, interface: ConntactInterface, conntact_params="conntact_params"):
