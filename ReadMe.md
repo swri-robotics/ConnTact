@@ -42,6 +42,15 @@ Development of framework was done under Ubuntu Focal (20.04) using [ROS Noetic](
   - Install ROS package dependencies: `rosdep install --rosdistro noetic --ignore-src --from-paths .`
   - Source ROS and build the workspace: `. /opt/ros/noetic/setup.bash`, `catkin build`
 
+It may be required to uninstall the ROS-default `ros-noetic-ur-client-library`, which uses old debs which lack major performance improvements. Even when running on a highly-performant computer, the RTDE buffer may overflow, giving `Pipeline Producer overflowed! <RTDE Pipeline>` errors. This causes major instability in robot performance. 
+
+Fix this by building the more recent versions from source:
+
+- `sudo apt remove ros-noetic-ur-client-library`
+- `sudo apt install ccache`
+- `git clone https://github.com/UniversalRobots/Universal_Robots_Client_Library.git`
+- `catkin config -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache`
+
 ## Structure
 
 ![Detailed block diagram](resource/Conntact_Detail_Diagram.png)
