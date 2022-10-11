@@ -29,7 +29,7 @@ RUN_LOOP_TRIGGER = 'run looped code'
 class SpiralSearch(ConnTask):
 
 
-    def __init__(self, conntext, interface, connfig_name):
+    def __init__(self, conntext, interface, target_frame_name, connfig_name):
 
         #Declare the official states list here. These will be passed into the machine.
         states = [
@@ -65,11 +65,10 @@ class SpiralSearch(ConnTask):
                                 COMPLETION_STATE:     (ExitStep, [])
                                 }
         # #Initialize the state machine "Machine" init in your Conntask instance
-        ConnTask.__init__(self, conntext, states, transitions, connfig_name=connfig_name)
+        ConnTask.__init__(self, conntext, states, transitions, target_frame_name, connfig_name=connfig_name)
 
         # set up the spiral_search parameters and read the connfig
         self.readYAML()
-        self.tcp_selected = 'tip'
         self.reset_height = self.connfig['task']['restart_height'] / 100
 
     def read_peg_hole_dimensions(self):
@@ -194,11 +193,14 @@ class SpiralToFindHole(ConnStep):
                    np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
         y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-        x_pos = x_pos + self.task.x_pos_offset
-        y_pos = y_pos + self.task.y_pos_offset
+        # These values can remain zero because the pos_vec command is interpreted relative to the task frame:
+
+        # x_pos = x_pos + self.task.x_pos_offset
+        # y_pos = y_pos + self.task.y_pos_offset
         z_pos = self.conntext.current_pose.transform.translation.z
         pose_position = [x_pos, y_pos, z_pos]
-        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
+        # pose_orientation = [0, 1, 0, 0]  #w, x, y, z equiv to XYZ = 180,0,0
+        pose_orientation = [1, 0, 0, 0]  #w, x, y, z equiv to XYZ = 0,0,0
 
         return [pose_position, pose_orientation]
 

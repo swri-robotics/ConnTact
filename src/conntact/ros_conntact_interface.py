@@ -150,6 +150,13 @@ class ConntactROSInterface(ConntactInterface):
         """
         return self.current_wrench
 
+    def do_transform(self, input, target_frame):
+        """Convert transform into the given frame-of-reference.
+        :param input: (PoseStamped) Transform from a frame in the TF tree to a point of interest
+        :param target_frame: (string) Frame in which to represent the input position
+        """
+        return self.tf_buffer.transform(input, target_frame, rospy.Duration(.1))
+
     def get_transform(self, frame, origin):
         """ Returns the position of `end` frame relative to `start` frame.
         :param frame: (string) name of target frame
@@ -255,6 +262,11 @@ class ConntactROSInterface(ConntactInterface):
             self.send_info("Successfully zeroed the force-torque sensor.")
         else:
             self.send_info("Warning: Unsuccessfully tried to zero the force-torque sensor.")
+
+    # def change_compliance_params(self, new_gains = None, new_stiffness= None):
+    #     rospy.wait_for_service("/cartesian_compliance_controller/pd_gains/trans_z/set_parameters", timeout=5)
+    #     self.updateParamZ = rospy.ServiceProxy("/cartesian_compliance_controller/pd_gains/trans_z/set_parameters",
+    #                                            Reconfigure)
 
     def print_not_found_error(self):
         """Whine about the abstract method not being overridden in the implementation.

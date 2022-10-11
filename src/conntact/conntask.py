@@ -60,10 +60,11 @@ class ConnTask(Machine):
         COMPLETION_STATE:     (ExitStep, [])
     }
     """
-    def __init__(self, conntext, states, transitions, connfig_name=None ):
+    def __init__(self, conntext, states, transitions, target_frame_name, connfig_name=None):
         self.conntext = conntext
         self.rate_selected = conntext.rate
         self.interface = self.conntext.interface
+        self.conntext.set_target_frame_name(target_frame_name)
 
         self.connfig = self.interface.load_yaml_file(connfig_name)
         self.start_time = self.interface.get_unified_time()
@@ -211,7 +212,6 @@ class ConnStep:
         self.completion_confidence = 0.0
         self.seeking_force = [0,0,0]
         self.comply_axes = [1,1,1]
-        # self.desiredOrientation = trfm.quaternion_from_euler(0,0,-90)
         self.desiredOrientation = trfm.quaternion_from_euler(0,0,0)
         self.done = False
 

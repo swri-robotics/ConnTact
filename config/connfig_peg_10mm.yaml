@@ -23,12 +23,13 @@ objects:
   grasping_locations: #points of interest on the pin
     tip:
       pose: [ 0, 0, 50 ] #location relative to peg root frame
-      orientation: [ 0, 0, 0 ] #transformation relative to peg root frame
+      orientation: [ 180, 0, 0 ] #transformation relative to peg root frame
       #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
     corner:
       pose: [ -3.5, -3.5, 100 ] #location relative to peg/hole local_part_pose being grasped
       #grasp_name: "corner" #Used for angled search. Standardized so the corner of a rectangle will be presented.
-      orientation: [ 35.26, -30, -9.74 ] #orientation relative to tcp is 45 degrees in 2 rpy axes
+      orientation: [-144.74,  -30.0  ,  -9.74] #orientation relative to tcp is 45 degrees in 2 rpy axes -- this one rotated 180
+#      orientation: [ 35.26, -30, -9.74 ] #orientation relative to tcp is 45 degrees in 2 rpy axes
       #gripper_grasp_pose: [1, 2, 3] #Orientation relative to peg root frame. Robot solves path planning to reach this cartesian position
       #friction: #Unsure how to format this. Should we assume the user has chosen grasps that have sufficient friction cones to control the graspable part?
     middle:

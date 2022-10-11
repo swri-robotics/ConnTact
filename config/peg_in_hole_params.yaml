@@ -25,7 +25,7 @@ assembled_state: #List the desired assembled state #Not needed
 objects: #List objects and their required description
     hole_10mm:
         local_position: [264, -41.3, 0] #Starting position from task_frame
-        local_orientation: [0,0,0]
+        local_orientation: [0,0,0] #Degrees
         dimensions:
             diameter: 10.4 #mm
             depth: 20 #mm
