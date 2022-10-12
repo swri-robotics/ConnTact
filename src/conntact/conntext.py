@@ -83,8 +83,8 @@ class Conntext():
         self.highForceWarning = False
         # self.target_frame_name = "base_link"
         self.target_frame_name = "tool0"
-        # self.motion_permitted = True
-        self.motion_permitted = False
+        self.motion_permitted = True
+        # self.motion_permitted = False
 
         # Initialize filtering class
         self.filters = AssemblyFilters(5, self.rate)
@@ -103,8 +103,8 @@ class Conntext():
 
     def set_target_frame_name(self, name):
         self.target_frame_name = name
-        self.interface.send_info("Changing target frame, watch out!")
-        time.sleep(10)
+        # self.interface.send_info("Changing target frame, watch out!")
+        # time.sleep(10)
 
     @staticmethod
     def get_tf_from_yaml(pos, ori, base_frame,
@@ -187,7 +187,7 @@ class Conntext():
         #         transform.transform.translation,
         #         inspect.stack()[1][3]
         #     ) + Style.RESET_ALL)
-        return transform
+        return transform 
 
     def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
         """Generates a command pose vector which causes the robot to comply in certain dimensions while staying on track
@@ -256,7 +256,7 @@ class Conntext():
         return [point.x, point.y, point.z]
 
     def limit_speed(self, pose_stamped_vec):
-        limit = np.array(self.params['robot']['max_pos_change_per_second']) / self.rate
+        limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
         move = (np.array(pose_stamped_vec[0]) - curr_pos)
         moveDist = np.linalg.norm(move)
@@ -297,7 +297,7 @@ class Conntext():
         # quaternion.w, quaternion.x, quaternion.y, quaternion.z = [1,0,0,0]
         # quaternion.x, quaternion.y, quaternion.z,  quaternion.w = trfm.quaternion_from_euler(5* np.pi /180 ,0,0)
         goal_pose.pose.orientation = quaternion
-        self.interface.send_info("Publishing goal tcp in task frame: {}".format(goal_pose.pose), 1)
+        # self.interface.send_info("Publishing goal tcp in task frame: {}".format(goal_pose.pose), 1)
 
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
@@ -317,7 +317,7 @@ class Conntext():
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
 
-        self.interface.send_info("Publishing goal tool0 in base_link: {}".format(goal_pose.pose), 1)
+        # self.interface.send_info("Publishing goal tool0 in base_link: {}".format(goal_pose.pose), 1)
         if self.motion_permitted:
             self.interface.publish_command_position(goal_pose)
 

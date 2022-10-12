@@ -20,11 +20,13 @@ import yaml
 from conntact.conntact_interface import ConntactInterface
 
 class ConntactROSInterface(ConntactInterface):
-    def __init__(self, conntact_params="conntact_params"):
+    def __init__(self, conntact_params="conntact_params", this_package_name=None):
         #read in conntact parameters
 
         self.params = {}
-        self.path = self.get_package_path()
+        if(this_package_name is None):
+            this_package_name = "conntact"
+        self.path = self.get_package_path(this_package_name)
         self.params.update(self.load_yaml_file(conntact_params))
 
         self._wrench_pub = rospy.Publisher('/cartesian_compliance_controller/target_wrench', WrenchStamped,
@@ -131,12 +133,12 @@ class ConntactROSInterface(ConntactInterface):
             return rospy.get_rostime()
         return rospy.get_time()
 
-    def get_package_path(self):
+    def get_package_path(self, pkg):
         """ Returns the position of `end` frame relative to `start` frame.
         :return: (string) Path to the current package, under which /config/conntact_params can be found.
         :rtype: :class:`string`
         """
-        return rospkg.RosPack().get_path("conntact")
+        return rospkg.RosPack().get_path(pkg)
 
     def callback_update_wrench(self, data: WrenchStamped):
         """Callback to update current wrench data whenever new data becomes available.

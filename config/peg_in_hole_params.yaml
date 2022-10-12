@@ -5,9 +5,8 @@ conntact_info:
         position: "hole_10mm"
 environment_state: #needed by Node
     task_frame:
-#        position: [-639, 282, -337]
-        position: [-274, 576, 20]
-        orientation: [0, 0, 0]
+        position: [-268, -105, 20]
+        orientation: [0, 0, 180]
     kitting_frame:
         position: [640, 544, -502]
         orientation: [0, 0, 0]
