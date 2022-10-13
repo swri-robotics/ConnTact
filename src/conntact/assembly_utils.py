@@ -5,6 +5,63 @@ import numpy as np
 from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
                                TransformStamped, Vector3, Wrench,
                                WrenchStamped)
+import tf.transformations as tf
+
+
+def qToEu(a):
+    """
+    :param a: (np.ndarray) Quaternion of the form (x,y,z,w)
+    :return: (np.ndarray) Euler angles in degrees (XYZ sequential)
+    """
+    return np.degrees(tf.euler_from_quaternion(a))
+
+def euToQ(a):
+    """
+    :param a: (np.ndarray) Euler angles in degrees (XYZ sequential)
+    :return: (np.ndarray) Quaternion of the form (x,y,z,w)
+    """
+    return tf.quaternion_from_euler(*np.radians(a))
+
+def qGetMagnitude(a):
+    """
+    Get the magnitude of a quaternion (in degrees) based on its w component.
+    :param a: (np.ndarray) Quaternion of the form (x,y,z,w)
+    :return: (float) Angle change in degrees.
+    """
+    return np.degrees(np.arccos(a[3])*2)
+
+def quat_lerp(q1, q2, factor):
+    """
+    Return a quasi-linear interpolation between q1 and q2. To get a direct motion across the
+    surface of a sphere, we actually convert to euler angles and interpolate in that space.
+    :param q1: (np.ndarray) Quaternion of the form (x,y,z,w) specifying base orientation
+    :param q2: (np.ndarray) Quaternion of the form (x,y,z,w) specifying target orientation
+    :return: (float) Interpolation fraction (0.0-1.0) of the way from base to target.
+    :return: (np.ndarray) Quaternion of the form (x,y,z,w)
+    """
+    return euToQ(factor * qToEu(q2) + (1-factor) * qToEu(q1))
+
+def interpCommandByMagnitude(vec, lead_maximum):
+    # Get magnitude of move and rotation
+    trans_mag   = np.linalg.norm(vec[0])
+    rot_mag     = qGetMagnitude(vec[1])
+    new_trans = vec[0]
+    new_rot = vec[1]
+    changed = False
+    # Clip magnitude
+    if trans_mag > lead_maximum[0]:
+        new_trans = (lead_maximum[0] / trans_mag) * np.array(vec[0])
+        trans_mag = np.linalg.norm(new_trans)
+        changed = True
+
+    if rot_mag > lead_maximum[1]:
+        new_rot = quat_lerp(np.array([0., 0., 0., 1.]), vec[1], (lead_maximum[1] / rot_mag))
+        rot_mag = qGetMagnitude(new_rot)
+        changed = True
+
+    if changed:
+        return [new_trans,new_rot],[trans_mag,rot_mag], True
+    return vec, [trans_mag,rot_mag], True
 
 class AssemblyFilters():
     """Averages a signal based on a history log of previous values. Window size is normallized to different
