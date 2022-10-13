@@ -21,7 +21,7 @@ import yaml
 from conntact.conntact_interface import ConntactInterface
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
-from conntact.assembly_utils import AssemblyFilters
+from conntact.assembly_utils import *
 
 class ToolData():
     def __init__(self):
@@ -255,50 +255,56 @@ class Conntext():
     def list_from_point(point):
         return [point.x, point.y, point.z]
 
-    def limit_speed(self, pose_stamped_vec):
+    def limit_speed(self, pose_vec):
+        """Takes in vector representations of position
+        :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
+        """
         limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
-        move = (np.array(pose_stamped_vec[0]) - curr_pos)
+        move = (np.array(pose_vec[0]) - curr_pos)
         moveDist = np.linalg.norm(move)
         if moveDist > .15: #15 cm is the max dist away we can publish a pose
             self.interface.send_error("Move command is far from current pos! Use planned motion instead. Killing pgm.")
             quit()
         if not self.vectorRegionCompare_symmetrical(move, limit):
-            output = pose_stamped_vec
+            output = pose_vec
             newMove = np.multiply(move / moveDist, limit)
             output[0] = curr_pos + newMove
             self.interface.send_info("Move command clipped from {} to {}.".format(
                 moveDist, np.linalg.norm(newMove)), 2)
             return output
-        return pose_stamped_vec
+        return pose_vec
+        # self.interface.send_info("Move command clipped from {} to {}.".format(pose_vec, ), 2)
 
     def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
+        self.interface.send_info("Processing move command {}".format(pose_stamped_vec))
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
         # TODO: Add pose_stamped_vec to current position here.
         pose_command = self.limit_speed(pose_stamped_vec)
+        # pose_command = conntact.assembly_utils.interpCommandByMagnitude(pose_stamped_vec, [.1, 20])
 
         # Create poseStamped msg
         goal_pose = PoseStamped()
+        # # Set the position and orientation
+        # point = Point()
+        # quaternion = Quaternion()
+        # # point.x, point.y, point.z = position
+        # point.x, point.y, point.z = pose_command[0][:]
+        # goal_pose.pose.position = point
+        #
+        # quaternion.w, quaternion.x, quaternion.y, quaternion.z = pose_command[1][:]
+        # # quaternion.w, quaternion.x, quaternion.y, quaternion.z = [1,0,0,0]
+        # # quaternion.x, quaternion.y, quaternion.z,  quaternion.w = trfm.quaternion_from_euler(5* np.pi /180 ,0,0)
+        # goal_pose.pose.orientation = quaternion
+        # # self.interface.send_info("Publishing goal tcp in task frame: {}".format(goal_pose.pose), 1)
 
-        # Set the position and orientation
-        point = Point()
-        quaternion = Quaternion()
-
-        # point.x, point.y, point.z = position
-        point.x, point.y, point.z = pose_command[0][:]
-        goal_pose.pose.position = point
-
-        quaternion.w, quaternion.x, quaternion.y, quaternion.z = pose_command[1][:]
-        # quaternion.w, quaternion.x, quaternion.y, quaternion.z = [1,0,0,0]
-        # quaternion.x, quaternion.y, quaternion.z,  quaternion.w = trfm.quaternion_from_euler(5* np.pi /180 ,0,0)
-        goal_pose.pose.orientation = quaternion
-        # self.interface.send_info("Publishing goal tcp in task frame: {}".format(goal_pose.pose), 1)
-
+        goal_pose.pose.position = Point(*pose_command[0])
+        goal_pose.pose.orientation = Quaternion(*pose_command[1][1:], pose_command[1][0])
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
         goal_pose.header.frame_id = self.target_frame_name
@@ -317,7 +323,7 @@ class Conntext():
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
 
-        # self.interface.send_info("Publishing goal tool0 in base_link: {}".format(goal_pose.pose), 1)
+        self.interface.send_info("Publishing goal for tool0 in base_link: {}".format(goal_pose.pose), 1)
         if self.motion_permitted:
             self.interface.publish_command_position(goal_pose)
 

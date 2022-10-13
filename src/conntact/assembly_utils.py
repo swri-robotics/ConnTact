@@ -45,20 +45,18 @@ def interpCommandByMagnitude(vec, lead_maximum):
     # Get magnitude of move and rotation
     trans_mag   = np.linalg.norm(vec[0])
     rot_mag     = qGetMagnitude(vec[1])
-    new_trans = vec[0]
-    new_rot = vec[1]
-    changed = False
+    new_trans   = vec[0]
+    new_rot     = vec[1]
+    changed     = False
     # Clip magnitude
     if trans_mag > lead_maximum[0]:
         new_trans = (lead_maximum[0] / trans_mag) * np.array(vec[0])
         trans_mag = np.linalg.norm(new_trans)
         changed = True
-
     if rot_mag > lead_maximum[1]:
         new_rot = quat_lerp(np.array([0., 0., 0., 1.]), vec[1], (lead_maximum[1] / rot_mag))
         rot_mag = qGetMagnitude(new_rot)
         changed = True
-
     if changed:
         return [new_trans,new_rot],[trans_mag,rot_mag], True
     return vec, [trans_mag,rot_mag], True
