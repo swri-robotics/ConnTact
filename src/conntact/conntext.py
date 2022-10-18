@@ -21,7 +21,7 @@ import yaml
 from conntact.conntact_interface import ConntactInterface
 
 from modern_robotics import Adjoint as homogeneous_to_adjoint, RpToTrans
-from conntact.assembly_utils import *
+import conntact.assembly_utils as utils
 
 class ToolData():
     def __init__(self):
@@ -34,21 +34,44 @@ class ToolData():
 class MovePolicy():
     """
     Data wrapper for XYZ move and sXYZ rotation policy
-    TRUE:  Seek the attached position
-    FALSE: Freely comply.
-    NONE:  Hold the current position.
+    :param position_cmd: (list of floats/Nones) xyz position command relative to the task.
+    Sending None for any param will update the command to match the current position each cycle,
+    meaning the robot will not move actively and will comply freely in that axis.
+    :param orientation_cmd: (list of floats/Nones) xyz sequential Euler rotation relative to the task.
+    Like position, sending None for any param will update the command to match the current rotation
+    each cycle, meaning the robot will not rotate actively but will comply freely about that axis.
+    :param force_cmd:  (list of floats) XYZ forces to apply relative to target.
+    :param torque_cmd:  (list of floats) XYZ torques to apply relative to target.
     """
-    def __init__(self, position = [None, None, None], rotation = [None, None, None]):
-        self.position = position
-        self.rotation = rotation
 
-class conntroller():
+    def __init__(self, position_cmd = [None, None, None], orientation_cmd = [ None, None, None],
+                    force_cmd = [0,0,0], torque_cmd = [0,0,0]):
+        self.position = position_cmd
+        self.rotation = orientation_cmd
+        self.force = force_cmd
+        self.torque = torque_cmd
+        self.validate()
+
+    def validate(self):
+        """
+        Catch obviously invalid entries.
+        """
+        assert len(self.position) == 3, "Position command length must be 3"
+        assert len(self.rotation) == 3, "Rotation command length must be 3"
+        assert all(-360 <= entry <= 360 for entry in self.rotation if entry is not None), \
+            "Invalid values for euler angle. Must be between -360 and 360."
+
+class Conntroller():
     """
     This class manages movement by interpolating between the robot's current pose (position and rotation)
     and a command pose. The distance permitted is related to maximum speed setpoints along each axis.
     The command can also be left None in any axis, permitting free motion.
+    :param speed_limits: (list) Distance lead for the controller; degrees lead for the controller. By
+    controlling the point to which the compliance controller is trying to move the robot via PID, we
+    can cap the robot's actual speed to a reasonable level. Otherwise rapid unplanned motions can occur
+    accidentally, potentially damaging the workcell.
     """
-    def __init__(self, speed_limits=None):
+    def __init__(self, speed_limits=[.1,20]):
         self.speed_limits = speed_limits
         self.policy = MovePolicy()
 
@@ -58,16 +81,60 @@ class conntroller():
         """
         self.policy = MovePolicy()
 
-    def update_policy(self):
+    def update_policy(self, pos_cmd = None, ori_cmd = None, force_cmd = None, torque_cmd = None):
         """
-        Change the policy
+        Change the policy. Only tweak the values passed in.
         """
-        pass
-    def update_goal(self):
+        if pos_cmd is not None:
+            self.policy.position = pos_cmd
+        if pos_cmd is not None:
+            self.policy.position = ori_cmd
+        if pos_cmd is not None:
+            self.policy.force = force_cmd
+        if pos_cmd is not None:
+            self.policy.torque = torque_cmd
+        self.policy.validate()
+
+    def new_policy(self, policy = None, pos_cmd = None, ori_cmd = None, force_cmd = None, torque_cmd = None):
+        if policy is not None:
+            self.policy = policy
+            return
+        else:
+            self.policy = MovePolicy(pos_cmd, ori_cmd, force_cmd, torque_cmd)
+
+    def get_move(self, input_pose: Pose):
         """
-        Change the goal position.
+        Based on current position, report new pose command for robot. As described in MovePolicy,
+        you can send None on an axis to allow the robot to freely move due to external/internal forces,
+        or send a setpoint relative to the target frame for the robot to try to actively attain.
+        In general, you set all but one axis and use a command force along that axis to move through the
+        environment.
+        :param pose: (geometry_msgs.msg.Pose) Current pose of the robot relative to the target frame.
+        :return: (geometry_msgs.msg.Pose) Pose for the controller. Clipped to safe lead distances.
         """
-        pass
+        output_pose = Pose()
+        # output_pose.position = input_pose.position
+        out_pos = [input_pose.position.x,
+                   input_pose.position.y,
+                   input_pose.position.z]
+        out_rot = utils.qToEu([input_pose.orientation.x,
+                            input_pose.orientation.y,
+                            input_pose.orientation.z,
+                            input_pose.orientation.w])
+
+        for index, command in enumerate(self.policy.position):
+            if command is not None:
+                out_pos[index] = command
+        for index, command in enumerate(self.policy.rotation):
+            if command is not None:
+                out_rot[index] = command
+
+        print("Final quat:{}".format(out_rot))
+        output_pose.position = Point(*out_pos)
+        output_pose.orientation = Quaternion(*utils.euToQ(out_rot))
+
+        return output_pose
+
 
 class Conntext():
 
@@ -87,7 +154,7 @@ class Conntext():
         # self.motion_permitted = False
 
         # Initialize filtering class
-        self.filters = AssemblyFilters(5, self.rate)
+        self.filters = utils.AssemblyFilters(5, self.rate)
 
         self.toolData = ToolData()
         self.current_pose = self.get_current_pos()
@@ -263,8 +330,9 @@ class Conntext():
         curr_pos = self.as_array(self.current_pose.transform.translation)
         move = (np.array(pose_vec[0]) - curr_pos)
         moveDist = np.linalg.norm(move)
-        if moveDist > .15: #15 cm is the max dist away we can publish a pose
-            self.interface.send_error("Move command is far from current pos! Use planned motion instead. Killing pgm.")
+        if moveDist > .5: #15 cm is the max dist away we can publish a pose
+            self.interface.send_error("Move command is far from current pos! Use planned motion instead. "
+                                      "Killing pgm. \nStart: \n{} \nEnd: \n{}".format(curr_pos, pose_vec[0]))
             quit()
         if not self.vectorRegionCompare_symmetrical(move, limit):
             output = pose_vec
@@ -280,29 +348,17 @@ class Conntext():
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
-        self.interface.send_info("Processing move command {}".format(pose_stamped_vec))
+        self.interface.send_info("Processing move command {}".format(pose_stamped_vec), 1)
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
         # TODO: Add pose_stamped_vec to current position here.
         pose_command = self.limit_speed(pose_stamped_vec)
-        # pose_command = conntact.assembly_utils.interpCommandByMagnitude(pose_stamped_vec, [.1, 20])
+        # pose_command = conntact.utils.interpCommandByMagnitude(pose_stamped_vec, [.1, 20])
 
         # Create poseStamped msg
         goal_pose = PoseStamped()
-        # # Set the position and orientation
-        # point = Point()
-        # quaternion = Quaternion()
-        # # point.x, point.y, point.z = position
-        # point.x, point.y, point.z = pose_command[0][:]
-        # goal_pose.pose.position = point
-        #
-        # quaternion.w, quaternion.x, quaternion.y, quaternion.z = pose_command[1][:]
-        # # quaternion.w, quaternion.x, quaternion.y, quaternion.z = [1,0,0,0]
-        # # quaternion.x, quaternion.y, quaternion.z,  quaternion.w = trfm.quaternion_from_euler(5* np.pi /180 ,0,0)
-        # goal_pose.pose.orientation = quaternion
-        # # self.interface.send_info("Publishing goal tcp in task frame: {}".format(goal_pose.pose), 1)
-
+        # Set the position and orientation
         goal_pose.pose.position = Point(*pose_command[0])
         goal_pose.pose.orientation = Quaternion(*pose_command[1][1:], pose_command[1][0])
         # Set header values

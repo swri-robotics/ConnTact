@@ -168,12 +168,13 @@ class SpiralToFindHole(ConnStep):
         self.spiral_params = self.task.connfig['task']['spiral_params']
         self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
+        self.exitPeriod = .25
 
     def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         #Command wrench
-        self.task.wrench_command_vector  = self.conntext.get_command_wrench(self.seeking_force)
+        self.task.wrench_command_vector = self.conntext.get_command_wrench(self.seeking_force)
         #Command pose
         self.task.pose_command_vector = self.get_spiral_search_pose()
 
@@ -190,7 +191,7 @@ class SpiralToFindHole(ConnStep):
         curr_time_numpy = np.double(curr_time.to_sec())
         frequency = self.spiral_params['frequency'] #because we refer to it a lot
         curr_amp = self.spiral_params['min_amplitude'] + self.safe_clearance * \
-                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
+                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles'])
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
         y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
         # These values can remain zero because the pos_vec command is interpreted relative to the task frame:

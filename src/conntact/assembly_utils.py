@@ -42,6 +42,8 @@ def quat_lerp(q1, q2, factor):
     return euToQ(factor * qToEu(q2) + (1-factor) * qToEu(q1))
 
 def interpCommandByMagnitude(vec, lead_maximum):
+    #fix the quaternion ordering difference between tf2 and tf.transformations:
+    vec[1] = [vec[1],vec[1]]
     # Get magnitude of move and rotation
     trans_mag   = np.linalg.norm(vec[0])
     rot_mag     = qGetMagnitude(vec[1])
