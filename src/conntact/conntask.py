@@ -217,7 +217,7 @@ class ConnStep:
 
         #Set up exit condition sensitivity
         self.exitPeriod = .5       #Seconds to stay within bounds
-        self.exitThreshold = .99    #Percentage of time for the last period
+        self.exitThreshold = .90    #Percentage of time for the last period
         self.holdStartTime = 0
 
         #Pass in a reference to the ConnTask parent class; this reduces data copying in memory
@@ -245,24 +245,28 @@ class ConnStep:
         between 0 and 1. exit_conditions returning True adds a step toward 1; False steps down toward 0.
         Once confidence is above exitThreshold, a timer begins for duration exitPeriod.
         """
-        if(self.exit_conditions()):
-            if(self.completion_confidence < 1):
-                self.completion_confidence += 1/(self.task.rate_selected)
-            if(self.completion_confidence > self.exitThreshold):
-                if(self.holdStartTime == 0):
-                    #Start counting down to completion as long as we don't drop below threshold again:
-                    self.holdStartTime = self.task.interface.get_unified_time(float=True)
-
-                elif(self.holdStartTime < self.task.interface.get_unified_time(float=True) - self.exitPeriod ):
-                    #it's been long enough, exit loop
-                    return True 
-            else:
-                # Confidence has dropped below the threshold, cancel the countdown.
-                self.holdStartTime = 0
+        if self.exit_conditions():
+            if self.completion_confidence < 1:
+                if self.completion_confidence < self.exitThreshold:
+                    self.completion_confidence = self.exitThreshold
+                else:
+                    self.completion_confidence += 1/(self.task.rate_selected)
         else:
             #Exit conditions not true
-            if(self.completion_confidence>0.0):
-                self.completion_confidence -= 1/(self.task.rate_selected)
+            if self.completion_confidence > 0:
+                self.completion_confidence -= 10*(self.exitThreshold)/(self.task.rate_selected)
+
+        #Now decide if we're reasonably confident after the hold_time interval
+        if self.completion_confidence > self.exitThreshold:
+            if self.holdStartTime == 0:
+                # Start counting down to completion as long as we don't drop below threshold again:
+                self.holdStartTime = self.task.interface.get_unified_time(float=True)
+            elif self.holdStartTime < self.task.interface.get_unified_time(float=True) - self.exitPeriod:
+                # it's been long enough, exit loop
+                return True
+        else:
+            # Confidence has dropped below the threshold, cancel the countdown.
+            self.holdStartTime = 0
 
         return False
 
