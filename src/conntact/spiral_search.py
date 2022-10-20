@@ -168,6 +168,8 @@ class SpiralToFindHole(ConnStep):
         self.spiral_params = self.task.connfig['task']['spiral_params']
         self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
+        self.exitPeriod = .15       #Seconds to stay within bounds
+
 
     def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
