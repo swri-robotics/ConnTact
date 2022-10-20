@@ -7,13 +7,12 @@ from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
                                WrenchStamped)
 import tf.transformations as tf
 
-
 def qToEu(a):
     """
     :param a: (np.ndarray) Quaternion of the form (x,y,z,w)
     :return: (np.ndarray) Euler angles in degrees (XYZ sequential)
     """
-    return np.degrees(tf.euler_from_quaternion(a))
+    return np.degrees(tf.euler_from_quaternion([*a]))
 
 def euToQ(a):
     """
@@ -41,28 +40,74 @@ def quat_lerp(q1, q2, factor):
     """
     return euToQ(factor * qToEu(q2) + (1-factor) * qToEu(q1))
 
-def interpCommandByMagnitude(vec, lead_maximum):
-    #fix the quaternion ordering difference between tf2 and tf.transformations:
-    vec[1] = [vec[1],vec[1]]
-    # Get magnitude of move and rotation
-    trans_mag   = np.linalg.norm(vec[0])
-    rot_mag     = qGetMagnitude(vec[1])
-    new_trans   = vec[0]
-    new_rot     = vec[1]
-    changed     = False
-    # Clip magnitude
+def euler_lerp(e1, e2, factor):
+    """
+    Return a quasi-linear interpolation between euler rotations e1 and e2. To get direct motion
+    in the robot, interpolate axially like this, not slerping quaternions.
+    :param q1: (np.ndarray) Euler rotation of the form (x,y,z) sequential specifying base orientation
+    :param q2: (np.ndarray) Euler rotation of the form (x,y,z) specifying target orientation
+    :return: (float) Interpolation fraction (0.0-1.0) of the way from base to target.
+    :return: (np.ndarray) Euler rotation of the form (x,y,z)
+    """
+    return (factor * e2 + (1-factor) * e1)
+
+def euGetMagnitude(euler):
+    return np.linalg.norm(euler)
+
+np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
+
+def interpCommandByMagnitude(curr_vec,target_vec, lead_maximum=[.1,1]):
+    """
+    Shorten a command's 'lead' to a given pos/rot cap to artificially restrict motion speed on a PD controller.
+    We take in the current position and the initial target position, and return a modified target position
+    which can't be further than the bounds specified.
+    :param curr_vec: (list) = [[x,y,z position],[rotation in either Euler or Quaternion]]
+    """
+    # print("Current pose:{}".format(curr_vec))
+    # Keep track of whether a command change was required. If the target lead is small, there's no need.
+    changed = False
+
+    # Record whether a quaternion was passed in instead of an Euler rotation:
+    input_quaternion = len(curr_vec[1]) == 4
+    assert len(curr_vec[1])==len(target_vec[1]), "Different orientation representations sent to interp!"
+    if input_quaternion: #We're getting a quaternion for orientation; change it to Euler for the process
+        curr_vec[1] = qToEu(curr_vec[1])
+        target_vec[1] = qToEu(target_vec[1])
+
+    # Get magnitude of move and rotation by taking the difference from current to target:
+    diff_vec = [target_vec[0]-curr_vec[0],
+                target_vec[1]-curr_vec[1]]
+    trans_mag   = np.linalg.norm(diff_vec[0])
+    rot_mag     = euGetMagnitude(diff_vec[1])
+    new_command_vec = [*target_vec]
+
+    # Clip magnitudes
     if trans_mag > lead_maximum[0]:
-        new_trans = (lead_maximum[0] / trans_mag) * np.array(vec[0])
-        trans_mag = np.linalg.norm(new_trans)
+        new_command_vec[0] = (lead_maximum[0] / trans_mag) * np.array(diff_vec[0]) + curr_vec[0]
+        trans_mag = np.linalg.norm(new_command_vec[0])
         changed = True
     if rot_mag > lead_maximum[1]:
-        new_rot = quat_lerp(np.array([0., 0., 0., 1.]), vec[1], (lead_maximum[1] / rot_mag))
-        rot_mag = qGetMagnitude(new_rot)
+        new_command_vec[1] = euler_lerp(curr_vec[1], target_vec[1], (lead_maximum[1] / rot_mag))
+        rot_mag = euGetMagnitude(new_command_vec[1])
         changed = True
-    if changed:
-        return [new_trans,new_rot],[trans_mag,rot_mag], True
-    return vec, [trans_mag,rot_mag], True
 
+    if not changed:
+        # convert command back to quaternion if we started with one:
+        if input_quaternion:
+            target_vec[1] = euToQ(target_vec[1])
+        # print("Clipper returning unchanged target {}.".format(target_vec))
+        # print("Clipped command gives dist {} and rot {}".format(trans_mag, rot_mag))
+        return target_vec #, [trans_mag, rot_mag], False
+
+
+    # Add the commanded lead back to
+    if changed:    # convert command back to quaternion if we started with one:
+        if input_quaternion:
+            new_command_vec[1] = euToQ(new_command_vec[1])
+        # print("Clipper returning changed target: \n{}".format(new_command_vec))
+        return new_command_vec #,[trans_mag,rot_mag], True
+
+# print("Yay")
 class AssemblyFilters():
     """Averages a signal based on a history log of previous values. Window size is normallized to different
     frequency values using _rate_selected; window should be for 100hz cycle time.

@@ -1,9 +1,6 @@
 # Copyright 2021 Southwest Research Institute
 # Licensed under the Apache License, Version 2.0
 
-#UR IP Address is now 175.31.1.137
-#Computer has to be 175.31.1.150
-
 import string
 import sys
 from builtins import staticmethod
@@ -154,7 +151,7 @@ class ConnTask(Machine):
             # Main program loop.
             # Refresh values, run process trigger (either loop-back to perform state actions or transition to
             # new state), then output controller commands and wait for next loop time.
-            self.all_states_calc()
+            self.conntext.update()
             self.checkForceCap()
             if(self.switch_state): #If the command to change states has come in:
                 self.switch_state = False
@@ -170,12 +167,12 @@ class ConnTask(Machine):
             # Publish robot motion commands only once per loop, right at the end of the loop:
             self.update_commands()
             self.interface.sleep_until_next_loop()
-
-    def all_states_calc(self):
-        #All once-per-loop functions
-        self.conntext.current_pose = self.conntext.get_current_pos()
-        self.conntext.update_avg_speed()
-        self.conntext.update_average_wrench()
+    #
+    # def all_states_calc(self):
+    #     #All once-per-loop functions
+    #     self.conntext.current_pose = self.conntext.get_current_pos()
+    #     self.conntext.update_avg_speed()
+    #     self.conntext.update_average_wrench()
 
     def checkForceCap(self):
         if(not self.conntext.force_cap_check()):

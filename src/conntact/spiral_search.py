@@ -201,7 +201,7 @@ class SpiralToFindHole(ConnStep):
         z_pos = self.conntext.current_pose.transform.translation.z
         pose_position = [x_pos, y_pos, z_pos]
         # pose_orientation = [0, 1, 0, 0]  #w, x, y, z equiv to XYZ = 180,0,0
-        pose_orientation = [1, 0, 0, 0]  #w, x, y, z equiv to XYZ = 0,0,0
+        pose_orientation = [0,0,0,1]  #x, y, z, w equiv to XYZ = 0,0,0
 
         return [pose_position, pose_orientation]
 

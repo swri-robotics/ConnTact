@@ -31,139 +31,63 @@ class ToolData():
         self.matrix = None
         self.validToolsDict = None
 
-class MovePolicy():
-    """
-    Data wrapper for XYZ move and sXYZ rotation policy
-    :param position_cmd: (list of floats/Nones) xyz position command relative to the task.
-    Sending None for any param will update the command to match the current position each cycle,
-    meaning the robot will not move actively and will comply freely in that axis.
-    :param orientation_cmd: (list of floats/Nones) xyz sequential Euler rotation relative to the task.
-    Like position, sending None for any param will update the command to match the current rotation
-    each cycle, meaning the robot will not rotate actively but will comply freely about that axis.
-    :param force_cmd:  (list of floats) XYZ forces to apply relative to target.
-    :param torque_cmd:  (list of floats) XYZ torques to apply relative to target.
-    """
-
-    def __init__(self, position_cmd = [None, None, None], orientation_cmd = [ None, None, None],
-                    force_cmd = [0,0,0], torque_cmd = [0,0,0]):
-        self.position = position_cmd
-        self.rotation = orientation_cmd
-        self.force = force_cmd
-        self.torque = torque_cmd
-        self.validate()
-
-    def validate(self):
-        """
-        Catch obviously invalid entries.
-        """
-        assert len(self.position) == 3, "Position command length must be 3"
-        assert len(self.rotation) == 3, "Rotation command length must be 3"
-        assert all(-360 <= entry <= 360 for entry in self.rotation if entry is not None), \
-            "Invalid values for euler angle. Must be between -360 and 360."
-
-class Conntroller():
-    """
-    This class manages movement by interpolating between the robot's current pose (position and rotation)
-    and a command pose. The distance permitted is related to maximum speed setpoints along each axis.
-    The command can also be left None in any axis, permitting free motion.
-    :param speed_limits: (list) Distance lead for the controller; degrees lead for the controller. By
-    controlling the point to which the compliance controller is trying to move the robot via PID, we
-    can cap the robot's actual speed to a reasonable level. Otherwise rapid unplanned motions can occur
-    accidentally, potentially damaging the workcell.
-    """
-    def __init__(self, speed_limits=[.1,20]):
-        self.speed_limits = speed_limits
-        self.policy = MovePolicy()
-
-    def clear_policy(self):
-        """
-        Set everything to full compliance.
-        """
-        self.policy = MovePolicy()
-
-    def update_policy(self, pos_cmd = None, ori_cmd = None, force_cmd = None, torque_cmd = None):
-        """
-        Change the policy. Only tweak the values passed in.
-        """
-        if pos_cmd is not None:
-            self.policy.position = pos_cmd
-        if pos_cmd is not None:
-            self.policy.position = ori_cmd
-        if pos_cmd is not None:
-            self.policy.force = force_cmd
-        if pos_cmd is not None:
-            self.policy.torque = torque_cmd
-        self.policy.validate()
-
-    def new_policy(self, policy = None, pos_cmd = None, ori_cmd = None, force_cmd = None, torque_cmd = None):
-        if policy is not None:
-            self.policy = policy
-            return
-        else:
-            self.policy = MovePolicy(pos_cmd, ori_cmd, force_cmd, torque_cmd)
-
-    def get_move(self, input_pose: Pose):
-        """
-        Based on current position, report new pose command for robot. As described in MovePolicy,
-        you can send None on an axis to allow the robot to freely move due to external/internal forces,
-        or send a setpoint relative to the target frame for the robot to try to actively attain.
-        In general, you set all but one axis and use a command force along that axis to move through the
-        environment.
-        :param pose: (geometry_msgs.msg.Pose) Current pose of the robot relative to the target frame.
-        :return: (geometry_msgs.msg.Pose) Pose for the controller. Clipped to safe lead distances.
-        """
-        output_pose = Pose()
-        # output_pose.position = input_pose.position
-        out_pos = [input_pose.position.x,
-                   input_pose.position.y,
-                   input_pose.position.z]
-        out_rot = utils.qToEu([input_pose.orientation.x,
-                            input_pose.orientation.y,
-                            input_pose.orientation.z,
-                            input_pose.orientation.w])
-
-        for index, command in enumerate(self.policy.position):
-            if command is not None:
-                out_pos[index] = command
-        for index, command in enumerate(self.policy.rotation):
-            if command is not None:
-                out_rot[index] = command
-
-        print("Final quat:{}".format(out_rot))
-        output_pose.position = Point(*out_pos)
-        output_pose.orientation = Quaternion(*utils.euToQ(out_rot))
-
-        return output_pose
-
-
-class Conntext():
+class Conntext:
 
     def __init__(self, interface: ConntactInterface, conntact_params="conntact_params"):
+        self._current_pose = None
+        self._current_wrench = None
+        # self._conntroller = Conntroller()
+
         # Save a reference to the interface.
         self.interface = interface
         self.params = self.interface.load_yaml_file(conntact_params)
 
+        # Save the refresh rate as read-only property
+        self.rate = self.params["framework"]["refresh_rate"]
+
         # Instantiate the dictionary of frames which are always required for tasks.
         self.reference_frames = {"tcp": TransformStamped()}
-        self._start_time = self.interface.get_unified_time()
-        self.rate = self.params["framework"]["refresh_rate"]
         self.highForceWarning = False
-        # self.target_frame_name = "base_link"
         self.target_frame_name = "tool0"
+
+        #For debugging:
         self.motion_permitted = True
         # self.motion_permitted = False
 
         # Initialize filtering class
         self.filters = utils.AssemblyFilters(5, self.rate)
-
         self.toolData = ToolData()
-        self.current_pose = self.get_current_pos()
-        self.current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
+
+        # Initialize values for core properties
+        self.update_current_pos()
+        self._current_wrench = self.create_wrench([0, 0, 0], [0, 0, 0])
         self._average_wrench_gripper = self.create_wrench([0, 0, 0], [0, 0, 0]).wrench
         self._average_wrench_world = Wrench()
         self.average_speed = np.array([0.0,0.0,0.0])
 
         self.conntask = None #A reference to the Conntask. If it stops existing, we stop sending robot motion commands.
+
+    #Establish the most important data as read-only
+    @property
+    def current_pose(self):
+        return self._current_pose
+    @property
+    def current_wrench(self):
+        return self._current_wrench
+    @property
+    def move_policy(self):
+        return self._move_policy
+    @move_policy.setter
+    def move_policy(self, value):
+        self._move_policy = value
+        self._move_policy.set_conntext(self)
+
+    def update(self):
+        #All once-per-loop functions
+        self.interface.send_info("Updating", 2)
+        self.update_current_pos()
+        self.update_avg_speed()
+        self.update_average_wrench()
 
     def send_reference_TFs(self):
         self.interface.register_frames(self.reference_frames)
@@ -242,21 +166,20 @@ class Conntext():
             self.interface.send_error("Tool selection key error! No key '" +
                                       tool_name + "' in tool dictionary.", 2)
 
-    def get_current_pos(self):
+    def update_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
         """
-        transform = TransformStamped()
-        transform = self.interface.get_transform(self.toolData.frame_name,
-                                                 self.target_frame_name)
+        self._current_pose = self.interface.get_transform(self.toolData.frame_name,
+                                                          self.target_frame_name)
         # To help debug:
         # self.interface.send_info(
         #     Fore.BLUE + "\nCurrent pos: \n{}\nRequested by:\n{}\n".format(
         #         transform.transform.translation,
         #         inspect.stack()[1][3]
         #     ) + Style.RESET_ALL)
-        return transform 
 
-    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 1, 0, 0]):
+
+    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 0, 0, 1]):
         """Generates a command pose vector which causes the robot to comply in certain dimensions while staying on track
          in the others.
         :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
@@ -284,7 +207,7 @@ class Conntext():
             pose_position.z = 0
 
         # pose_orientation = [0, 1, 0, 0]
-        pose_orientation = Conntext.quat_from_euler_deg([0,0,0])
+        pose_orientation = utils.euToQ([0,0,0])
 
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
@@ -328,6 +251,13 @@ class Conntext():
         """
         limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
+        curr_ori = [self.current_pose.transform.rotation.x,
+                    self.current_pose.transform.rotation.y,
+                    self.current_pose.transform.rotation.z,
+                    self.current_pose.transform.rotation.w]
+
+        return utils.interpCommandByMagnitude([curr_pos, [*curr_ori]] ,[*pose_vec],[.1, 10])
+
         move = (np.array(pose_vec[0]) - curr_pos)
         moveDist = np.linalg.norm(move)
         if moveDist > .5: #15 cm is the max dist away we can publish a pose
@@ -341,6 +271,11 @@ class Conntext():
             self.interface.send_info("Move command clipped from {} to {}.".format(
                 moveDist, np.linalg.norm(newMove)), 2)
             return output
+        new_clipped =  utils.interpCommandByMagnitude([curr_pos, curr_ori] ,[*pose_vec],[.1, 10])
+        self.interface.send_info("Output from new clipper would be \nNew:{}\nOld:{}".format(
+            new_clipped,
+            pose_vec
+            ),.5)
         return pose_vec
         # self.interface.send_info("Move command clipped from {} to {}.".format(pose_vec, ), 2)
 
@@ -348,7 +283,7 @@ class Conntext():
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
-        self.interface.send_info("Processing move command {}".format(pose_stamped_vec), 1)
+        self.interface.send_info("Processing move command {}".format(pose_stamped_vec),1)
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
@@ -360,7 +295,7 @@ class Conntext():
         goal_pose = PoseStamped()
         # Set the position and orientation
         goal_pose.pose.position = Point(*pose_command[0])
-        goal_pose.pose.orientation = Quaternion(*pose_command[1][1:], pose_command[1][0])
+        goal_pose.pose.orientation = Quaternion(*pose_command[1])
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
         goal_pose.header.frame_id = self.target_frame_name
@@ -470,12 +405,6 @@ class Conntext():
         return Conntext.transform_wrench_by_matrix(matrix, Conntext.wrenchToArray(wrench))
 
     @staticmethod
-    def quat_from_euler_deg(array: np.ndarray):
-        q_tf = trfm.quaternion_from_euler(*np.radians(array)) # converting to radians and unpacking into 3 args
-        # Transformations returns x,y,z,w, but TF2 and ROS want w,x,y,z:
-        return [q_tf[3], *q_tf[:3]]
-
-    @staticmethod
     def transform_wrench_by_matrix(T_ab: np.ndarray, wrench: np.ndarray) -> np.ndarray:
         """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
         :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
@@ -530,16 +459,17 @@ class Conntext():
         :return: (geometry.msgs.WrenchStamped) Output wrench.
         """
         wrench_stamped = WrenchStamped()
-        wrench = Wrench()
-
-        # create wrench
-        wrench.force.x, wrench.force.y, wrench.force.z = force
-        wrench.torque.x, wrench.torque.y, wrench.torque.z = torque
+        wrench_stamped.wrench = Wrench(Point(*force), Point(*torque))
         # create header
         wrench_stamped.header.stamp = self.interface.get_unified_time()
         wrench_stamped.header.frame_id = "base_link"
-        # self._seq+=1
-        wrench_stamped.wrench = wrench
+        #
+        # # create wrench
+        # wrench.force.x, wrench.force.y, wrench.force.z = force
+        # wrench.torque.x, wrench.torque.y, wrench.torque.z = torque
+        #
+        # # self._seq+=1
+        # wrench_stamped.wrench = wrench
 
         return wrench_stamped
 
@@ -693,3 +623,11 @@ class Conntext():
             # Makes the system to stop for a second in hopes that it prevents higher forces/torques.
             # May not be helping.
         return True
+
+    @current_pose.setter
+    def current_pose(self, value):
+        self._current_pose = value
+
+    @current_wrench.setter
+    def current_wrench(self, value):
+        self._current_wrench = value
