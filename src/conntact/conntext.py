@@ -179,7 +179,7 @@ class Conntext:
         #     ) + Style.RESET_ALL)
 
 
-    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 0, 0, 1]):
+    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 0, 0]):
         """Generates a command pose vector which causes the robot to comply in certain dimensions while staying on track
          in the others.
         :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
@@ -207,7 +207,7 @@ class Conntext:
             pose_position.z = 0
 
         # pose_orientation = [0, 1, 0, 0]
-        pose_orientation = utils.euToQ([0,0,0])
+        pose_orientation = [0,0,0]
 
         return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
 
@@ -251,33 +251,13 @@ class Conntext:
         """
         limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
-        curr_ori = [self.current_pose.transform.rotation.x,
-                    self.current_pose.transform.rotation.y,
-                    self.current_pose.transform.rotation.z,
-                    self.current_pose.transform.rotation.w]
+        rot = self.current_pose.transform.rotation
+        curr_ori = utils.qToEu([rot.x,
+                                rot.y,
+                                rot.z,
+                                rot.w])
 
-        return utils.interpCommandByMagnitude([curr_pos, [*curr_ori]] ,[*pose_vec],[.1, 10])
-
-        move = (np.array(pose_vec[0]) - curr_pos)
-        moveDist = np.linalg.norm(move)
-        if moveDist > .5: #15 cm is the max dist away we can publish a pose
-            self.interface.send_error("Move command is far from current pos! Use planned motion instead. "
-                                      "Killing pgm. \nStart: \n{} \nEnd: \n{}".format(curr_pos, pose_vec[0]))
-            quit()
-        if not self.vectorRegionCompare_symmetrical(move, limit):
-            output = pose_vec
-            newMove = np.multiply(move / moveDist, limit)
-            output[0] = curr_pos + newMove
-            self.interface.send_info("Move command clipped from {} to {}.".format(
-                moveDist, np.linalg.norm(newMove)), 2)
-            return output
-        new_clipped =  utils.interpCommandByMagnitude([curr_pos, curr_ori] ,[*pose_vec],[.1, 10])
-        self.interface.send_info("Output from new clipper would be \nNew:{}\nOld:{}".format(
-            new_clipped,
-            pose_vec
-            ),.5)
-        return pose_vec
-        # self.interface.send_info("Move command clipped from {} to {}.".format(pose_vec, ), 2)
+        return utils.interpCommandByMagnitude(np.array([curr_pos, [*curr_ori]]), np.array([*pose_vec]),[.05, 2])
 
     def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position 
@@ -287,6 +267,14 @@ class Conntext:
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
+        #For backward compatability, check if the command position is sending a quaternion.
+        #The new method only passes Euler angles; a quaternion made under the old system
+        #will actually be oriented 180 degrees about Y and must be rejected and replaced
+        #with Eu(0,0,0)
+        if len(pose_stamped_vec[1]) > 3:
+            self.interface.send_info("Invalid/outdated orientation command representation received"
+                                     "by publish_pose. Replacing with euler (0,0,0).", 2)
+            pose_stamped_vec[1] = [0,0,0]
         # TODO: Add pose_stamped_vec to current position here.
         pose_command = self.limit_speed(pose_stamped_vec)
         # pose_command = conntact.utils.interpCommandByMagnitude(pose_stamped_vec, [.1, 20])
@@ -295,7 +283,7 @@ class Conntext:
         goal_pose = PoseStamped()
         # Set the position and orientation
         goal_pose.pose.position = Point(*pose_command[0])
-        goal_pose.pose.orientation = Quaternion(*pose_command[1])
+        goal_pose.pose.orientation = Quaternion(*utils.euToQ(pose_command[1]))
         # Set header values
         goal_pose.header.stamp = self.interface.get_unified_time()
         goal_pose.header.frame_id = self.target_frame_name
