@@ -15,7 +15,7 @@ from geometry_msgs.msg import (Point, Pose, PoseStamped, Quaternion, Transform,
                                WrenchStamped)
 from transitions import Machine
 from conntact.conntext import Conntext
-
+import conntact.assembly_utils as utils
 # State and Trigger names
 # It is best to use tags like these for the string-only names of
 # States and Transitions in your state machine to prevent spelling errors.
@@ -102,15 +102,45 @@ class ConnTask(Machine):
         self.interface.send_info(Fore.BLACK + Back.WHITE +"State transition to " +
                       str(self.state) + " at time = " + str(self.interface.get_unified_time()) + Style.RESET_ALL )
 
-    def update_commands(self):
-        self.conntext.publish_pose(self.pose_command_vector)
-        self.conntext.publish_wrench(self.wrench_command_vector)
+    def send_commands(self):
+        self.conntext.publish_pose(self.current_step.current_move)
+        self.conntext.publish_wrench(self.current_step.wrench)
 
-    def set_command_wrench(self, force_vec):
-        self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
+    def set_command_wrench(self, force_vec, torque_vec = [0,0,0]):
+        """
+        For backward-compatability: set up the Step's move_policy based on the
+        pose commands sent from it.
+        """
+        # self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
+        #For backwards-compatibility: Take the input force command and send it to the move_policy
+        self.current_step.force = force_vec
+        self.current_step.torque = torque_vec
+
 
     def set_command_pose(self, pose_vec):
-        self.pose_command_vector = self.conntext.arbitrary_axis_comply(pose_vec)
+        """
+        For backward-compatability: set up the Step's move_policy based on the
+        pose commands sent from it.
+        """
+        if self.current_step.move_policy.move_mode is None:
+            #Categorize obsolete compliance axes vector into a movemode:
+            lockedAxes = 0
+            for i in pose_vec:
+                if i==0:
+                    lockedAxes +=1
+            if lockedAxes == 0:
+                self.current_step.move_policy = utils.MovePolicy("free")
+            if lockedAxes == 1:
+                #Permit motion along the given line:
+                self.current_step.move_policy = utils.MovePolicy("line", vector=pose_vec)
+            if lockedAxes == 2:
+                #Get a plane normal perpendicular to the two motion axes:
+                self.current_step.move_policy = utils.MovePolicy("plane", vector=np.array([1,1,1])-np.array(pose_vec))
+            if lockedAxes == 3:
+                self.current_step.move_policy = utils.MovePolicy("set")
+            self.interface.send_info("Initialized new move policy. Configuration: {}".format(self.current_step.move_policy.info()))
+        # # finally set the command:
+        # self.pose_command_vector = self.current_step.current_move(self.conntext.current_pose.transform.translation)
 
     def run_step_actions(self):
         """Runs the ConnStep class associated with this state if one exists.
@@ -151,28 +181,27 @@ class ConnTask(Machine):
             # Main program loop.
             # Refresh values, run process trigger (either loop-back to perform state actions or transition to
             # new state), then output controller commands and wait for next loop time.
-            self.conntext.update()
-            self.checkForceCap()
+
             if(self.switch_state): #If the command to change states has come in:
                 self.switch_state = False
                 if(self.current_step):
                     #If a Step class has been defined for the current State, we delete it to be tidy.
                     del self.current_step
                     self.current_step = None
+                self.trigger(self.next_trigger)
+
             else:
                 # If we're not switching states, we use RUN_LOOP_TRIGGER to execute this state's loop code.
                 self.next_trigger = RUN_LOOP_TRIGGER
-            # Execute the trigger chosen
-            self.trigger(self.next_trigger)
+                # Update state information (pose, sensor wrench):
+                self.conntext.update()
+                # Execute the trigger chosen. If not transitioning states, should just run state.execute, normally just updating the motion commands.
+                self.trigger(self.next_trigger)
+                self.checkForceCap()
+                self.send_commands()
+
             # Publish robot motion commands only once per loop, right at the end of the loop:
-            self.update_commands()
             self.interface.sleep_until_next_loop()
-    #
-    # def all_states_calc(self):
-    #     #All once-per-loop functions
-    #     self.conntext.current_pose = self.conntext.get_current_pos()
-    #     self.conntext.update_avg_speed()
-    #     self.conntext.update_average_wrench()
 
     def checkForceCap(self):
         if(not self.conntext.force_cap_check()):
@@ -202,25 +231,98 @@ class ConnStep:
     ConnTask state machine). Any other end-of-step actions, like saving information to the ConnTask object for
     later steps, can be done here.
     '''
-    # from conntact.assembly_algorithm_blocks import ConnTask
 
     def __init__(self, connTask:(ConnTask)) -> None:
         #set up the parameters for this step
+        if not hasattr(self, "_move_policy"):
+            # Make sure an empty move_policy is present; don't overwrite though
+            self._move_policy = None
         self.completion_confidence = 0.0
-        self.seeking_force = [0,0,0]
-        self.comply_axes = [1,1,1]
         self.desiredOrientation = trfm.quaternion_from_euler(0,0,0)
-        self.done = False
 
         #Set up exit condition sensitivity
         self.exitPeriod = .5       #Seconds to stay within bounds
         self.exitThreshold = .90    #Percentage of time for the last period
         self.holdStartTime = 0
 
-        #Pass in a reference to the ConnTask parent class; this reduces data copying in memory
+        #Pass in a reference to the ConnTask parent object:
         self.task:ConnTask = connTask
         self.conntext = self.task.conntext
-        
+
+    @property
+    def move_policy(self):
+        return self._move_policy
+
+    @move_policy.setter
+    def move_policy(self, value):
+        """You can pass in a MovePolicy to attach to the ConnStep."""
+        self._move_policy = value
+
+    @property
+    def wrench(self):
+        return self.move_policy.wrench
+
+    @property
+    def current_move(self):
+        return self.move_policy.current_move(self.conntext.current_pose.transform.translation)
+
+    def create_policy_from_legacy(self, comply_axes=None):
+        """
+        Categorize obsolete compliance axes vector into a movemode.
+        """
+        if comply_axes:
+            lockedAxes = 0
+            for i in comply_axes:
+                if i == 0:
+                    lockedAxes += 1
+            if lockedAxes == 0:
+                self.current_step.move_policy = utils.MovePolicy("free")
+            if lockedAxes == 1:
+                # Permit motion along the given line:
+                self.current_step.move_policy = utils.MovePolicy("line", vector=comply_axes)
+            if lockedAxes == 2:
+                # Get a plane normal perpendicular to the two motion axes:
+                self.current_step.move_policy = utils.MovePolicy("plane", vector=np.array([1, 1, 1]) - np.array(comply_axes))
+            if lockedAxes == 3:
+                self.current_step.move_policy = utils.MovePolicy("set")
+            self.interface.send_info("Initialized new move policy. Configuration: {}".format(self.current_step.move_policy.info()))
+
+    def create_move_policy(self,
+                 move_mode: str = None,
+                 vector = None, origin = None,
+                 orientation = [0, 0, 0],
+                 force = [0, 0, 0], torque = [0, 0, 0]):
+        """
+        Create a move_policy from arguments:
+        MoveMode:
+        :param MoveMode:  (np.array(3)) Select the movement mode from the list,
+            and a policy object will be created to maintian that policy.
+            "Set": The robot will attempt to move to the exact coordinates passed as Origin.
+            "Line": The robot will move freely along a vector in target space. Vector's origin
+                robot TCP position when the MoveMode is selected; to move the start point, pass
+                in optional command "start_point".
+            "Plane": As "line" MoveMode, except the robot will hold to the plane normal to the
+                vector and passing through the origin point.
+            "Free": The robot moves freely in all directions.
+        :param vector: (np.array(3)) In Line or Plane MoveMode, the vector onto/about which the robot's
+            current position is projected to generate the commanded position.
+        :param origin: (np.array(3)) In the Set MoveMoveMode, the point the robot will try to attain. In Line
+            or Plane MoveMode, the origin point of the vector. When you set/change the MoveMode, this point
+            updates to the robot TCP's current position by default, unless you pass a value in.
+        :param force_cmd:  (list of floats) Force to apply at the TCP. Moves the robot through space
+            according to MoveMode. An equal and opposite force from the physical sensor will stop this motion.
+        :param torque_cmd:  (list of floats) XYZ torques to apply relative to target.
+        """
+        self._move_policy = utils.MovePolicy(move_mode,
+                 vector,
+                 origin,
+                 orientation,
+                 force,
+                 torque)
+    def reset_move_policy(self):
+        self._move_policy = utils.MovePolicy()
+
+
     def execute(self):
         '''
         Executed once per loop while this State is active. By default, just runs update_commands to keep the compliance

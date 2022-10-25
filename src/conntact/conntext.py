@@ -36,7 +36,7 @@ class Conntext:
     def __init__(self, interface: ConntactInterface, conntact_params="conntact_params"):
         self._current_pose = None
         self._current_wrench = None
-        # self._conntroller = Conntroller()
+
 
         # Save a reference to the interface.
         self.interface = interface
@@ -67,6 +67,7 @@ class Conntext:
 
         self.conntask = None #A reference to the Conntask. If it stops existing, we stop sending robot motion commands.
 
+
     #Establish the most important data as read-only
     @property
     def current_pose(self):
@@ -74,17 +75,10 @@ class Conntext:
     @property
     def current_wrench(self):
         return self._current_wrench
-    @property
-    def move_policy(self):
-        return self._move_policy
-    @move_policy.setter
-    def move_policy(self, value):
-        self._move_policy = value
-        self._move_policy.set_conntext(self)
 
     def update(self):
         #All once-per-loop functions
-        self.interface.send_info("Updating", 2)
+        self.interface.send_info("Updating current pos, avg speed and wrench.", 2)
         self.update_current_pos()
         self.update_avg_speed()
         self.update_average_wrench()
@@ -169,47 +163,9 @@ class Conntext:
     def update_current_pos(self):
         """Read in current pose from robot base to activeTCP.        
         """
-        self._current_pose = self.interface.get_transform(self.toolData.frame_name,
-                                                          self.target_frame_name)
-        # To help debug:
-        # self.interface.send_info(
-        #     Fore.BLUE + "\nCurrent pos: \n{}\nRequested by:\n{}\n".format(
-        #         transform.transform.translation,
-        #         inspect.stack()[1][3]
-        #     ) + Style.RESET_ALL)
-
-
-    def arbitrary_axis_comply(self, direction_vector = [0,0,1], desired_orientation = [0, 0, 0]):
-        """Generates a command pose vector which causes the robot to comply in certain dimensions while staying on track
-         in the others.
-        :param desiredTaskSpacePosition: (array-like) vector indicating hole position in robot frame
-        :param direction_vector: (array-like list of bools) vector of bools or 0/1 values to indicate which axes comply
-        and which try to stay the same as those of the target hole position.
-        :param desired_orientation: (list of floats) quaternion parameters for orientation; currently disabled because
-        changes in orientation are dangerous and unpredictable. Use TCPs instead.
-        :return: (np.array) pose params for the new command pose
-        """
-        #We initially set the new command position to be the current physical (disturbed) position
-        #This uses disturbance by outside/command forces to move the robot at a steady rate.
-
-        pose_position = Vector3()
-        pose_position.x, pose_position.y, pose_position.z =\
-            self.as_array(self.current_pose.transform.translation)
-        # target_hole_pos = self.interface.get_transform("target_hole_position", "base_link").transform.translation
-        if(not direction_vector[0]):
-            # pose_position.x = target_hole_pos.x
-            pose_position.x = 0
-        if(not direction_vector[1]):
-            # pose_position.y = target_hole_pos.y
-            pose_position.y = 0
-        if(not direction_vector[2]):
-            # pose_position.z = target_hole_pos.z
-            pose_position.z = 0
-
-        # pose_orientation = [0, 1, 0, 0]
-        pose_orientation = [0,0,0]
-
-        return [[pose_position.x, pose_position.y, pose_position.z], pose_orientation]
+        self._current_pose = self.interface.get_transform(
+            self.toolData.frame_name,
+            self.target_frame_name)
 
     def get_command_wrench(self, vec=[0, 0, 0], ori=[0, 0, 0]):
         """Output ROS wrench parameters from human-readable vector inputs.
@@ -223,7 +179,8 @@ class Conntext:
         :param vec: (list of Floats) XYZ force commands
         :param vec: (list of Floats) XYC commanded torque.
         """
-        result_wrench = self.create_wrench(input_vec[:3], input_vec[3:])
+
+        result_wrench = self.create_wrench(input_vec[0], input_vec[1])
 
         transform_world_to_gripper: TransformStamped = self.interface.get_transform('target_hole_position', 'tool0')
         tcp_position = self.toolData.transform.transform.translation
@@ -263,7 +220,8 @@ class Conntext:
         """Takes in vector representations of position 
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
-        self.interface.send_info("Processing move command {}".format(pose_stamped_vec),1)
+        self.interface.send_info("Processing move command {}.".format(pose_stamped_vec), 1 )
+
         if (pose_stamped_vec is None):
             self.interface.send_info("Command position not initialized yet...")
             return
@@ -302,7 +260,7 @@ class Conntext:
             goal_matrix = np.dot(goal_matrix, backing_mx)  # bTg * gTw = bTw
             goal_pose = Conntext.matrix_to_pose(goal_matrix, b_link)
 
-        self.interface.send_info("Publishing goal for tool0 in base_link: {}".format(goal_pose.pose), 1)
+        # self.interface.send_info("Publishing goal for tool0 in base_link: {}".format(goal_pose.pose), 1)
         if self.motion_permitted:
             self.interface.publish_command_position(goal_pose)
 

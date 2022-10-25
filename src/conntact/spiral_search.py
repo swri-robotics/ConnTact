@@ -141,6 +141,12 @@ class FindSurface(ConnStep):
         ConnStep.__init__(self, connTask)
         self.comply_axes = [0, 0, 1]
         self.seeking_force = [0, 0, -7]
+        # Create a move policy which will move downward along a line
+        # at x=0, y=0
+        self.create_move_policy(move_mode="line",
+                                vector=[0,0,1],
+                                origin=[0,0,0],
+                                force=self.seeking_force)
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
@@ -157,6 +163,7 @@ class FindSurfaceFullCompliant(ConnStep):
         ConnStep.__init__(self, connTask)
         self.comply_axes = [1, 1, 1]
         self.seeking_force = [0, 0, -5]
+        self.create_move_policy(move_mode="free", force=self.seeking_force)
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
@@ -165,6 +172,10 @@ class SpiralToFindHole(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
         self.seeking_force = [0, 0, -7]
+        self.create_move_policy(move_mode="line",
+                                vector=[0,0,1],
+                                force=self.seeking_force)
+
         self.spiral_params = self.task.connfig['task']['spiral_params']
         self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
@@ -173,10 +184,14 @@ class SpiralToFindHole(ConnStep):
     def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
-        #Command wrench
-        self.task.wrench_command_vector = self.conntext.get_command_wrench(self.seeking_force)
-        #Command pose
-        self.task.pose_command_vector = self.get_spiral_search_pose()
+        # New method:
+        self.move_policy.origin = self.get_spiral_search_pose()[0]
+
+        # # Old method:
+        # # Command wrench
+        # self.task.wrench_command_vector = self.conntext.get_command_wrench(self.seeking_force)
+        # #Command pose
+        # self.task.pose_command_vector = self.get_spiral_search_pose()
 
     def exit_conditions(self) -> bool:
         return self.conntext.current_pose.transform.translation.z <= self.task.surface_height - .0004
