@@ -113,41 +113,22 @@ class ConnTask(Machine):
         self.conntext.publish_pose(self.current_step.current_move)
         self.conntext.publish_wrench(self.current_step.wrench)
 
-    # def set_command_wrench(self, force_vec, torque_vec = [0,0,0]):
-    #     """
-    #     For backward-compatability: set up the Step's move_policy based on the
-    #     pose commands sent from it.
-    #     """
-    #     # self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
-    #     #For backwards-compatibility: Take the input force command and send it to the move_policy
-    #     self.current_step.force = force_vec
-    #     self.current_step.torque = torque_vec
+    def set_command_wrench(self, force_vec, torque_vec = [0,0,0]):
+        """
+        For backward-compatability: set up the Step's move_policy based on the
+        pose commands sent from it.
+        """
+        # self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
+        #For backwards-compatibility: Take the input force command and send it to the move_policy
+        self.current_step.force = force_vec
+        self.current_step.torque = torque_vec
 
-    # def set_command_pose(self, pose_vec):
-    #     """
-    #     For backward-compatability: set up the Step's move_policy based on the
-    #     pose commands sent from it.
-    #     """
-    #     if self.current_step.move_policy.move_mode is None:
-    #         #Categorize obsolete compliance axes vector into a movemode:
-    #         lockedAxes = 0
-    #         for i in pose_vec:
-    #             if i==0:
-    #                 lockedAxes +=1
-    #         if lockedAxes == 0:
-    #             self.current_step.move_policy = utils.MovePolicy("free")
-    #         if lockedAxes == 1:
-    #             #Permit motion along the given line:
-    #             self.current_step.move_policy = utils.MovePolicy("line", vector=pose_vec)
-    #         if lockedAxes == 2:
-    #             #Get a plane normal perpendicular to the two motion axes:
-    #             self.current_step.move_policy = utils.MovePolicy("plane", vector=np.array([1,1,1])-np.array(pose_vec))
-    #         if lockedAxes == 3:
-    #             self.current_step.move_policy = utils.MovePolicy("set")
-    #         self.interface.send_info("Initialized new move policy.
-    #         Configuration: {}".format(self.current_step.move_policy.info()))
-    #     # # finally set the command:
-    #     # self.pose_command_vector = self.current_step.current_move(self.conntext.current_pose.transform.translation)
+    def set_command_pose(self, pose_vec):
+        """
+        For backward-compatability: set up the Step's move_policy based on the
+        pose commands sent from it.
+        """
+        self.current_step.origin = pose_vec[0]
 
     def run_step_actions(self):
         """Runs the ConnStep class associated with this state if one exists.
@@ -353,11 +334,12 @@ class ConnStep:
     def update_commands(self):
         '''
         Updates the commanded position and wrench. These are published in the ConnTask main loop.
-        '''
-        # Command wrench
-        self.task.set_command_wrench(self.seeking_force)
-        # Command pose
-        self.task.set_command_pose(self.comply_axes)
+        # '''
+        pass
+        # # Command wrench
+        # self.task.set_command_wrench(self.seeking_force)
+        # # Command pose
+        # self.task.set_command_pose(self.comply_axes)
 
     def check_completion(self):
         """Check if the step is complete. Default behavior is to check the exit conditions and gain/lose confidence

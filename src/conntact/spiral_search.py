@@ -185,13 +185,11 @@ class SpiralToFindHole(ConnStep):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
         '''
         # New method:
-        self.move_policy.origin = self.get_spiral_search_pose()[0]
+        self.move_policy.origin = self.get_spiral_search_pose()
 
-        # # Old method:
-        # # Command wrench
-        # self.task.wrench_command_vector = self.conntext.get_command_wrench(self.seeking_force)
-        # #Command pose
-        # self.task.pose_command_vector = self.get_spiral_search_pose()
+    def execute(self):
+        self.update_commands()
+
     @property
     def current_move(self):
         """
