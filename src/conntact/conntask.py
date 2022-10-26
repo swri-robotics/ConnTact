@@ -289,14 +289,14 @@ class ConnStep:
             if lockedAxes == 0:
                 self.create_move_policy(move_mode="free")
             if lockedAxes == 1:
-                # Permit motion along the given line:
-                self.create_move_policy(move_mode="line",
-                                        vector=self.comply_axes)
-            if lockedAxes == 2:
                 # Get a plane normal perpendicular to the two motion axes:
                 self.create_move_policy(move_mode="plane",
                                         vector=np.array([1, 1, 1])
                                                - np.array(self.comply_axes))
+            if lockedAxes == 2:
+                # Permit motion along the given line:
+                self.create_move_policy(move_mode="line",
+                                        vector=self.comply_axes)
             if lockedAxes == 3:
                 self.create_move_policy(move_mode="set")
         else:
