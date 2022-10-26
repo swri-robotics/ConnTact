@@ -192,6 +192,14 @@ class SpiralToFindHole(ConnStep):
         # self.task.wrench_command_vector = self.conntext.get_command_wrench(self.seeking_force)
         # #Command pose
         # self.task.pose_command_vector = self.get_spiral_search_pose()
+    @property
+    def current_move(self):
+        """
+        This more complicated motion definition simply updates the origin of the linear move_policy each
+        cycle to create a spiralling command position.
+        """
+        self.move_policy.origin = self.get_spiral_search_pose()
+        return self.move_policy.current_move(self.conntext.current_pose.transform.translation)
 
     def exit_conditions(self) -> bool:
         return self.conntext.current_pose.transform.translation.z <= self.task.surface_height - .0004
@@ -213,13 +221,11 @@ class SpiralToFindHole(ConnStep):
 
         # x_pos = x_pos + self.task.x_pos_offset
         # y_pos = y_pos + self.task.y_pos_offset
-        z_pos = self.conntext.current_pose.transform.translation.z
+        # z_pos = self.conntext.current_pose.transform.translation.z
+        z_pos = 0
         pose_position = [x_pos, y_pos, z_pos]
-        # pose_orientation = [0, 1, 0, 0]  #w, x, y, z equiv to XYZ = 180,0,0
-        pose_orientation = [1, 0, 0, 0]  #w, x, y, z equiv to XYZ = 0,0,0
 
-        return [pose_position, pose_orientation]
-
+        return pose_position
 
 class SafetyRetraction(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
