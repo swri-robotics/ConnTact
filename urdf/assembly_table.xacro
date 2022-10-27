@@ -32,31 +32,6 @@
       <child link="table"/>
     </joint>
 
-    <link name="base_plate">
-      <visual>
-        <origin xyz="${0.5 * BASE_PLATE_WIDTH} ${0.5 * BASE_PLATE_LENGTH} ${BASE_PLATE_THICKNESS * 0.5}"/>
-        <geometry>
-          <box size="${BASE_PLATE_WIDTH} ${BASE_PLATE_LENGTH} ${BASE_PLATE_THICKNESS}"/>
-        </geometry>
-        <material name="StainlessSteel">
-          <color rgba="0.6 0.1 0.1 1.0"/>
-        </material>
-      </visual>
-      <collision>
-        <origin xyz="${0.5 * BASE_PLATE_WIDTH} ${0.5 * BASE_PLATE_LENGTH} ${BASE_PLATE_THICKNESS}"/>
-        <geometry>
-          <box size="${BASE_PLATE_WIDTH} ${BASE_PLATE_LENGTH} ${BASE_PLATE_THICKNESS}"/>
-        </geometry>
-        <material name="StainlessSteel">
-          <color rgba="0.6 0.1 0.1 1.0"/>
-        </material>
-      </collision>
-    </link>
 
-    <joint name="table_to_base_plate" type="fixed">
-      <origin xyz="${-0.5*$(arg table_size) + 0.1397 } ${-0.5*$(arg table_size) + 0.09525} 0.0" rpy="0 0 0"/>
-       <parent link="table"/>
-       <child link="base_plate"/>
-    </joint>
   </xacro:macro>
 </robot>
