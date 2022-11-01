@@ -120,15 +120,15 @@ class ConnTask(Machine):
         """
         # self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
         #For backwards-compatibility: Take the input force command and send it to the move_policy
-        self.current_step.force = force_vec
-        self.current_step.torque = torque_vec
+        self.current_step.move_policy.force = force_vec
+        self.current_step.move_policy.torque = torque_vec
 
     def set_command_pose(self, pose_vec):
         """
         For backward-compatability: set up the Step's move_policy based on the
         pose commands sent from it.
         """
-        self.current_step.origin = pose_vec[0]
+        self.current_step.move_policy.origin = pose_vec[0]
 
     def run_step_actions(self):
         """Runs the ConnStep class associated with this state if one exists.
