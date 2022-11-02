@@ -4,10 +4,10 @@
 #params for the spiral and dimensions of the peg to be inserted.
 task:
   starting_tcp: "tip"
-  restart_height: 5 #cm. how far we retreat above detected surface to restart
+  restart_height: 10 #cm. how far we retreat above detected surface to restart
   spiral_params:
-    frequency: 0.15 #Hz frequency in spiral_search_motion
-    min_amplitude: .002  #meters amplitude in spiral_search_motion
+    frequency: 0.25 #Hz frequency in spiral_search_motion
+    min_amplitude: .005  #meters amplitude in spiral_search_motion
     max_amplitude: .012 #mm
     max_cycles: 62.83 #2*pi*10 for 10 revolutions
 objects:

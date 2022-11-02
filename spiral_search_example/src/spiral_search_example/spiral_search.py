@@ -139,14 +139,12 @@ class FindSurface(ConnStep):
 
     def __init__(self, connTask: ConnTask) -> None:
         ConnStep.__init__(self, connTask)
-        self.comply_axes = [0, 0, 1]
-        self.seeking_force = [0, 0, -7]
         # Create a move policy which will move downward along a line
         # at x=0, y=0
         self.create_move_policy(move_mode="line",
                                 vector=[0,0,1],
                                 origin=[0,0,0],
-                                force=self.seeking_force)
+                                force=[0, 0, -7])
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
@@ -161,9 +159,8 @@ class FindSurface(ConnStep):
 class FindSurfaceFullCompliant(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
-        self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, -5]
-        self.create_move_policy(move_mode="free", force=self.seeking_force)
+        self.create_move_policy(move_mode="free",
+                                force=[0, 0, -5])
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
@@ -171,15 +168,14 @@ class FindSurfaceFullCompliant(ConnStep):
 class SpiralToFindHole(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
-        self.seeking_force = [0, 0, -7]
         self.create_move_policy(move_mode="line",
                                 vector=[0,0,1],
-                                force=self.seeking_force)
+                                force=[0, 0, -7])
 
         self.spiral_params = self.task.connfig['task']['spiral_params']
         self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
         self.start_time = self.conntext.interface.get_unified_time()
-        self.exitPeriod = .25
+        self.exitPeriod = .05
 
     def update_commands(self):
         '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
@@ -228,8 +224,8 @@ class SpiralToFindHole(ConnStep):
 class SafetyRetraction(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
-        self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, 7]
+        self.create_move_policy(move_mode="free",
+                        force=[0, 0, 10])
 
     def exit_conditions(self) -> bool:
         return self.no_force() and self.above_restart_height()
@@ -240,9 +236,9 @@ class SafetyRetraction(ConnStep):
 
 class ExitStep(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
-        ConnStep.__init__(self, connTask)
-        self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, 15]
+        ConnStep.__init__(self, connTask)        
+        self.create_move_policy(move_mode="free",
+                                force=[0, 0, 15])
 
     def exit_conditions(self) -> bool:
         return self.above_restart_height()

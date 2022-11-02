@@ -4,13 +4,63 @@
 # Licensed under the Apache License, Version 2.0
 
 import rospy
+import numpy as np
+from colorama import Back, Fore, Style, init
 
-from spiral_search_example.corner_search_algorithm import CornerSearch
+# import tf2_ros
+# from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, Transform
+# from std_msgs.msg import String
+
+from spiral_search_example.corner_search import CornerSearch
+from conntact.ros_conntact_interface import ConntactROSInterface
+from conntact.conntext import Conntext
+
+package_name = "spiral_search_example"
+conntasks = {
+    "SpiralSearch": CornerSearch
+}
+
+def read_board_positions(target_hole: str, params: dict):
+    """ Pulls pose for task board and target hole out of the yaml. One could put these in the URDF
+    but we find that to be a pain. One can jog the robot to find position coordinates in robot space
+    fairly easily, and then estimate the orientation RPYs without much effort.
+    :param target_hole: (string) key of desired feature location in the 'objects' section of params
+    :param params: (dict) contents of the yaml params file need to be passed in.
+    :return: (dict) TFs of the taskboard and target location
+    """
+
+    task_pos = list(np.array(params['environment_state']['task_frame']['position']))
+    task_ori = params['environment_state']['task_frame']['orientation']
+    hole_pos = list(np.array(params['objects'][target_hole]['local_position']))
+    hole_ori = params['objects'][target_hole]['local_orientation']
+
+    # Set up target hole pose
+    tf_robot_to_task_board = Conntext.get_tf_from_yaml(task_pos, task_ori, "base_link", "task_board")
+    tf_task_board_to_hole = Conntext.get_tf_from_yaml(hole_pos, hole_ori, "task_board", "target_hole_position")
+
+    return {"target_hole_position": tf_robot_to_task_board, "task_board_position": tf_task_board_to_hole}
+
 
 if __name__ == '__main__':
     rospy.init_node("demo_assembly_application_compliance")
+    # rospy.sleep(10)
 
-    assembly_application = CornerSearch()
+    # initialize the Conntact environment by starting up the interface and conntext
+    interface = ConntactROSInterface("conntact_params", package_name)
+    conntext  = Conntext(interface)
 
-    assembly_application.main()
+    # Load the params for this example from the params file and process them in.
+    params    = interface.load_yaml_file("peg_in_hole_params", )
+    task_info = params['conntask_info']['task_list']
+    interface.register_frames(read_board_positions(task_info['position'], params))
+
+    # The below could be run in a loop to execute all tasks specified in the task_list. Not currently implemented.
+
+    # Instantiate the task called for in the task_list:
+    task = conntasks[task_info['task']](conntext, interface, "target_hole_position", task_info['connfig'])
+
+    # ** here's where you would do pathing stuff to move the robot close to the task location.
+    # Begin the Task:
+    task.main()
+    interface.send_info(Fore.MAGENTA + "Node has control again!" +Style.RESET_ALL)
 

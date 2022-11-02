@@ -34,16 +34,8 @@ RUN_LOOP_TRIGGER = 'run looped code'
 
 class ConnTask(Machine):
     """A parent class which conntains a state machine which creates, processes, and destroys ConnSteps in concert
-    with state transitions. When you create a child class to implement Conntask (hereafter referred to as your Task),
-    that class needs to provide the following to ConnTask: :param conntext: (Conntext) Reference to the Conntext
-    object managing the environment. :param interface: (ConntactInterface) Reference to the interface object managing
-    hardware/software connections. :param states: (List of str) state names. States in the state machine will be
-    created based on these. :param transitions: (List of dictionaries) Format example below. List the name, source,
-    and destination of each valid transition between states. These transitions are passed by name from ConnSteps back
-    to Conntask to move to a new state. :param connfig_name: (str) name of the YAML file where configuration data is
-    stored. All uses of your Task-specific params will be in your Task file, but Conntask will load them for you if
-    asked. It looks within (your workspace)/src/Conntact/config for a .yaml file with the given name.
-
+    with state transitions.
+    
     # The following is an example of how to set up a state machine. Do this in your Task definition.
     #Declare the official states list here. These will be passed into the machine. The minimum required states are shown :
     states = [
@@ -70,6 +62,20 @@ class ConnTask(Machine):
     """
 
     def __init__(self, conntext, states, transitions, target_frame_name, connfig_name=None):
+        """
+        :param conntext: (Conntext) Reference to the Conntext object managing the environment. 
+        :param interface: (ConntactInterface) Reference to the interface object managing hardware/software 
+        connections. 
+        :param states: (List of str) state names. States in the state machine will be
+        created based on these. 
+        :param transitions: (List of dictionaries) Format example below. List the name, source, and 
+        destination of each valid transition between states. These transitions are passed by name from
+        ConnSteps back to Conntask to move to a new state.
+        :param connfig_name: (str) name of the YAML file where configuration data is stored. All uses 
+        of your Task-specific params will be in your Task file, but Conntask will load them for you if
+        asked. It looks within (your workspace)/src/Conntact/config for a .yaml file with the given name.
+        """
+
         self.conntext = conntext
         self.rate_selected = conntext.rate
         self.interface = self.conntext.interface
@@ -78,19 +84,14 @@ class ConnTask(Machine):
         self.connfig = self.interface.load_yaml_file(connfig_name)
         self.start_time = self.interface.get_unified_time()
 
-        # Configuration variables, to be moved to a yaml file later:
-        self.pose_command_vector = None
-        self.wrench_command_vector = self.conntext.get_command_wrench([0, 0, 0])
-
         self.next_trigger = ''  # Empty to start. If no transition is assigned by the ConnStep
         # execution, Conntact fills in the default "RUN_LOOP_TRIGGER" which causes no transition
         # and simply executes the step.execute() method
+
         self.switch_state = False  # Triggers a state transition while preventing accidental repetitions
 
         self.current_step: ConnStep = None
 
-        # Set up Colorama for colorful terminal outputs on all platforms
-        colorama_init(autoreset=True)
         Machine.__init__(self, states=states, transitions=transitions, initial=START_STATE)
 
     def print(self, string: str):
@@ -110,25 +111,13 @@ class ConnTask(Machine):
             self.interface.get_unified_time()) + Style.RESET_ALL)
 
     def send_commands(self):
+        """
+        Sends commands directly from the step's MovePolicy to be issued to the robot. Conntext
+        will trim the command for safety (see assembly_utils.interp_by_magnitude) and will reframe
+        it from task space to the robot's preferred reference frame.
+        """
         self.conntext.publish_pose(self.current_step.current_move)
         self.conntext.publish_wrench(self.current_step.wrench)
-
-    def set_command_wrench(self, force_vec, torque_vec = [0,0,0]):
-        """
-        For backward-compatability: set up the Step's move_policy based on the
-        pose commands sent from it.
-        """
-        # self.wrench_command_vector = self.conntext.get_command_wrench(force_vec)
-        #For backwards-compatibility: Take the input force command and send it to the move_policy
-        self.current_step.move_policy.force = force_vec
-        self.current_step.move_policy.torque = torque_vec
-
-    def set_command_pose(self, pose_vec):
-        """
-        For backward-compatability: set up the Step's move_policy based on the
-        pose commands sent from it.
-        """
-        self.current_step.move_policy.origin = pose_vec[0]
 
     def run_step_actions(self):
         """Runs the ConnStep class associated with this state if one exists.
@@ -229,16 +218,15 @@ class ConnStep:
 
     def __init__(self, connTask: (ConnTask)) -> None:
         # set up the parameters for this step
-        if not hasattr(self, "_move_policy"):
-            # Make sure an empty move_policy is present; don't overwrite though
-            self._move_policy = None
+        if not hasattr(self, "desiredOrientation"):
+            # Make a default orientation of vertical
+            self.desiredOrientation = trfm.quaternion_from_euler(0, 0, 0)
         self.completion_confidence = 0.0
-        self.desiredOrientation = trfm.quaternion_from_euler(0, 0, 0)
 
         # Set up exit condition sensitivity
         self.exitPeriod = .5  # Seconds to stay within bounds
         self.exitThreshold = .90  # Percentage of time for the last period
-        self.holdStartTime = 0
+        self.holdStartTime = 0 #Not configurable; just stores the timestamp when countdown commences.
 
         # Pass in a reference to the ConnTask parent object:
         self.task: ConnTask = connTask
@@ -264,35 +252,6 @@ class ConnStep:
         command is sent to the robot. If you don't want to use move_policy, override this method.
         """
         return self.move_policy.current_move(self.conntext.current_pose.transform.translation)
-
-    def create_policy_from_legacy(self):
-        """
-        Categorize obsolete compliance axes vector into a move_mode.
-        """
-        if hasattr(self, "comply_axes"):
-            lockedAxes = 0
-            for i in self.comply_axes:
-                if i == 0:
-                    lockedAxes += 1
-            if lockedAxes == 0:
-                self.create_move_policy(move_mode="free")
-            if lockedAxes == 1:
-                # Get a plane normal perpendicular to the two motion axes:
-                self.create_move_policy(move_mode="plane",
-                                        vector=np.array([1, 1, 1])
-                                               - np.array(self.comply_axes))
-            if lockedAxes == 2:
-                # Permit motion along the given line:
-                self.create_move_policy(move_mode="line",
-                                        vector=self.comply_axes)
-            if lockedAxes == 3:
-                self.create_move_policy(move_mode="set")
-        else:
-            self.create_move_policy(move_mode="free")
-        if hasattr(self, "seeking_force"):
-            self.move_policy.force = self.seeking_force
-        self.task.interface.send_info("Initialized new move policy."
-                                      "Configuration: {}".format(self.move_policy.info()))
 
     def create_move_policy(self,
                            move_mode: str = None,
@@ -335,18 +294,8 @@ class ConnStep:
         Executed once per loop while this State is active. By default, just runs update_commands to keep the compliance
         motion profile running.
         '''
-        # self.update_commands() # TODO: remove this completely.
-        pass
 
-    def update_commands(self):
-        '''
-        Updates the commanded position and wrench. These are published in the ConnTask main loop.
-        # '''
         pass
-        # # Command wrench
-        # self.task.set_command_wrench(self.seeking_force)
-        # # Command pose
-        # self.task.set_command_pose(self.comply_axes)
 
     def check_completion(self):
         """Check if the step is complete. Default behavior is to check the exit conditions and gain/lose confidence
@@ -385,7 +334,7 @@ class ConnStep:
         return self.conntext.checkIfStatic()
 
     def in_collision(self) -> bool:
-        return self.conntext.checkIfColliding(np.array(self.seeking_force))
+        return self.conntext.checkIfColliding(np.array(self.move_policy.force))
 
     def no_force(self) -> bool:
         '''Checks the current forces against an expected force of zero, helpfully telling us if the robot is in free motion
