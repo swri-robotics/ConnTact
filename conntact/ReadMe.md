@@ -27,7 +27,7 @@ The ConnTask is the basic unit of ConnTact implementation: it's a user-created s
 
 We show that the ConnTask has a few ConnStep objects inside. These are simple definitions of motion and end conditions which give executable meaning to the ConnTask state machine states.
 
-Above the InsertScrew ConnTask we show some Connfig files, each for a different size of screw. ConnTasks are, at least by default, easy to parameterize. If the algorithm stays the same, any numerical values should be easily tweakable for different workpieces.
+Above the InsertScrew ConnTask we show some Connfig files, each for a different size of screw. Connfigs hold parameters to specify a Task for different sizes/shapes of workpieces of the same basic type. Most algorithms are expected to be easy to parameterize. Using Connfigs, numerical values are easily tweakable for different workpieces.
 
 ## Installation
 
@@ -71,7 +71,7 @@ ConnTact is structured with 4 levels of functionality:
 
 #### ConnStep
 
-  ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *motion profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. The motion profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
+  ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *movement profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. By default, you define this profile in a MovePolicy (details below). The movement profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
   The ConnStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the ConnStep instructs ConnTask's state machine which specific next step to which to transition.
 
 ## Development

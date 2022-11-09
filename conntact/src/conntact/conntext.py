@@ -78,7 +78,6 @@ class Conntext:
 
     def update(self):
         #All once-per-loop functions
-        self.interface.send_info("Updating current pos, avg speed and wrench.", 2)
         self.update_current_pos()
         self.update_avg_speed()
         self.update_average_wrench()
