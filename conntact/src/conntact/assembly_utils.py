@@ -278,7 +278,7 @@ class MovePolicy:
                 self.orientation]
 
 
-def interpCommandByMagnitude(curr_vec, target_vec, lead_maximum=[.1, 1]):
+def interp_command_by_magnitude(curr_vec, target_vec, lead_maximum=[.1, 1]):
     """
     Shorten a command's 'lead' to a given pos/rot cap to artificially restrict motion speed on a PD controller.
     We take in the current position and the initial target position, and return a modified target position

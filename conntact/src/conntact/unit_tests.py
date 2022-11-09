@@ -233,7 +233,7 @@ if runInterpolationTest:
             intervals = 15
         interps = np.linspace(0,1,intervals)
 
-        newVects = [utils.interpCommandByMagnitude(fromV, toV, np.array([trans_mag,rot_mag])*i) for i in interps]
+        newVects = [utils.interp_command_by_magnitude(fromV, toV, np.array([trans_mag, rot_mag]) * i) for i in interps]
         # Find the points at the end of the arrows for all these poses.
         outVects = [rotate(utils.euToQ(vec[1]), [1,0,0]) + vec[0] for vec in newVects]
         return np.array(outVects).T
@@ -319,7 +319,7 @@ if runInterpolationTest:
             #     testQuat = tf.random_quaternion()
             test_target_vec = [test_start_vec[0]+np.array(tf.random_vector(3)*2 - np.array([1, 1, 1]))*max_translation_end,
                                np.array( tf.quaternion_multiply(testQuat, test_start_vec[1] ) )]
-            newCommandVec = utils.interpCommandByMagnitude([*test_start_vec],[*test_target_vec],lead_maximums)
+            newCommandVec = utils.interp_command_by_magnitude([*test_start_vec], [*test_target_vec], lead_maximums)
 
             color, darkerColor = getColorTuple(num/(trials*2))
             # Plot target vec

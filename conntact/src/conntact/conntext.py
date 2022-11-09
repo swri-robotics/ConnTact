@@ -213,7 +213,7 @@ class Conntext:
                                 rot.z,
                                 rot.w])
 
-        return utils.interpCommandByMagnitude(np.array([curr_pos, [*curr_ori]]), np.array([*pose_vec]), [.05, 2])
+        return utils.interp_command_by_magnitude(np.array([curr_pos, [*curr_ori]]), np.array([*pose_vec]), [.05, 2])
 
     def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position and rotation [[pos],[rot]] in task space and publish

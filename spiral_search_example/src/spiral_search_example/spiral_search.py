@@ -177,14 +177,14 @@ class SpiralToFindHole(ConnStep):
         self.start_time = self.conntext.interface.get_unified_time()
         self.exitPeriod = .05
 
-    def update_commands(self):
-        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
-        '''
-        # New method:
-        self.move_policy.origin = self.get_spiral_search_pose()
-
-    def execute(self):
-        self.update_commands()
+    # def update_commands(self):
+    #     '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
+    #     '''
+    #     # New method:
+    #     self.move_policy.origin = self.get_spiral_search_pose()
+    #
+    # def execute(self):
+    #     self.update_commands()
 
     @property
     def current_move(self):
@@ -193,7 +193,7 @@ class SpiralToFindHole(ConnStep):
         cycle to create a spiralling command position.
         """
         self.move_policy.origin = self.get_spiral_search_pose()
-        return self.move_policy.current_move(self.conntext.current_pose.transform.translation)
+        return super().current_move
 
     def exit_conditions(self) -> bool:
         return self.conntext.current_pose.transform.translation.z <= self.task.surface_height - .0004
@@ -203,21 +203,15 @@ class SpiralToFindHole(ConnStep):
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
         """
-        # frequency=.15, min_amplitude=.002, max_cycles=62.83185
         curr_time = self.conntext.interface.get_unified_time() - self.start_time
         curr_time_numpy = np.double(curr_time.to_sec())
         frequency = self.spiral_params['frequency'] #because we refer to it a lot
+        #Calculate the amplitude of the spiral:
         curr_amp = self.spiral_params['min_amplitude'] + self.safe_clearance * \
                    np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles'])
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
         y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-        # These values can remain zero because the pos_vec command is interpreted relative to the task frame:
-
-        # x_pos = x_pos + self.task.x_pos_offset
-        # y_pos = y_pos + self.task.y_pos_offset
-        # z_pos = self.conntext.current_pose.transform.translation.z
-        z_pos = 0
-        pose_position = [x_pos, y_pos, z_pos]
+        pose_position = [x_pos, y_pos, 0]
 
         return pose_position
 
