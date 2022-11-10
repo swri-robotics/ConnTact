@@ -78,24 +78,43 @@ ConnTact is structured with 4 levels of functionality:
   The ConnStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the ConnStep instructs ConnTask's state machine which specific next step to which to transition.
 
 ###### MovePolicy
-In tactile assembly with CartesianComplianceController (CCC) or similar packages, we find it most useful to define axes of set behavior and axes of compliant behavior. For example, in the SpiralSearch example, the robot needs to find the real Z position of the workpiece surface before inserting the peg; therefor it needs to hold the expected X and Y position of the hole, and probe along the Z axis until an obstacle stops it. X and Y are set, while Z moves continuously and compliantly.
 
-We realize this sort of motion in Conntact by updating CCC's `target_frame` topic, the position and orientation to which the robot is trying to move. The robot will move toward this goal with a PD feedback system. With CCC, this setpoint-seeking behavior is additively combined with the disturbance-response behavior: At any time, forces applied to the robot will move it away from its setpoint or keep it from reaching it.
+Each ConnStep has a MovePolicy which defines its axes of set position and axes of continuous movement in response to forces.
+
+For example, in the SpiralSearch example, the robot needs to find the real Z position of the workpiece surface before inserting the peg; therefor it needs to hold the expected X and Y position of the hole, and move along the Z axis until an obstacle stops it. X and Y are set, while Z moves continuously.
+
+<details><summary>MovePolicy under-the-hood</summary>
+
+We realize MovePolicy motion in Conntact by continuously updating CartesianComplianceController's (CCC's) `target_frame` topic, the pose to which the robot is trying to move. The robot will move toward this goal pose with a PD feedback system. With CCC, this setpoint-seeking behavior is additively combined with the disturbance-response behavior: At any time, forces applied to the robot will move it away from its setpoint or keep it from reaching it.
 
 By updating the `target_frame` to the robot's current position, one can eliminate the setpoint-seeking behavior: Disturbance forces move the robot, and the robot does not seek to return to its undisturbed position. A `target_force` sent to the robot acts identically to an outside disturbance force, so in this fully compliant mode, the robot will constantly move in response to a force command until outside forces cancel it and stop the motion. 
 
-The *MovePolicy* system allows you to update the setpoint *along an arbitrary axis/set of axes* to create continuous, force-sensitive motion where desired and to hold steady to a known position otherwise. MovePolicy allows 4 MoveModes to describe the number of axes constrained:
+Note that this is not the only way to achieve this continuous behavior with CCC. We choose to negate the setpoint-seeking behavior and move the rotot by applying a force.
+
+The inverse would work: Continually update the setpoint a measured distance from the robot's current position to drive motion by "leading" the robot. Indeed it would be possible to snap the setpoint beyond the expected target location and let the robot find an obstacle by running into it on its way to the setpoin.
+
+We decided that this 1) can result in uncontrolled or variable robot speeds and 2) does not produce a controllable amount of contact force. The force-driven motion created by MovePolicy creates a reliable speed because CCC's inherent damping is always applied at the robot's update speed of 500 hz regardless of Conntact's cycle speed. Our method also can never produce more force (in the movement direction) than the command force given in the Policy.
+
+</details>
+
+The *MovePolicy* system allows you to update the setpoint *along an arbitrary axis/set of axes* to create continuous, force-sensitive motion where desired and to hold steady to a known position otherwise. 
+
+The MovePolicy's Origin (shown as a black point) and Vector (shown in grey) are used to form a 3D vector at a 3D origin point. MovePolicy uses 4 MoveModes to describe the number of axes constrained, and constrains them to Origin-Vector accordingly:
 
 ![MoveMode description](resource/MoveModes.png)
 
-This diagram shows how the robot's current position is projected onto the origin-vector combination by different MoveModes to find the command setpoint position to be sent to CCC. Note that Origin (shown as a black point) and Vector (shown in grey) are used to form a 3D vector at a 3D origin point.
+This diagram shows how the robot's current position is projected onto the origin-vector combination by different MoveModes to find the command setpoint position which will be sent to CCC.  These values are defined in task space.
 
  - **Line** mode projects the robot's position onto the vector. This has the effect that the robot will only move along the vector.
- - **Plane** projects the robot's position onto the plane passing through Origin and normal to Vector, allowing 2D motion while holding the other axis.
+ - **Plane** projects the robot's position onto the plane passing through Origin and normal to Vector, allowing 2D motion while holding the other axis static.
  - **Set** does not require Vector; the robot's command position is always set to Origin.
  - **Free** does not require Vector or Origin; it always updates the command position to the robot's current position, effectively negating the setpoint-seeking behavior and permitting continuous motion in any direction.
 
-When defining the motion desired for your application, you can override your Step's inbuilt `current_move` property to change MovePolicy behavior (origin, vector, Mode, etc.) whenever the policy is accessed:
+Note also that, for Set, Line, or Plane mode, if you don't pass Origin to the MoveMode constuctor, it will record the robot's current position, making it easy to continue a motion in a different direction.
+
+###### Modifying/Overriding the MovePolicy
+
+To define more complex motions, you can override your Step's inbuilt `current_move` property to change MovePolicy behavior (origin, vector, Mode, etc.) whenever the policy is accessed:
 
 ```
 @property
@@ -108,22 +127,20 @@ This override can be used to completely ignore MovePolicy if you prefer to write
 
 Alternately you can add the update code to your step's `execute()` method, convenient if your step is already using it for once-per-cycle tasks:
 
+The SpiralToFindHole Step in the SpiralSearch example uses this approach to mathematically define a motion path for X and Y while allowing the tool to slide across a surface in Z, fully compliant and seeking an irregularity.
+
 ```
 def execute(self):
     self.move_policy.origin = self.get_spiral_search_pose()
 ```
 
-The SpiralToFindHole Step in the SpiralSearch example uses this approach to mathematically define a motion path for X and Y while allowing the tool to slide across a surface in Z, fully compliant and seeking an irregularity.
-
-Note also that, for Set, Line, or Plane mode, if you don't pass Origin to the MoveMode constuctor, it will record the robot's current position, making it easy to continue a motion in a different direction.
-
-Note that MovePolicy also holds the Force, Torque and Orientation commands. It doesn't currently provide any help creating continuous rotational compliance; if complex rotational behaviors are needed, either update the orientation command to the current orientation or make your own compromise for now. We're very open to pull requests on this!
+Note that MovePolicy also stores the Force, Torque and Orientation commands for the Step. It doesn't currently provide any help for creating continuous *rotational* compliance; if complex rotational behaviors are needed, either update the orientation command to the current orientation, or make your own compromise for now. We're very open to pull requests on this!
 
 See `assembly_utils/MovePolicy` for more info.
 
 ## Development
 
-We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of inserting a peg into a hole to illustrate each step. This is the task for which the included `SpiralSearch` example was developed. Snippets of code from `SpiralSearch` are included in collapsed sections to illustrate how little user programming is needed.  
+We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of inserting a peg into a hole to illustrate each step. This is the task for which the included `SpiralSearch` example package was developed. Snippets of code from `SpiralSearch` are included in collapsed sections to illustrate how little user programming is needed.  
 
 #### 1. Choose the frame-of-reference for your task.
   * The hole is vertical. We'll establish the Z axis to be vertical, concentric with the hole. All positions from here onward will be measured relative to the hole's position and orientation. We also establish the peg's Z axis along its axis pointing away from the robot flange. 
@@ -192,7 +209,9 @@ transitions = [
 
 #### 4. Analyze each *step* and determine the *motion profile* and *end conditions.*
 
-For each step above, identify the *force directions* and *free movement directions* required. Define the movement as a [`MovePolicy`](@MovePolicy) as detailed above.
+For each step above, identify the *force directions* and *free movement directions* required. Define the movement as a [MovePolicy](#MovePolicy) as detailed above.
+
+
 
 * To move the peg downward in free space until it hits a hard surface:
   * Apply a small downward force to move the robot downward.
@@ -302,8 +321,8 @@ Finally, to follow the peg into the hole, we use a similar setup to the `FindSur
 class FindSurfaceFullCompliant(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
-        self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, -5]
+        self.create_move_policy(move_mode="free",
+                                force=[0, 0, -5])
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
