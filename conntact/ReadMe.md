@@ -27,7 +27,7 @@ The ConnTask is the basic unit of ConnTact implementation: it's a user-created s
 
 We show that the ConnTask has a few ConnStep objects inside. These are simple definitions of motion and end conditions which give executable meaning to the ConnTask state machine states.
 
-Above the InsertScrew ConnTask we show some Connfig files, each for a different size of screw. ConnTasks are, at least by default, easy to parameterize. If the algorithm stays the same, any numerical values should be easily tweakable for different workpieces.
+Above the InsertScrew ConnTask we show some Connfig files, each for a different size of screw. Connfigs hold parameters to specify a Task for different sizes/shapes of workpieces of the same basic type. Most algorithms are expected to be easy to parameterize. Using Connfigs, numerical values are easily tweakable for different workpieces.
 
 ## Installation
 
@@ -65,18 +65,82 @@ ConnTact is structured with 4 levels of functionality:
 
   The Conntext package acts as a wrapper which translates world-space data from the interface into the _task space_: the frame-of-reference of the task to be accomplished. This way, an algorithm is automatically reoriented and repositioned to each job, i.e. different hole positions and orientations for a screw-driving application. Conntext also provides useful data utilities, such as speed estimation and sensor data filtering.
 
+  See Appendix: Interpolation for more info.
+
+
 #### ConnTask
 
   To use ConnTact, the user creates a ConnTask implementation. Conntask is an easily-reconfigurable state machine which automatically associates an ConnStep behavior (see below) with each state and transition. Once you break a job down into sequential tasks, you can quickly build the functional skeleton of the algorithm.
 
 #### ConnStep
 
-  ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *motion profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. The motion profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
+  ConnTask implements tactile sensing in a pairing of *movement profile* and *end conditions*. A *movement profile* describes axes of force, compliance, or resisted motion to be executed by the robot end effector. By default, you define this profile in a MovePolicy (details below). The movement profile drives the robot through space and along surfaces. An *end condition* is a description of a force, torque, or motion signal which indicates that the robot has encountered a specific feature of interest which should end the motion profile and move the state machine. 
   The ConnStep class makes it extremely easy to first define a motion profile to move the robot through the environment, and then to define the end conditions which indicate that the motion has reached either its goal or an obstacle. Depending on the end condition detected, the ConnStep instructs ConnTask's state machine which specific next step to which to transition.
+
+###### MovePolicy
+
+Each ConnStep has a MovePolicy which defines its axes of set position and axes of continuous movement in response to forces.
+
+For example, in the SpiralSearch example, the robot needs to find the real Z position of the workpiece surface before inserting the peg; therefor it needs to hold the expected X and Y position of the hole, and move along the Z axis until an obstacle stops it. X and Y are set, while Z moves continuously.
+
+<details><summary>MovePolicy under-the-hood</summary>
+
+We realize MovePolicy motion in Conntact by continuously updating CartesianComplianceController's (CCC's) `target_frame` topic, the pose to which the robot is trying to move. The robot will move toward this goal pose with a PD feedback system. With CCC, this setpoint-seeking behavior is additively combined with the disturbance-response behavior: At any time, forces applied to the robot will move it away from its setpoint or keep it from reaching it.
+
+By updating the `target_frame` to the robot's current position, one can eliminate the setpoint-seeking behavior: Disturbance forces move the robot, and the robot does not seek to return to its undisturbed position. A `target_force` sent to the robot acts identically to an outside disturbance force, so in this fully compliant mode, the robot will constantly move in response to a force command until outside forces cancel it and stop the motion. 
+
+Note that this is not the only way to achieve this continuous behavior with CCC. We choose to negate the setpoint-seeking behavior and move the rotot by applying a force.
+
+The inverse would work: Continually update the setpoint a measured distance from the robot's current position to drive motion by "leading" the robot. Indeed it would be possible to snap the setpoint beyond the expected target location and let the robot find an obstacle by running into it on its way to the setpoin.
+
+We decided that this 1) can result in uncontrolled or variable robot speeds and 2) does not produce a controllable amount of contact force. The force-driven motion created by MovePolicy creates a reliable speed because CCC's inherent damping is always applied at the robot's update speed of 500 hz regardless of Conntact's cycle speed. Our method also can never produce more force (in the movement direction) than the command force given in the Policy.
+
+</details>
+
+The *MovePolicy* system allows you to update the setpoint *along an arbitrary axis/set of axes* to create continuous, force-sensitive motion where desired and to hold steady to a known position otherwise. 
+
+The MovePolicy's Origin (shown as a black point) and Vector (shown in grey) are used to form a 3D vector at a 3D origin point. MovePolicy uses 4 MoveModes to describe the number of axes constrained, and constrains them to Origin-Vector accordingly:
+
+![MoveMode description](resource/MoveModes.png)
+
+This diagram shows how the robot's current position is projected onto the origin-vector combination by different MoveModes to find the command setpoint position which will be sent to CCC.  These values are defined in task space.
+
+ - **Line** mode projects the robot's position onto the vector. This has the effect that the robot will only move along the vector.
+ - **Plane** projects the robot's position onto the plane passing through Origin and normal to Vector, allowing 2D motion while holding the other axis static.
+ - **Set** does not require Vector; the robot's command position is always set to Origin.
+ - **Free** does not require Vector or Origin; it always updates the command position to the robot's current position, effectively negating the setpoint-seeking behavior and permitting continuous motion in any direction.
+
+Note also that, for Set, Line, or Plane mode, if you don't pass Origin to the MoveMode constuctor, it will record the robot's current position, making it easy to continue a motion in a different direction.
+
+###### Modifying/Overriding the MovePolicy
+
+To define more complex motions, you can override your Step's inbuilt `current_move` property to change MovePolicy behavior (origin, vector, Mode, etc.) whenever the policy is accessed:
+
+```
+@property
+def current_move(self):
+    self.move_policy.origin = self.get_spiral_search_pose()
+    return super().current_move
+```
+
+This override can be used to completely ignore MovePolicy if you prefer to write your own motion control code. See the source code to find the expected return values.
+
+Alternately you can add the update code to your step's `execute()` method, convenient if your step is already using it for once-per-cycle tasks:
+
+The SpiralToFindHole Step in the SpiralSearch example uses this approach to mathematically define a motion path for X and Y while allowing the tool to slide across a surface in Z, fully compliant and seeking an irregularity.
+
+```
+def execute(self):
+    self.move_policy.origin = self.get_spiral_search_pose()
+```
+
+Note that MovePolicy also stores the Force, Torque and Orientation commands for the Step. It doesn't currently provide any help for creating continuous *rotational* compliance; if complex rotational behaviors are needed, either update the orientation command to the current orientation, or make your own compromise for now. We're very open to pull requests on this!
+
+See `assembly_utils/MovePolicy` for more info.
 
 ## Development
 
-We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of inserting a peg into a hole to illustrate each step. This is the task for which the included `SpiralSearch` example was developed. Snippets of code from `SpiralSearch` are included in collapsed sections to illustrate how little user programming is needed.  
+We suggest the following workflow to take a task from a human and give it to a robot. We'll use the example of inserting a peg into a hole to illustrate each step. This is the task for which the included `SpiralSearch` example package was developed. Snippets of code from `SpiralSearch` are included in collapsed sections to illustrate how little user programming is needed.  
 
 #### 1. Choose the frame-of-reference for your task.
   * The hole is vertical. We'll establish the Z axis to be vertical, concentric with the hole. All positions from here onward will be measured relative to the hole's position and orientation. We also establish the peg's Z axis along its axis pointing away from the robot flange. 
@@ -145,37 +209,9 @@ transitions = [
 
 #### 4. Analyze each *step* and determine the *motion profile* and *end conditions.*
 
-For each step above, identify the *force directions* and *free movement directions* required. 
+For each step above, identify the *force directions* and *free movement directions* required. Define the movement as a [MovePolicy](#MovePolicy) as detailed above.
 
-<details><summary>Some info about our basic motion profile function, `arbitrary_axis_comply`</summary>
-ConnSteps by default use a simple motion profile definition.
 
-First, it establishes a force command and a compliance policy. These are simply X, Y, and Z axes.
-
-```
-self.seeking_force = [0,0,0]
-self.comply_axes = [1,1,1]
-```
-
-Each loop cycle, it uses these commands to output the position and orientation instructions which will be published for robot execution.
-
-```
-def update_commands(self):
-    '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
-    '''
-    #Command wrench
-    self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
-    #Command pose
-    self.assembly.pose_vec = self.conntext.arbitrary_axis_comply(self.comply_axes)
-```
-
-The force command described by seeking_force here is used to guide robot motion. If a force is commanded, the robot will move until that force is cancelled by an external collision force of equal magnitude. This slowly moves the robot along a compliant direction.
-
-The robot will comply along each axis marked with a 1 in `comply_axes`. The robot will attempt to match axes marked with a 0 to a commanded target position, normally the position of the hole. This is useful, for example, when first seeking a hole at a given position. The robot aligns in X and Y with the hole, and moves compliantly in Z in order to collide perpendicularly with the surface.
-
-This allows the robot to continuously move in a predictable way.
-
-</details>
 
 * To move the peg downward in free space until it hits a hard surface:
   * Apply a small downward force to move the robot downward.
@@ -185,17 +221,21 @@ This allows the robot to continuously move in a predictable way.
   * Exit when a static obstacle stops the robot's motion
   * Save the Z position of the surface so that, later, we can determine if we pass it by falling into the hole.
 
-To realize this behavior in an ConnStep, you only need override the `seeking_force` and `comply_axes` that are initialized by the base classes. 
+To realize this behavior in an ConnStep, you can use this MovePolicy in the Step's `__init__` method:
 
 ```
-ConnStep.__init__(self, connTask)
-self.comply_axes = [0, 0, 1]
-self.seeking_force = [0, 0, -7]
+self.create_move_policy(move_mode="line",
+                        vector=[0,0,1], # Move along Z axis
+                        origin=[0,0,0], # Lock X,Y to hole's position
+                        force=[0, 0, -7]) # Apply downward force
 ```
 
 To end the step when collision is detected, simply override the `exit_conditions` method.
 
-`return self.is_static() and self.in_collision()`
+```
+def exit_conditions(self) -> bool:
+    return self.is_static() and self.in_collision()
+```
 
 <details><summary>FindSurface as ConnStep</summary>
 
@@ -204,9 +244,13 @@ class FindSurface(ConnStep):
 
     def __init__(self, connTask: ConnTask) -> None:
         ConnStep.__init__(self, connTask)
-        self.comply_axes = [0, 0, 1]
-        self.seeking_force = [0, 0, -7]
-
+        # Create a move policy which will move downward along a line
+        # at x=0, y=0
+        self.create_move_policy(move_mode="line",
+                                vector=[0,0,1],
+                                origin=[0,0,0],
+                                force=[0, 0, -7])
+                                
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
 
@@ -220,7 +264,7 @@ class FindSurface(ConnStep):
 
 </details>
 
-The spiral search pattern is realized by changing the command position according to a formula. The robot is sent to the commanded position repeatedly, so it moves smoothly outward. The underlying active compliance is still enabled, and we permit total compliance in `z` so that the peg can drop into the hole.
+The spiral search pattern is realized by changing the `MovePolicy`'s origin continuously according to a time-parameterized mathematical formula. We configure the `MovePolicy` with `MoveMode` "Line" so that X and Y will track while we still permit total compliance in `z`, allowing the peg to drop into the hole.
 
 <details><summary>SpiralToFindHole ConnStep</summary>
 
@@ -228,42 +272,43 @@ The spiral search pattern is realized by changing the command position according
 class SpiralToFindHole(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
-        self.seeking_force = [0, 0, -7]
-        self.spiral_params = self.assembly.connfig['task']['spiral_params']
-        self.safe_clearance = self.assembly.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
-        self.start_time = self.conntext.interface.get_unified_time()
+        self.create_move_policy(move_mode="line",
+                                vector=[0,0,1],
+                                force=[0, 0, -7])
 
-    def update_commands(self):
-        '''Updates the commanded position and wrench. These are published in the ConnTask main loop.
-        '''
-        #Command wrench
-        self.assembly.wrench_vec  = self.conntext.get_command_wrench(self.seeking_force)
-        #Command pose
-        self.assembly.pose_vec = self.get_spiral_search_pose()
+        self.spiral_params = self.task.connfig['task']['spiral_params']
+        self.safe_clearance = self.task.connfig['objects']['dimensions']['safe_clearance']/100 #convert to m
+        self.start_time = self.conntext.interface.get_unified_time()
+        self.exitPeriod = .05
+
+    @property
+    def current_move(self):
+        """
+        This more complicated motion definition simply updates the origin of the linear move_policy each
+        cycle to create a spiralling command position.
+        """
+        self.move_policy.origin = self.get_spiral_search_pose()
+        return self.move_policy.current_move(self.conntext.current_pose.transform.translation)
 
     def exit_conditions(self) -> bool:
-        return self.conntext.current_pose.transform.translation.z <= self.assembly.surface_height - .0004
+        return self.conntext.current_pose.transform.translation.z <= self.task.surface_height - .0004
 
     def get_spiral_search_pose(self):
         """Generates position, orientation offset vectors which describe a plane spiral about z;
         Adds this offset to the current approach vector to create a searching pattern. Constants come from Init;
         x,y vector currently comes from x_ and y_pos_offset variables.
         """
-        # frequency=.15, min_amplitude=.002, max_cycles=62.83185
         curr_time = self.conntext.interface.get_unified_time() - self.start_time
         curr_time_numpy = np.double(curr_time.to_sec())
         frequency = self.spiral_params['frequency'] #because we refer to it a lot
+        #Calculate the amplitude of the spiral:
         curr_amp = self.spiral_params['min_amplitude'] + self.safe_clearance * \
-                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles']);
+                   np.mod(2.0 * np.pi * frequency * curr_time_numpy, self.spiral_params['max_cycles'])
         x_pos = curr_amp * np.cos(2.0 * np.pi * frequency * curr_time_numpy)
         y_pos = curr_amp * np.sin(2.0 * np.pi * frequency * curr_time_numpy)
-        x_pos = x_pos + self.assembly.x_pos_offset
-        y_pos = y_pos + self.assembly.y_pos_offset
-        z_pos = self.conntext.current_pose.transform.translation.z
-        pose_position = [x_pos, y_pos, z_pos]
-        pose_orientation = [0, 1, 0, 0]  # w, x, y, z
+        pose_position = [x_pos, y_pos, 0]
 
-        return [pose_position, pose_orientation]
+        return pose_position
 ```
 
 </details>
@@ -276,8 +321,8 @@ Finally, to follow the peg into the hole, we use a similar setup to the `FindSur
 class FindSurfaceFullCompliant(ConnStep):
     def __init__(self, connTask: (ConnTask)) -> None:
         ConnStep.__init__(self, connTask)
-        self.comply_axes = [1, 1, 1]
-        self.seeking_force = [0, 0, -5]
+        self.create_move_policy(move_mode="free",
+                                force=[0, 0, -5])
 
     def exit_conditions(self) -> bool:
         return self.is_static() and self.in_collision()
@@ -324,6 +369,22 @@ To run the example, open a terminals sourced to the built project workspace and 
 
     roslaunch conntact conntact_demo.launch
 
+## Appendix
+
+###### Interpolation
+
+Our team has implemented a solution to the potential danger of the CCC's setpoint-seeking PD loop. We find that, if the robot is sent to a distant command, the forces and speeds used by the robot to reach that command pose a serious collision danger. It's possible that some limits/parameters can be set in CCC directly to control this, but we didn't find them and needed a quick and certain fix to the rapid unplanned motion problem.
+
+In Conntext's `publish_pose` method, we run the command from the Conntask through an interpolation function `assembly_tools/` which limits its *distance in position and orientation* to a user-specified cap.
+
+Results look like this:
+
+![Interpolation](resource/interpolate_big_plot.png)
+![Interpolation](resource/interpolate_small_plots.png)
+
+The black arrow indicates the start position (at the base of the arrow) and orientation (the arrow's shaft is X and barb is Z). A trace of intermittent dots link the tip of the arrow to the tip of the target position passed into the interpolation method. The intermediate arrow with the target arrow's color is the resultant interpolated pose. We show the results of limiting the target's offset to within .2m and 20 degrees of the current pose.
+
+The effect of this limiting is to provide a consistent limited speed and force for robot motions. Rotational motions especially are prone to collision, so this was a necessary precaution to permit arbitrary orientation control in ConnStep's MovePolicy.
 
 ## Acknowledgements
 

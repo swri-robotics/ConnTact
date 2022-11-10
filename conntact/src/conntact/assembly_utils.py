@@ -175,7 +175,7 @@ class MovePolicy:
                  orientation = [0, 0, 0],
                  force_cmd = [0, 0, 0],
                  torque_cmd = [0, 0, 0]):
-        # Initialize to None; Nonr is fine for Free mode.
+        # Initialize to None; None is fine for Free mode.
         self._vector = None
         self._origin = None
         self._move_mode: MoveMode = None
@@ -242,14 +242,18 @@ class MovePolicy:
         return {"move_mode":type(self.move_mode),
                 "vector":self.vector,
                 "origin":self.origin,
+                "orientation":self.orientation,
                 "force":self.force,
                 "torque":self.torque
                 }
 
     def validate_vec(self, value):
         """
-        Check that the input vector is indeed a valid 3-element NP array.
+        Check that the input vector is indeed a valid 3-element NP array. Always stores the vector on the
+        move_policy as a 3-element np.ndarray
+        :param value: (Vector3, List, or np.ndarray) set of 3 floats
         """
+        # automatically translate Vector3 datatype for simplicity.
         if type(value) is Vector3:
             return self.validate_vec([value.x,
                                       value.y,
@@ -260,6 +264,7 @@ class MovePolicy:
             raise TypeError("Wrong data type passed as elements in vector for MovePolicy! "
                             "Expected float or int. Got {}".format(value))
         if type(value) == list:
+            #Automatically store the value as a numpy array for math purposes.
             return np.array(value)
         return value
 
@@ -278,12 +283,16 @@ class MovePolicy:
                 self.orientation]
 
 
-def interpCommandByMagnitude(curr_vec, target_vec, lead_maximum=[.1, 1]):
+def interp_command_by_magnitude(curr_vec, target_vec, lead_maximum=[.1, 1]):
     """
     Shorten a command's 'lead' to a given pos/rot cap to artificially restrict motion speed on a PD controller.
     We take in the current position and the initial target position, and return a modified target position
     which can't be further than the bounds specified.
-    :param curr_vec: (list) = [[x,y,z position],[rotation in either Euler or Quaternion]]
+    :param curr_vec: (list) = [[x,y,z position],[rotation in either Euler or Quaternion]] current pose
+    :param target_vec: (list) = [[x,y,z position],[rotation in either Euler or Quaternion]] target pose
+    :param lead_maximum: (list) = [float distance in meters, rotation in degrees] offset from current position toward
+    target_vec to which to limit the returned interpolated command.
+    :return: (list) [[x,y,z position],[rotation in either Euler or Quaternion]]
     """
     # print("Current pose:{}".format(curr_vec))
     # Keep track of whether a command change was required. If the target lead is small, there's no need.
@@ -323,9 +332,8 @@ def interpCommandByMagnitude(curr_vec, target_vec, lead_maximum=[.1, 1]):
 
     # Add the commanded lead back to
     if changed:  # convert command back to quaternion if we started with one:
-        if input_quaternion:
-            new_command_vec[1] = euToQ(new_command_vec[1])
-        # print("Clipper returning changed target: \n{}".format(new_command_vec))
+        # if input_quaternion:
+        #     new_command_vec[1] = euToQ(new_command_vec[1])
         return new_command_vec  # ,[trans_mag,rot_mag], True
 
 
