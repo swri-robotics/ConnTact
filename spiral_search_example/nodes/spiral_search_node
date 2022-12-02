@@ -42,8 +42,6 @@ def read_board_positions(target_hole: str, params: dict):
 
 
 if __name__ == '__main__':
-    rospy.init_node("demo_assembly_application_compliance")
-    # rospy.sleep(10)
 
     # initialize the Conntact environment by starting up the interface and conntext
     interface = ConntactROSInterface("conntact_params", package_name)

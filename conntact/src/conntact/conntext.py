@@ -4,7 +4,6 @@
 # Imports for ros
 import time
 
-import rospy
 from geometry_msgs.msg import WrenchStamped, Wrench, TransformStamped, PoseStamped, Pose, Point, Quaternion, Vector3, \
     Transform
 import tf2_ros
@@ -78,7 +77,6 @@ class Conntext:
 
     def update(self):
         #All once-per-loop functions
-        self.interface.send_info("Updating current pos, avg speed and wrench.", 2)
         self.update_current_pos()
         self.update_avg_speed()
         self.update_average_wrench()
@@ -214,7 +212,7 @@ class Conntext:
                                 rot.z,
                                 rot.w])
 
-        return utils.interpCommandByMagnitude(np.array([curr_pos, [*curr_ori]]), np.array([*pose_vec]), [.05, 2])
+        return utils.interp_command_by_magnitude(np.array([curr_pos, [*curr_ori]]), np.array([*pose_vec]), [.05, 2])
 
     def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position and rotation [[pos],[rot]] in task space and publish
@@ -500,7 +498,6 @@ class Conntext:
         # TODO - convert to a process of numpy arrays! They process way faster because that library is written in C++
         # Note - actually Numpy's allclose() method may be perfect here.
 
-        # rospy.logerr("Bounds and stuff: " +str(input) + str(bounds_max) + str(bounds_min))
         if (bounds_max[0] >= input[0] >= bounds_min[0]):
             if (bounds_max[1] >= input[1] >= bounds_min[1]):
                 if (bounds_max[2] >= input[2] >= bounds_min[2]):
@@ -535,29 +532,27 @@ class Conntext:
         radius = np.linalg.norm(self.as_array(self.toolData.transform.transform.translation))
         # Set a minimum radius to always permit some torque
         radius = max(3, radius)
-        rospy.loginfo_once("For TCP " + self.toolData.name + " moment arm is coming out to " + str(radius))
         warning_torque = [force_limits['transverse']['warning'][a] * radius for a in range(3)]
         danger_torque = [force_limits['transverse']['dangerous'][b] * radius for b in range(3)]
-        rospy.loginfo_once("So torques are limited to  " + str(warning_torque) + str(danger_torque))
         force_array  = self.as_array(self.current_wrench.wrench.force)
         torque_array = self.as_array(self.current_wrench.wrench.torque)
 
         if (not (self.vectorRegionCompare_symmetrical(force_array, force_limits['direct']['dangerous'])
                  and self.vectorRegionCompare_symmetrical(torque_array, danger_torque))):
-            rospy.logerr("*Very* high force/torque detected! " + str(self.current_wrench.wrench))
-            rospy.logerr("Killing program.")
+            self.interface.send_error("*Very* high force/torque detected! {}".format(self.current_wrench.wrench), 2)
             quit()  # kills the program. Since the node is required, it kills the ROS application.
             return True
         if (self.vectorRegionCompare_symmetrical(force_array, force_limits['direct']['warning'])):
             if (self.vectorRegionCompare_symmetrical(torque_array, warning_torque)):
                 return True
-        rospy.logerr("High force/torque detected! \nForce: {}\nTorque: {}".format(force_array, torque_array))
+
+        self.interface.send_error("High force/torque detected! \nForce: {}\nTorque: {}".format(force_array, torque_array))
         # Forces and torques within acceptable levels. Reset highForceWarning
         if (self.highForceWarning):
             self.highForceWarning = False
             return False
         else:
-            rospy.logerr("Sleeping for 1s to damp oscillations...")
+            self.interface.send_error("Sleeping for 1s to damp oscillations...")
             self.highForceWarning = True
             time.sleep(1)
             # Makes the system to stop for a second in hopes that it prevents higher forces/torques.

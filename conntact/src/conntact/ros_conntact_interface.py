@@ -22,6 +22,7 @@ from conntact.conntact_interface import ConntactInterface
 class ConntactROSInterface(ConntactInterface):
     def __init__(self, conntact_params="conntact_params", this_package_name=None):
         #read in conntact parameters
+        rospy.init_node("algorithm_node")
 
         self.params = {}
         if(this_package_name is None):
