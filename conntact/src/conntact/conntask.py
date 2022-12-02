@@ -216,10 +216,6 @@ class ConnStep:
     '''
 
     def __init__(self, connTask: (ConnTask)) -> None:
-        # set up the parameters for this step
-        if not hasattr(self, "desiredOrientation"):
-            # Make a default orientation of vertical, but don't overwrite child's
-            self.desiredOrientation = trfm.quaternion_from_euler(0, 0, 0)
 
         # Set up exit condition sensitivity
         self.completion_confidence = 0.0
@@ -258,7 +254,7 @@ class ConnStep:
     def create_move_policy(self,
                            move_mode: str = None,
                            vector=None, origin=None,
-                           orientation=[0, 0, 0],
+                           orientation=None,
                            force=[0, 0, 0], torque=[0, 0, 0]):
         """
         Create a move_policy from arguments:
@@ -282,10 +278,17 @@ class ConnStep:
             according to MoveMode. An equal and opposite force from the physical sensor will stop this motion.
         :param torque_cmd:  (list of floats) XYZ torques to apply relative to target.
         """
-        self._move_policy = utils.MovePolicy(move_mode,
+        if orientation is None:
+            # Orientation will be the current orientation unless otherwise specified.
+            rot = self.conntext.current_pose.transform.rotation
+            orientation = curr_ori = utils.qToEu([rot.x,
+                                rot.y,
+                                rot.z,
+                                rot.w])
+        self._move_policy = utils.MovePolicy(orientation,
+                                             move_mode,
                                              vector,
                                              origin,
-                                             orientation,
                                              force,
                                              torque)
 

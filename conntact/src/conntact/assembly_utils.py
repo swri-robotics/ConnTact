@@ -13,6 +13,8 @@ def qToEu(a):
     :param a: (np.ndarray) Quaternion of the form (x,y,z,w)
     :return: (np.ndarray) Euler angles in degrees (XYZ sequential)
     """
+    if type(a) is Quaternion:
+        return qToEu([a.x, a.y, a.z, a.w])
     return np.degrees(tf.euler_from_quaternion([*a]))
 
 
@@ -169,10 +171,11 @@ class MovePolicy:
     """
 
     # MovePolicy init
-    def __init__(self, move_mode: str = None,
+    def __init__(self, 
+                orientation,
+                 move_mode: str = None,
                  vector = None,
                  origin = None,
-                 orientation = [0, 0, 0],
                  force_cmd = [0, 0, 0],
                  torque_cmd = [0, 0, 0]):
         # Initialize to None; None is fine for Free mode.
@@ -283,7 +286,7 @@ class MovePolicy:
                 self.orientation]
 
 
-def interp_command_by_magnitude(curr_vec, target_vec, lead_maximum=[.1, 1]):
+def interp_command_by_magnitude(curr_vec, target_vec, lead_maximum=[.1, 3]):
     """
     Shorten a command's 'lead' to a given pos/rot cap to artificially restrict motion speed on a PD controller.
     We take in the current position and the initial target position, and return a modified target position
