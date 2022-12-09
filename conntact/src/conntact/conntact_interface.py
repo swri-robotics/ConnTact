@@ -135,4 +135,11 @@ class ConntactInterface(metaclass=abc.ABCMeta):
         """
         pass
 
+    @abc.abstractmethod
+    def is_alive(self)->bool:
+        """
+        Returns True unless the environment is trying to shut down. A result of 
+        False cleanly aborts the Conntask.
+        """
+
 

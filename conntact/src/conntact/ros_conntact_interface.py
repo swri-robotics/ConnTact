@@ -266,14 +266,14 @@ class ConntactROSInterface(ConntactInterface):
         else:
             self.send_info("Warning: Unsuccessfully tried to zero the force-torque sensor.")
 
+    def is_alive(self)->bool:
+        """
+        Returns True unless the environment is trying to shut down. A result of 
+        False cleanly aborts the Conntask.
+        """
+        return  not rospy.is_shutdown()
+
     # def change_compliance_params(self, new_gains = None, new_stiffness= None):
     #     rospy.wait_for_service("/cartesian_compliance_controller/pd_gains/trans_z/set_parameters", timeout=5)
     #     self.updateParamZ = rospy.ServiceProxy("/cartesian_compliance_controller/pd_gains/trans_z/set_parameters",
     #                                            Reconfigure)
-
-    def print_not_found_error(self):
-        """Whine about the abstract method not being overridden in the implementation.
-        """
-        print("Abstract Conntact method {} not yet implemented.".format(inspect.stack()[1][3]))
-        raise NotImplementedError()
-
