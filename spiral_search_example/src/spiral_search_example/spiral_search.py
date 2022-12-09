@@ -126,7 +126,7 @@ class SpiralSearch(ConnTask):
         items["_average_wrench_world"] = self.conntext._average_wrench_world
         items["average_speed"] = self.conntext.average_speed
         items["current_pose"] = self.conntext.current_pose.transform.translation
-        self.interface.send_info(str(items), 5)
+        # self.interface.send_info(str(items), 5)
         self.interface.publish_plotting_values(items)
 
     def main(self):
@@ -147,7 +147,7 @@ class FindSurface(ConnStep):
                                 force=[0, 0, -7])
 
     def exit_conditions(self) -> bool:
-        return self.is_static() and self.in_collision() and False
+        return self.is_static() and self.in_collision()
 
     def on_exit(self):
         """Executed once, when the change-state trigger is registered.
