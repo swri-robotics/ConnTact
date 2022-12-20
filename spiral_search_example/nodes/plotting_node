@@ -1,0 +1,15 @@
+#! /usr/bin/env python3
+
+# Copyright 2021 Southwest Research Institute
+# Licensed under the Apache License, Version 2.0
+
+import rospy
+
+from spiral_search_example.assembly_plotting import PlotAssemblyData
+
+if __name__ == '__main__':
+    rospy.init_node("Assembly_Plotter")
+
+    plotter = PlotAssemblyData()
+
+    plotter.main()
