@@ -108,9 +108,9 @@ class SpiralSearch(ConnTask):
         self.x_pos_offset = self.target_hole_pose.transform.translation.x
         self.y_pos_offset = self.target_hole_pose.transform.translation.y
 
-    def all_states_calc(self):
+    def checkForceCap(self):
         self.publish_plotted_values(('state', self.state))
-        super().all_states_calc()
+        super().checkForceCap()
 
     def publish_plotted_values(self, stateInfo) -> None:
         """Publishes critical data for plotting node to process.
@@ -126,7 +126,7 @@ class SpiralSearch(ConnTask):
         items["_average_wrench_world"] = self.conntext._average_wrench_world
         items["average_speed"] = self.conntext.average_speed
         items["current_pose"] = self.conntext.current_pose.transform.translation
-
+        # self.interface.send_info(str(items), 5)
         self.interface.publish_plotting_values(items)
 
     def main(self):

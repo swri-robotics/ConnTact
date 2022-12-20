@@ -162,7 +162,7 @@ class ConnTask(Machine):
         changing the state. If using a state realized as an ConnStep class, we delete the old step here. Also
         executes the once-per-cycle non-step commands needed for continuous safe operation.
         """
-        while self.state != EXIT_STATE:
+        while self.state != EXIT_STATE and self.interface.is_alive():
             if (self.switch_state):  # If the command to change states has come in:
                 self.switch_state = False
                 if (self.current_step):

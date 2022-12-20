@@ -217,12 +217,13 @@ class PlotAssemblyData():
 
         # vital_data = [self.average_speed, self.average_wrench, self.status, self.pos]
         # #Wait till we have real values for everything
-        rospy.wait_for_message("cartesian_compliance_controller/target_wrench", WrenchStamped)
+        rospy.wait_for_message("cartesian_compliance_controller/target_wrench", WrenchStamped, 10)
 
         x=True
-        while (type(None) in [type(self.average_speed), type(self.average_wrench), type(self.status), type(self.pos)]):
+        while not rospy.is_shutdown() and (type(None) in [type(self.average_speed), type(self.average_wrench), type(self.status), type(self.pos)]):
             # vital_data = [self.average_speed, self.average_wrench, self.status, self.pos]
             # x = vital_data[:] == [2,2,2,2]
+            rospy.loginfo_throttle(5, Fore.GREEN+"Plotter still awaiting data."+Style.RESET_ALL)
 
             self.rate.sleep()
         
