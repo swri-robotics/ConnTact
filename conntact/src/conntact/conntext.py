@@ -40,6 +40,8 @@ class Conntext:
         # Save a reference to the interface.
         self.interface = interface
         self.params = self.interface.load_yaml_file(conntact_params)
+        self.limits = [self.params["robot"]["max_linear_speed"], 
+                        self.params["robot"]["max_angle_speed"]]
 
         # Save the refresh rate as read-only property
         self.rate = self.params["framework"]["refresh_rate"]
@@ -177,15 +179,15 @@ class Conntext:
         """Takes in vector representations of position
         :param pose_stamped_vec: (list of floats) List of parameters for pose with x,y,z position and orientation quaternion
         """
-        limit = np.array(self.params['robot']['max_pos_change_per_second'])
+        # limit = np.array(self.params['robot']['max_pos_change_per_second'])
         curr_pos = self.as_array(self.current_pose.transform.translation)
         rot = self.current_pose.transform.rotation
-        curr_ori = utils.qToEu([rot.x,
-                                rot.y,
-                                rot.z,
-                                rot.w])
+        curr_ori = utils.qToEu(rot)
 
-        return utils.interp_command_by_magnitude(np.array([curr_pos, [*curr_ori]]), np.array([*pose_vec]), [.05, 2])
+        return utils.interp_command_by_magnitude(
+            np.array([curr_pos, [*curr_ori]]), 
+            np.array([*pose_vec]), 
+            self.limits)
 
     def publish_pose(self, pose_stamped_vec):
         """Takes in vector representations of position and rotation [[pos],[rot]] in task space and publish
@@ -255,11 +257,11 @@ class Conntext:
 
         # Execute reinterpret-to-tcp and rotate-to-world simultaneously:
         # result_wrench.wrench = Conntext.transform_wrench(transform_world_to_gripper,
-                                                            #   result_wrench.wrench, log=False)  # This works
+        #                                                       result_wrench.wrench, log=False)  # This works
         result_wrench = self.interface.do_transform(input_wrench, "tool0_controller")        
         
-        self.interface.send_info("Command wrench: {}\n Outgoing reoriented wrench: {}".format(
-            input_wrench, result_wrench), 1)
+        # self.interface.send_info("Command wrench: {}\n Outgoing reoriented wrench: {}".format(
+            # input_wrench, result_wrench), 1)
         
         self.interface.publish_command_wrench(result_wrench)
     
@@ -297,15 +299,16 @@ class Conntext:
         #run it through the smoothing function, returning a Wrench
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
-        stamped_gripper = WrenchStamped(header=self.current_wrench.header, wrench=self._average_wrench_gripper)
-        # self.interface.send_info("Gripper wrench: {}".format(stamped_gripper), .75)
-        # stamped_gripper.header.frame_id = self.target_frame_name
+        # Reorient the wrench reading into the task frame
+        avg_world = self.interface.do_transform(
+            WrenchStamped(header=self.current_wrench.header,
+             wrench=self._average_wrench_gripper), 
+            self.target_frame_name)
 
-        avg_world = self.interface.do_transform(stamped_gripper, self.target_frame_name)
         self.interface.publish_averaged_wrench(avg_world)
+
+        # safe it for next cycle
         self._average_wrench_world = avg_world.wrench
-        # self.interface.send_info("Incoming wrench: {}\n Outgoing averaged wrench: {}".format(
-        #     self._average_wrench_gripper, avg_world), 1)
 
     def disabled_update_average_wrench(self) -> None:
         """Create a very simple moving average of the incoming wrench readings and store it as self.average.wrench.
@@ -338,7 +341,7 @@ class Conntext:
         guy.wrench = self._average_wrench_world
         guy.header.frame_id = "target_hole_position"
         self.interface.publish_averaged_wrench(guy)
-        self.interface.send_info("Outgoing averaged wrench: {}".format(guy), 1)
+        # self.interface.send_info("Outgoing averaged wrench: {}".format(guy), 1)
 
     @staticmethod
     def to_homogeneous(quat, point):
@@ -416,27 +419,27 @@ class Conntext:
         :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
         :return wrench_transformed: (geometry_msgs.msg.Wrench) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
         """
+        
+        def create_adjoint_representation(T_ab=None, R_ab=None, P_ab=None):
+            """Convert homogeneous transform (T_ab) or a combination rotation matrix (R_ab) and pose (P_ab) 
+            into the adjoint representation. This can be used to transform wrenches (e.g., force and torque) between frames.
+            If T_ab is provided, R_ab and P_ab will be ignored.
+            :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
+            :param R_ab: (np.Array) 3x3 rotation matrix representing frame 'b' relative to frame 'a'
+            :param P_ab: (np.Array) 3x1 pose representing frame 'b' relative to frame 'a'
+            :return Ad_T: (np.Array) 6x6 adjoint representation of the transformation
+            """
+            # Accomodation for input R_ab and P_ab
+            if (type(T_ab) == type(None)):
+                T_ab = RpToTrans(R_ab, P_ab)
 
-        Ad_T = Conntext.create_adjoint_representation(T_ab)
+            Ad_T = homogeneous_to_adjoint(T_ab)
+            return Ad_T
+
+        Ad_T = create_adjoint_representation(T_ab)
         wrench_transformed = np.matmul(Ad_T.T, wrench)
         return Conntext.arrayToWrench(wrench_transformed)
 
-    @staticmethod
-    def create_adjoint_representation(T_ab=None, R_ab=None, P_ab=None):
-        """Convert homogeneous transform (T_ab) or a combination rotation matrix (R_ab) and pose (P_ab) 
-        into the adjoint representation. This can be used to transform wrenches (e.g., force and torque) between frames.
-        If T_ab is provided, R_ab and P_ab will be ignored.
-        :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
-        :param R_ab: (np.Array) 3x3 rotation matrix representing frame 'b' relative to frame 'a'
-        :param P_ab: (np.Array) 3x1 pose representing frame 'b' relative to frame 'a'
-        :return Ad_T: (np.Array) 6x6 adjoint representation of the transformation
-        """
-        # Accomodation for input R_ab and P_ab
-        if (type(T_ab) == type(None)):
-            T_ab = RpToTrans(R_ab, P_ab)
-
-        Ad_T = homogeneous_to_adjoint(T_ab)
-        return Ad_T
 
     def create_wrench(self, force: list, torque: list) -> WrenchStamped:
         """Composes a standard wrench object from human-readable vectors.
