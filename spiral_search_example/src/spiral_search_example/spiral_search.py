@@ -135,6 +135,36 @@ class SpiralSearch(ConnTask):
         self.algorithm_execute()
         self.interface.send_info("Spiral Search all done!")
 
+class WiggleRotationContinuously(ConnStep):
+    def __init__(self, connTask: ConnTask) -> None:
+        ConnStep.__init__(self, connTask)
+        # Create a move policy which will move downward along a line
+        # at x=0, y=0
+        self.create_move_policy(move_mode="free",
+                                force=[0, 0, -10],
+                                orientation=np.array([0,0,0]))
+        self.start_time = 0
+    def execute(self):
+        now = self.task.interface.get_unified_time(float=True)
+        if self.start_time == 0:
+            self.start_time = now
+        self._move_policy.orientation = np.sin((now - self.start_time)/6) * np.array([22.5,00,0]) + np.array([22.5,0,0])
+    def exit_conditions(self):
+        return False
+
+class Test_Wrench_Free_Motion(ConnStep):
+
+    def __init__(self, connTask: ConnTask, in_force) -> None:
+        ConnStep.__init__(self, connTask)
+        self.create_move_policy(move_mode="free",
+                                vector=[0,0,1],
+                                origin=[0,0,0],
+                                force=in_force)
+
+    def exit_conditions(self) -> bool:
+        return False
+
+
 class FindSurface(ConnStep):
 
     def __init__(self, connTask: ConnTask) -> None:
