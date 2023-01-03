@@ -251,7 +251,7 @@ class Conntext:
         # Reorient the command wrench so it aligns with the controller's control frame.
         result_wrench = self.interface.do_transform(input_wrench, "tool0_controller")        
 
-        # Execute reinterpret-to-tcp. We want forces and torques to be correct at the tool position,
+        # Execute reinterpret-to-tcp. We want forces and torques to be correct at the control point,
         # so we reinterpret based on the inverse of the tool's distance from the control point (tool0)
         result_wrench.wrench = Conntext.transform_wrench(self.toolData.force_sensor_to_tool_tip_translation,
                                             result_wrench.wrench,
@@ -296,17 +296,14 @@ class Conntext:
         #run it through the smoothing function, returning a Wrench
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
 
-
         # Execute reinterpret-to-tcp. We want forces and torques to be correct at the tool position,
-        # so we reinterpret based on the inverse of the tool's distance from the control point (tool0)
-
+        # so we reinterpret based on the tool's distance from the control point (tool0)
         self._average_wrench_gripper = Conntext.transform_wrench(
             self.toolData.force_sensor_to_tool_tip_translation,
             self._average_wrench_gripper, 
             log=False)  # This works
 
-
-        # Reorient the wrench reading into the task frame
+        # Reorient the wrench into the task frame
         avg_world = self.interface.do_transform(
             WrenchStamped(header=self.current_wrench.header,
              wrench=self._average_wrench_gripper), 
@@ -420,35 +417,10 @@ class Conntext:
                 transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL, 2)
         if invert:
             matrix = trfm.inverse_matrix(matrix)
-        return Conntext.transform_wrench_by_matrix(matrix, Conntext.wrenchToArray(wrench))
-
-    @staticmethod
-    def transform_wrench_by_matrix(T_ab: np.ndarray, wrench: np.ndarray) -> np.ndarray:
-        """Use the homogeneous transform (T_ab) to transform a given wrench using an adjoint transformation (see create_adjoint_representation).
-        :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
-        :param wrench: (np.Array) 6x1 representation of a wrench relative to frame 'a'. This should include forces and torques as np.array([torque, force])
-        :return wrench_transformed: (geometry_msgs.msg.Wrench) 6x1 representation of a wrench relative to frame 'b'. This should include forces and torques as np.array([torque, force])
-        """
         
-        def create_adjoint_representation(T_ab=None, R_ab=None, P_ab=None):
-            """Convert homogeneous transform (T_ab) or a combination rotation matrix (R_ab) and pose (P_ab) 
-            into the adjoint representation. This can be used to transform wrenches (e.g., force and torque) between frames.
-            If T_ab is provided, R_ab and P_ab will be ignored.
-            :param T_ab: (np.Array) 4x4 homogeneous transformation matrix representing frame 'b' relative to frame 'a'
-            :param R_ab: (np.Array) 3x3 rotation matrix representing frame 'b' relative to frame 'a'
-            :param P_ab: (np.Array) 3x1 pose representing frame 'b' relative to frame 'a'
-            :return Ad_T: (np.Array) 6x6 adjoint representation of the transformation
-            """
-            # Accomodation for input R_ab and P_ab
-            if (type(T_ab) == type(None)):
-                print("A very strange thing has happened.")
-                T_ab = RpToTrans(R_ab, P_ab)
-
-            Ad_T = homogeneous_to_adjoint(T_ab)
-            return Ad_T
-
-        Ad_T = create_adjoint_representation(T_ab)
-        wrench_transformed = np.matmul(Ad_T.T, wrench)
+        # return Conntext.transform_wrench_by_matrix(matrix, Conntext.wrenchToArray(wrench))
+        Ad_T = homogeneous_to_adjoint(matrix)
+        wrench_transformed = np.matmul(Ad_T.T, Conntext.wrenchToArray(wrench))
         return Conntext.arrayToWrench(wrench_transformed)
 
 
