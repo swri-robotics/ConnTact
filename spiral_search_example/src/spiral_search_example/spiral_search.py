@@ -58,7 +58,7 @@ class SpiralSearch(ConnTask):
             {'trigger':RUN_LOOP_TRIGGER          , 'source':'*'                 , 'dest':None, 'after': 'run_step_actions'}
         ]
 
-        self.step_list:dict = { APPROACH_STATE:       (WiggleRotationContinuously, []),
+        self.step_list:dict = { APPROACH_STATE:       (FindSurface, []),
                                 FIND_HOLE_STATE:      (SpiralToFindHole, []),
                                 INSERTING_PEG_STATE:  (FindSurfaceFullCompliant, []),
                                 SAFETY_RETRACT_STATE: (SafetyRetraction, []),

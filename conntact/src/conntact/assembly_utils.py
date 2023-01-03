@@ -10,7 +10,7 @@ import tf.transformations as tf
 
 def qToEu(a):
     """
-    :param a: (np.ndarray) Quaternion of the form (x,y,z,w)
+    :param a: (np.ndarray or Quaternion) Quaternion object, or array of the form (x,y,z,w)
     :return: (np.ndarray) Euler angles in degrees (XYZ sequential)
     """
     if type(a) is Quaternion:
@@ -286,7 +286,7 @@ class MovePolicy:
                 self.orientation]
 
 
-def interp_command_by_magnitude(curr_vec, target_vec, lead_maximum=[.1, 3]):
+def interp_command_by_magnitude(curr_vec, target_vec, lead_maximum):
     """
     Shorten a command's 'lead' to a given pos/rot cap to artificially restrict motion speed on a PD controller.
     We take in the current position and the initial target position, and return a modified target position

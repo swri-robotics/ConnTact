@@ -119,12 +119,15 @@ if runInterpolationTest:
     commandList = [vect,list(q)]
 
 
-    def qGetMagnitude(a):
-        return np.degrees(np.arccos(a[3])*2)
+    def getRotMagnitude(a):
+        if len(a)==4:
+            return np.degrees(np.arccos(a[3])*2)
+        else:
+            return np.linalg.norm(a)
+
 
     i = 10
-    def euGetMagnitude(euler):
-        return np.linalg.norm(euler)
+
     while i>0:
         i-=1
         qstart = tf.random_quaternion()
@@ -133,7 +136,7 @@ if runInterpolationTest:
         # print("Start, end, Diff are \n{},\n{},\n{},".format(qToEu(qstart),qToEu(qend),qToEu(qdiff)))
         eustart = qToEu(qstart)
         euend = qToEu(qend)
-        print("Validating euler angle magnituder:{:.3f} is the mag of {}".format(euGetMagnitude(eustart), eustart))
+        print("Validating euler angle magnituder:{:.3f} is the mag of {}".format(getRotMagnitude(eustart), eustart))
         print("Validating: Start plus Diff should equal end:\n{} vs \n{}".format(
             np.around(eustart + eudiff, 3),
             np.around(euend, 3)
@@ -161,7 +164,7 @@ if runInterpolationTest:
     #     diff_vec = [target_vec[0]-curr_vec[0],
     #                 target_vec[1]-curr_vec[1]]
     #     trans_mag   = np.linalg.norm(diff_vec[0])
-    #     rot_mag     = euGetMagnitude(diff_vec[1])
+    #     rot_mag     = getRotMagnitude(diff_vec[1])
     #     new_command_vec = [*target_vec]
     #
     #     # Clip magnitudes
@@ -171,7 +174,7 @@ if runInterpolationTest:
     #         changed = True
     #     if rot_mag > lead_maximum[1]:
     #         new_command_vec[1] = quat_lerp(curr_vec[1], target_vec[1], (lead_maximum[1] / rot_mag))
-    #         rot_mag = euGetMagnitude(new_command_vec[1])
+    #         rot_mag = getRotMagnitude(new_command_vec[1])
     #         changed = True
     #
     #     if not changed:
@@ -191,7 +194,11 @@ if runInterpolationTest:
         Return: list of array(3) of rotated points.
         """
         # quat = euToQ(list(vec[1]))
-        quat = vec[1]
+        # Check if euler is passed in:
+        if len(vec[1]) == 3:
+            quat = utils.euToQ(vec[1])
+        else:
+            quat = vec[1]
         outList = [rotate(quat, np.array([x,y,z])) + vec[0] for (x,y,z) in points.T]
         # outList = [rotate(quat, np.array([x,y,z]) + vec[0]) for (x,y,z) in points.T]
 
@@ -226,14 +233,14 @@ if runInterpolationTest:
         diff_vec = [toV[0] - fromV[0],
                     toV[1] - fromV[1]]
         trans_mag = np.linalg.norm(diff_vec[0])
-        rot_mag = euGetMagnitude(diff_vec[1])
+        rot_mag = getRotMagnitude(diff_vec[1])
 
         if intervals is None:
             # intervals = (trans_mag + rot_mag/180)*5
             intervals = 15
         interps = np.linspace(0,1,intervals)
 
-        newVects = [utils.interp_command_by_magnitude(fromV, toV, np.array([trans_mag, rot_mag]) * i) for i in interps]
+        newVects = [utils.interp_command_by_magnitude(fromV, toV, np.array([trans_mag, rot_mag]) * i, lead_maximums) for i in interps]
         # Find the points at the end of the arrows for all these poses.
         outVects = [rotate(utils.euToQ(vec[1]), [1,0,0]) + vec[0] for vec in newVects]
         return np.array(outVects).T
@@ -315,7 +322,7 @@ if runInterpolationTest:
             num -= 1
             # testQuat = quat_iter.__next__()
             testQuat = tf.random_quaternion()
-            # while qGetMagnitude(testQuat) < 90:
+            # while getRotMagnitude(testQuat) < 90:
             #     testQuat = tf.random_quaternion()
             test_target_vec = [test_start_vec[0]+np.array(tf.random_vector(3)*2 - np.array([1, 1, 1]))*max_translation_end,
                                np.array( tf.quaternion_multiply(testQuat, test_start_vec[1] ) )]
@@ -333,11 +340,11 @@ if runInterpolationTest:
             ax.plot(xs, ys, zs , color=color, dashes=(4, 3, 1, 3))
             ax.plot(*applyRot(newCommandVec, points), color=darkerColor)
 
-            if np.linalg.norm(newCommandVec[0]) <= lead_maximums[0] and qGetMagnitude(newCommandVec[1]) <= lead_maximums[1]:
+            if np.linalg.norm(newCommandVec[0]) <= lead_maximums[0] and getRotMagnitude(newCommandVec[1]) <= lead_maximums[1]:
                 successes += 1
                 print("Trim succeeded!")
             else:
-                print("Clipping failed! Move magnitude: {} Turn magnitude: {}".format(np.linalg.norm(newCommandVec[0]), qGetMagnitude(newCommandVec[1])))
+                print("Clipping failed! Move magnitude: {} Turn magnitude: {}".format(np.linalg.norm(newCommandVec[0]), getRotMagnitude(newCommandVec[1])))
         ax.plot(*applyRot([*test_start_vec], points), color="black")
 
         print("Successes/trials: {}/{}".format(successes, trials))

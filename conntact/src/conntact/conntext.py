@@ -146,6 +146,16 @@ class Conntext:
                 self.toolData.validToolsDict[tool_name]['pose'],
                 self.toolData.validToolsDict[tool_name]['orientation'],
                 "tool0_to_gripper_tip_link", self.toolData.frame_name)
+
+            # Store the translation from the force sensor to the tool position. This has the UR10e's 5 cm
+            # end flange factored in.
+            self.toolData.force_sensor_to_tool_tip_translation = np.array(self.toolData.validToolsDict[tool_name]['pose'])/1000 \
+                 + np.array(self.params["robot"]["traslation_force_sensor_to_tool_flange"])
+            
+            print(Fore.MAGENTA + Back.WHITE + str(np.array(self.toolData.validToolsDict[tool_name]['pose'])/1000) + Style.RESET_ALL)
+
+            print(Fore.MAGENTA + Back.WHITE + str(self.toolData.force_sensor_to_tool_tip_translation) + Style.RESET_ALL)
+
             self.reference_frames['tcp'] = gripper_to_tool_tip_transform
             self.send_reference_TFs()
             # get the transform from tool0 (which CartesianControllers treats as the root frame) to the TCP
@@ -231,37 +241,24 @@ class Conntext:
         if self.motion_permitted:
             self.interface.publish_command_position(goal_pose)
 
-
-
-
-
-
-
-
-
-
     def publish_wrench(self, input_vec):
         """Publish the commanded wrench to the command topic.
         :param input_vec: (list of Floats) XYZ force commands
         """
-
+        # Creates a wrench object containing commanded force and torque in task space.
         input_wrench = self.create_wrench(input_vec[0], input_vec[1])
 
-        # tcp_position = self.toolData.transform.transform.translation
-        # offset = Point(-1 * tcp_position.x, -1 * tcp_position.y, -1 * tcp_position.z - .05)
-
-        # transform_world_to_gripper.transform.translation = offset
-
-        # new_wrench = self.interface.do_transform(result_wrench, self.toolData.frame_name)
-        # print("Reinterpreted rotation just from transform: {}".format(new_wrench))
-
-        # Execute reinterpret-to-tcp and rotate-to-world simultaneously:
-        # result_wrench.wrench = Conntext.transform_wrench(transform_world_to_gripper,
-        #                                                       result_wrench.wrench, log=False)  # This works
+        # Reorient the command wrench so it aligns with the controller's control frame.
         result_wrench = self.interface.do_transform(input_wrench, "tool0_controller")        
-        
-        # self.interface.send_info("Command wrench: {}\n Outgoing reoriented wrench: {}".format(
-            # input_wrench, result_wrench), 1)
+
+        # Execute reinterpret-to-tcp. We want forces and torques to be correct at the tool position,
+        # so we reinterpret based on the inverse of the tool's distance from the control point (tool0)
+        result_wrench.wrench = Conntext.transform_wrench(self.toolData.force_sensor_to_tool_tip_translation,
+                                            result_wrench.wrench,
+                                            log=False,
+                                            invert=True)  # This works
+       
+        # self.interface.send_info("Outgoing reoriented wrench: {}".format(result_wrench), 1)
         
         self.interface.publish_command_wrench(result_wrench)
     
@@ -298,6 +295,16 @@ class Conntext:
 
         #run it through the smoothing function, returning a Wrench
         self._average_wrench_gripper = self.filters.average_wrench(self.current_wrench.wrench)
+
+
+        # Execute reinterpret-to-tcp. We want forces and torques to be correct at the tool position,
+        # so we reinterpret based on the inverse of the tool's distance from the control point (tool0)
+
+        self._average_wrench_gripper = Conntext.transform_wrench(
+            self.toolData.force_sensor_to_tool_tip_translation,
+            self._average_wrench_gripper, 
+            log=False)  # This works
+
 
         # Reorient the wrench reading into the task frame
         avg_world = self.interface.do_transform(
@@ -396,15 +403,18 @@ class Conntext:
         return Wrench(Point(*list(array[3:])), Point(*list(array[:3])))
 
     @staticmethod
-    def transform_wrench(transform: TransformStamped, wrench: Wrench, invert: bool = False,
+    def transform_wrench(transform, wrench: Wrench, invert: bool = False,
                          log: bool = False) -> np.ndarray:
         """Transform a wrench object by the given transform object.
-        :param transform: (geometry_msgs.TransformStamped) Transform to apply
+        :param transform: (3-d list or np.ndarray or geometry_msgs.TransformStamped) Transform to apply
         :param wrench: (geometry_msgs.Wrench) Wrench object to transform.
         :param invert: (bool) Whether to interpret the tansformation's inverse, i.e. transform "from child to parent" instead of "from parent to child"
         :return: (geometry.msgs.Wrench) changed wrench
         """
-        matrix = Conntext.to_homogeneous(transform.transform.rotation, transform.transform.translation)
+        if type(transform) is list or type(transform) is np.ndarray:
+            matrix = trfm.translation_matrix(transform)
+        else:    
+            matrix = Conntext.to_homogeneous(transform.transform.rotation, transform.transform.translation)
         if log:
             print(Fore.RED + " Transform passed in is " + str(
                 transform) + " and matrix passed in is \n" + str(matrix) + Style.RESET_ALL, 2)
@@ -431,6 +441,7 @@ class Conntext:
             """
             # Accomodation for input R_ab and P_ab
             if (type(T_ab) == type(None)):
+                print("A very strange thing has happened.")
                 T_ab = RpToTrans(R_ab, P_ab)
 
             Ad_T = homogeneous_to_adjoint(T_ab)

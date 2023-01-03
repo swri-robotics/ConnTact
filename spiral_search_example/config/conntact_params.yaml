@@ -4,8 +4,11 @@
 framework: # Params to keep the data pipeline reliable
   refresh_rate: 100 #Algorithm loop execution frequency, in hz
 robot: # Params to keep the robot safe and reliable
+  traslation_force_sensor_to_tool_flange: [0,0,.05] #In meters, offset from actual force sensor to tool0 frame 
   speed_static: [.001, .001, .001]
-  max_pos_change_per_second: [.03,.03,.03] #in meters - how far can the setpoint be from current pos
+  # max_pos_change_per_second: [.03,.03,.03] #in meters - how far can the setpoint be from current pos
+  max_linear_speed: .05 #Roughly in meters per second
+  max_angle_speed: 2 #Roughly in degrees per second
   hard_speed_limit: .1 #in meters per second
   force_setpoints:
     direct: # Force at the gripper base
