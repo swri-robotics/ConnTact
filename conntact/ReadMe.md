@@ -39,10 +39,12 @@ Development of framework was done under Ubuntu Focal (20.04) using [ROS Noetic](
   - Install ROS source dependencies:
     - `cd ~/ros_ws/src`
     - `vcs import < ConnTact/dependencies.rosinstall` 
+     - We are running Conntact on a UR-10e; this command will install all dependencies needed for the UR implementation `Universal_Robots_ROS_Driver`, `fmauch_universal_robot`, `ur_msgs`). If not operating a UR, you can remove these.
   - Install ROS package dependencies: `rosdep install --rosdistro noetic --ignore-src --from-paths .`
   - Source ROS and build the workspace: `. /opt/ros/noetic/setup.bash`, `catkin build`
 
-It may be required to uninstall the ROS-default `ros-noetic-ur-client-library`, which uses old debs which lack major performance improvements. Even when running on a highly-performant computer, the RTDE buffer may overflow, giving `Pipeline Producer overflowed! <RTDE Pipeline>` errors. This causes major instability in robot performance. 
+#### Universal Robot Users:
+If you intend to run Conntact on a UR, it may be required to uninstall the ROS-default `ros-noetic-ur-client-library` - it uses old debs which lack major performance improvements. Even when running on a highly-performant computer, the RTDE buffer may overflow, giving `Pipeline Producer overflowed! <RTDE Pipeline>` errors. This causes major instability in robot performance. 
 
 Fix this by building the more recent versions from source:
 
@@ -89,7 +91,7 @@ We realize MovePolicy motion in Conntact by continuously updating CartesianCompl
 
 By updating the `target_frame` to the robot's current position, one can eliminate the setpoint-seeking behavior: Disturbance forces move the robot, and the robot does not seek to return to its undisturbed position. A `target_force` sent to the robot acts identically to an outside disturbance force, so in this fully compliant mode, the robot will constantly move in response to a force command until outside forces cancel it and stop the motion. 
 
-Note that this is not the only way to achieve this continuous behavior with CCC. We choose to negate the setpoint-seeking behavior and move the rotot by applying a force.
+Note that this is not the only way to achieve this continuous behavior with CCC. We choose to negate the setpoint-seeking behavior and move the robot by applying a force.
 
 The inverse would work: Continually update the setpoint a measured distance from the robot's current position to drive motion by "leading" the robot. Indeed it would be possible to snap the setpoint beyond the expected target location and let the robot find an obstacle by running into it on its way to the setpoin.
 
@@ -375,7 +377,7 @@ To run the example, open a terminals sourced to the built project workspace and 
 
 Our team has implemented a solution to the potential danger of the CCC's setpoint-seeking PD loop. We find that, if the robot is sent to a distant command, the forces and speeds used by the robot to reach that command pose a serious collision danger. It's possible that some limits/parameters can be set in CCC directly to control this, but we didn't find them and needed a quick and certain fix to the rapid unplanned motion problem.
 
-In Conntext's `publish_pose` method, we run the command from the Conntask through an interpolation function `assembly_tools/` which limits its *distance in position and orientation* to a user-specified cap.
+In Conntext's `publish_pose` method, we run the command from the Conntask through an interpolation function `assembly_utils/interp_command_by_magnitude` which limits its *distance in position and orientation* to a user-specified cap.
 
 Results look like this:
 
